@@ -1,0 +1,46 @@
+# Per-MCP configuration registry — the pipeline's "API for engineers" (FR2)
+# Schema validated by src/schemas/mcp-pipeline-config.schema.ts (Story 1.2)
+# pipeline_version: tracks pipeline schema evolution; bumped when fields are added/removed
+pipeline_version: 1
+
+# Pinned ecosystem schema versions (NFR-I4)
+mcp_schema_version: "2025-12-11"
+n8n_node_api_version: "1.0"  # to be confirmed against n8n's current schema during Story 5.1
+
+# One entry per MCP processed by the pipeline.
+# Each entry under `mcps:` is keyed by the MCP's kebab-case folder name
+# (which must match the folder under pending-to-publish/<key>/).
+mcps:
+  evidence-manager:
+    # Identity
+    reverse_dns_name: "io.github.g-digital-by-Garrigues/evidence-manager"
+    npm_package_name: "@g-digital/mcp-evidence-manager"
+    docker_image_name: "gdigital/evidence-manager"
+
+    # Track B
+    n8n_adapter_target_name: "n8n-node-evidence-manager"  # → @g-digital/n8n-node-evidence-manager
+
+    # License (FR14 Layer 1 validates this)
+    license: "MIT"
+
+    # Consumer-facing
+    credential_help_url: "https://eadtrust.example.com/onboarding"  # PLACEHOLDER — update once EADTrust team confirms (task #16 in human-setup-runbook)
+
+    # Per-target overrides (optional — empty = use pipeline defaults)
+    target_overrides: {}
+
+    # Track A targets — must include all 7 v1 stores or use 'default' for full coverage
+    track_a_targets: default
+
+    # Track B targets
+    track_b_targets:
+      - n8n
+      - make-rom
+
+    # Logo asset path (FR45) — relative to pending-to-publish/<key>/
+    logo_path: "assets/logo-400x400.png"
+
+    # Bundled Claude Code skills (FR45) — paths relative to pending-to-publish/<key>/
+    bundled_skills:
+      - .claude/commands/create-internal-evidence.md
+      - .claude/commands/create-signature-request.md

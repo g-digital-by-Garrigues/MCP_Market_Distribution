@@ -1,0 +1,16 @@
+{
+  "name": "g-digital-mcp-distribution-pipeline",
+  "version": "0.0.0-bootstrap",
+  "description": "Internal pipeline that publishes g-digital MCP servers and n8n nodes across the MCP ecosystem.",
+  "private": true,
+  "type": "module",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc",
+    "test": "vitest --run",
+    "lint": "eslint src/ tests/"
+  }
+}
