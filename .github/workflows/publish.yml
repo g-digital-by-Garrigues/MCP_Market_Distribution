@@ -120,3 +120,41 @@ jobs:
 
       - name: Verify the build still compiles on the runner
         run: pnpm run typecheck && pnpm run test
+
+  track-a-layer-1:
+    name: Track A — Layer 1 (static validation)
+    needs: setup
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run Track A Layer 1 gate
+        run: |
+          set -euo pipefail
+          pnpm tsx src/gates/run-track-a-layer-1.ts "${{ needs.setup.outputs.mcp_name }}" \
+            | tee gate-layer-1.json
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: track-a-layer-1-report
+          path: gate-layer-1.json
+          if-no-files-found: warn
