@@ -7,6 +7,9 @@ const NPM_PACKAGE_NAME = /^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/;
 const DOCKER_IMAGE_NAME = /^[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*$/;
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const N8N_API_VERSION = /^\d+\.\d+$/;
+const GIT_TAG_PREFIX = /^[A-Za-z0-9._-]+$/;
+
+export const DEFAULT_GIT_TAG_PREFIX = 'v';
 
 export const ALLOWED_LICENSES = ['MIT', 'Apache-2.0'] as const;
 export type AllowedLicense = (typeof ALLOWED_LICENSES)[number];
@@ -54,6 +57,13 @@ export const mcpEntrySchema = z
     track_b_targets: trackBTargetsSchema.optional(),
     logo_path: z.string().min(1).optional(),
     bundled_skills: z.array(z.string().min(1)).optional(),
+    git_tag_prefix: z
+      .string()
+      .regex(GIT_TAG_PREFIX, {
+        message:
+          "git_tag_prefix must contain only letters, digits, '.', '_' or '-' (e.g., 'v' or 'ead-factory-v')",
+      })
+      .optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
