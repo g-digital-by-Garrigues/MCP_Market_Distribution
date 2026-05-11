@@ -1,0 +1,4 @@
+{
+  "echo": { "message": "smoke-test" },
+  "always_fails": {}
+}

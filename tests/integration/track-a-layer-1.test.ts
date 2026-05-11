@@ -172,7 +172,9 @@ describe('Track A — Layer 1 static validation gate', () => {
     const result = await runTrackALayer1({ repoRoot, mcpName: MCP_NAME });
     expect(result.passed).toBe(false);
     expect(result.log.event).toBe('gate.layer_1_failed');
-    const licenseError = result.errors.find((e) => e.step === 'gate.layer_1.license');
+    const licenseError = result.errors.find(
+      (e) => e.stage === 'gate' && e.layer === 1 && e.check === 'license',
+    );
     expect(licenseError).toBeDefined();
     expect(licenseError!.action).toBe(
       'Change LICENSE to MIT or Apache-2.0; Docker MCP Catalog rejects GPL.',
@@ -185,9 +187,9 @@ describe('Track A — Layer 1 static validation gate', () => {
     repoRoot = await seedFixture({ removeSource: '.env.example' });
     const result = await runTrackALayer1({ repoRoot, mcpName: MCP_NAME });
     expect(result.passed).toBe(false);
-    const sourceError = result.errors.find((e) => e.step === 'gate.layer_1.source_folder');
+    const sourceError = result.errors.find((e) => e.check === 'source_folder');
     expect(sourceError).toBeDefined();
-    expect(sourceError!.cause).toContain('.env.example');
+    expect(sourceError!.observation).toContain('.env.example');
     expect(sourceError!.action).toMatch(/preflight-mcp/);
   });
 
@@ -196,9 +198,9 @@ describe('Track A — Layer 1 static validation gate', () => {
     repoRoot = await seedFixture({ serverJsonContent: JSON.stringify(broken, null, 2) });
     const result = await runTrackALayer1({ repoRoot, mcpName: MCP_NAME });
     expect(result.passed).toBe(false);
-    const serverError = result.errors.find((e) => e.step === 'gate.layer_1.server_json');
+    const serverError = result.errors.find((e) => e.check === 'server_json');
     expect(serverError).toBeDefined();
-    expect(serverError!.cause).toContain('schema validation');
+    expect(serverError!.observation).toContain('ajv schema validation');
     expect(serverError!.action).toMatch(/prep-mcp/);
   });
 
@@ -208,9 +210,19 @@ describe('Track A — Layer 1 static validation gate', () => {
     });
     const result = await runTrackALayer1({ repoRoot, mcpName: MCP_NAME });
     expect(result.passed).toBe(false);
-    const yamlError = result.errors.find((e) => e.step === 'gate.layer_1.smithery_yaml');
+    const yamlError = result.errors.find((e) => e.check === 'smithery_yaml');
     expect(yamlError).toBeDefined();
-    expect(yamlError!.cause).toMatch(/parse|YAML/);
+    expect(yamlError!.observation).toMatch(/parse|YAML/);
+  });
+
+  it('every emitted error carries the canonical stage/layer/target shape', async () => {
+    repoRoot = await seedFixture({ licenseContent: GPL_LICENSE });
+    const result = await runTrackALayer1({ repoRoot, mcpName: MCP_NAME });
+    for (const err of result.errors) {
+      expect(err.stage).toBe('gate');
+      expect(err.layer).toBe(1);
+      expect(err.target).toBeNull();
+    }
   });
 
   it('every emitted error report validates against errorReportSchema', async () => {
