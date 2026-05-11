@@ -1,1 +1,0 @@
-Track A & B Layer 1 validation helpers (FR14, FR28). One validator per concern: mcp-pipeline-config, server.json, smithery.yaml, license, mcpName marker, n8n-node lint. Files arrive in Stories 1.3, 2.2, 5.2.
