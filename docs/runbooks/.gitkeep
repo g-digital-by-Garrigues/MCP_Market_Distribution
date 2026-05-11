@@ -1,0 +1,1 @@
+Operational runbooks. Mary's flagged risks each get a runbook: npm-trusted-publisher-setup.md (Story 6.1), smithery-fallback.md (Story 6.2), bot-pat-rotation.md (Story 6.3). Plus setup-day1.md and adding-a-new-target.md (Story 4.6). See human-setup-runbook in the planning artifacts for the human-only setup flow.

@@ -1,0 +1,1 @@
+BMad skills for local agents (FR50, NFR-C2). prep-mcp.md (Prep Agent, Story 1.12), adapt-to-n8n.md (Platform Adapter Agent, Story 5.1), and setup/ subskills (Story 1.13). Run via Claude Code on the developer machine — no Claude API key in CI.

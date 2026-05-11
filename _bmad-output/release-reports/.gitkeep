@@ -1,0 +1,1 @@
+Release reports committed by the pipeline (FR41). One markdown file per release: <mcp>-<version>.md. Per Architecture Step 5, reports are committed to main (durable, public artifact). Cross-run state ledger lives separately on the orphan branch releases/state.

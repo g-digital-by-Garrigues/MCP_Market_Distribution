@@ -1,0 +1,1 @@
+Unit tests, co-located by source path. Mirrors src/ structure: tests/unit/schemas/<name>.test.ts, tests/unit/generators/<name>.test.ts, etc. Vitest target.

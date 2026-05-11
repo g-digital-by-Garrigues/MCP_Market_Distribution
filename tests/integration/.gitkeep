@@ -1,0 +1,1 @@
+Cross-module tests (e.g., gate harnesses, prep end-to-end, plug-ability tests). Vitest target. Touches multiple src/ modules per test.

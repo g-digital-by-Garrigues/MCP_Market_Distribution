@@ -1,0 +1,1 @@
+Slash-command grammar parser + author validator + retry dispatcher (FR36, FR37). Used by retry-dispatch.yml workflow. Files arrive in Stories 4.9-4.10.
