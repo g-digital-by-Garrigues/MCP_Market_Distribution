@@ -1,0 +1,122 @@
+name: publish
+
+# Triggered by:
+#   1. Engineer pushes a v* tag created by /prep-mcp (Story 1.11), or
+#   2. Engineer manually dispatches from the Actions UI for re-runs and dry-runs.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      mcp_name:
+        description: "MCP name (kebab-case key in mcp-pipeline.yaml#mcps)"
+        required: true
+        type: string
+      version:
+        description: "Semver to publish (e.g., 1.0.0)"
+        required: true
+        type: string
+      step:
+        description: "Which pipeline step to run"
+        required: false
+        type: choice
+        options:
+          - gate
+          - publish
+          - all
+        default: all
+      track:
+        description: "Track(s) to run"
+        required: false
+        type: choice
+        options:
+          - a
+          - b
+          - both
+        default: both
+      bump:
+        description: "Optional explicit bump override (empty = derive from commits)"
+        required: false
+        type: choice
+        options:
+          - ""
+          - patch
+          - minor
+          - major
+        default: ""
+      dry_run:
+        description: "Dry-run mode (skip actual publish actions)"
+        required: false
+        type: boolean
+        default: false
+
+# `cancel-in-progress: false` is deliberate: a publish in flight must not be
+# pre-empted by a follow-up tag — we'd rather queue and process serially per
+# (mcp_name, version) tuple. For tag pushes the group falls back to the tag
+# name itself (which is already unique per release), so two unrelated tag
+# pushes don't block each other.
+concurrency:
+  group: publish-${{ inputs.mcp_name || github.ref_name }}-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  setup:
+    name: Resolve context + verify build
+    runs-on: ubuntu-latest
+    outputs:
+      mcp_name: ${{ steps.resolve.outputs.mcp_name }}
+      version: ${{ steps.resolve.outputs.version }}
+      pipeline_run_id: ${{ steps.resolve.outputs.pipeline_run_id }}
+      source: ${{ steps.resolve.outputs.source }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Resolve workflow context
+        id: resolve
+        env:
+          GH_REF_TYPE: ${{ github.ref_type }}
+          GH_REF_NAME: ${{ github.ref_name }}
+          GH_RUN_ID: ${{ github.run_id }}
+          GH_RUN_ATTEMPT: ${{ github.run_attempt }}
+          INPUT_MCP_NAME: ${{ inputs.mcp_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/ci/resolve-workflow-context.ts > resolved.json
+          mcp_name=$(node -p "JSON.parse(require('fs').readFileSync('resolved.json','utf8')).mcp_name")
+          version=$(node -p "JSON.parse(require('fs').readFileSync('resolved.json','utf8')).version")
+          pipeline_run_id=$(node -p "JSON.parse(require('fs').readFileSync('resolved.json','utf8')).pipeline_run_id")
+          source=$(node -p "JSON.parse(require('fs').readFileSync('resolved.json','utf8')).source")
+          echo "mcp_name=$mcp_name" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "pipeline_run_id=$pipeline_run_id" >> "$GITHUB_OUTPUT"
+          echo "source=$source" >> "$GITHUB_OUTPUT"
+          {
+            echo "## Resolved context"
+            echo "- mcp_name: \`$mcp_name\`"
+            echo "- version: \`$version\`"
+            echo "- pipeline_run_id: \`$pipeline_run_id\`"
+            echo "- source: \`$source\`"
+            echo "- dry_run: \`${{ inputs.dry_run }}\`"
+            echo "- step: \`${{ inputs.step || 'all' }}\`"
+            echo "- track: \`${{ inputs.track || 'both' }}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Verify the build still compiles on the runner
+        run: pnpm run typecheck && pnpm run test

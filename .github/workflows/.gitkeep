@@ -1,1 +1,0 @@
-GitHub Actions workflows. publish.yml (main release workflow, Story 2.1) and retry-dispatch.yml (slash-command parser, Story 4.10). Runs on ubuntu-latest (FR49).

@@ -42,6 +42,13 @@ mcps:
       - n8n
       - make-rom
 
+    # Git tag prefix the CI publish workflow matches against pushed v* tags
+    # (Story 2.1). Default 'v' is fine for single-MCP repos; when this repo
+    # later hosts more than one MCP, switch each entry to a per-MCP prefix
+    # like 'ead-factory-v' so the workflow can disambiguate which MCP a
+    # pushed tag belongs to.
+    git_tag_prefix: "v"
+
     # Logo asset path (FR45) — relative to pending-to-publish/<key>/
     logo_path: "assets/logo-400x400.png"
 
