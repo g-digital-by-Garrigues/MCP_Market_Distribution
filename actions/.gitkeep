@@ -1,0 +1,1 @@
+Composite actions, one directory per publication target (FR26, NFR-X3). Track A: publish-npm, publish-docker-hub, publish-mcp-publisher, publish-smithery, publish-docker-mcp-catalog, publish-cline, publish-mcpso. Track B: publish-n8n-npm, publish-make-rom. Each action shares the canonical input/output interface (mcp_name, version, pipeline_run_id, dry_run → PublisherOutput JSON).

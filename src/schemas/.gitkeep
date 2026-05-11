@@ -1,0 +1,1 @@
+Zod schemas (one schema per file). Owns the canonical types for mcp-pipeline-config, server.json, smithery.yaml, error-report, publisher-output, release-report, environment-variables, and package.json. Files arrive in Story 1.2 and across Stories 1.5-1.10.

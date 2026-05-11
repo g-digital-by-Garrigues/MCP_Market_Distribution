@@ -1,0 +1,1 @@
+Cross-cutting helpers: retry-with-backoff (NFR-I3), safe-stable-stringify (NFR-R1), render-template (Handlebars), redact (secrets), logger (NFR-R2), pipeline-run-id derivation. Files arrive in Stories 1.6, 2.8, 4.1.
