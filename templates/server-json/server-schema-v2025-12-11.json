@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "title": "MCP Server (snapshot of the official 2025-12-11 schema)",
+  "description": "Local snapshot of the MCP Official Registry server.json schema. Sync to upstream periodically (tracked in docs/runbooks/onboarding-a-new-mcp.md).",
+  "type": "object",
+  "required": ["$schema", "description", "name", "packages", "repository", "version"],
+  "additionalProperties": true,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "format": "uri"
+    },
+    "name": {
+      "type": "string",
+      "pattern": "^[A-Za-z][A-Za-z0-9-]*(?:\\.[A-Za-z][A-Za-z0-9-]*)+/[A-Za-z][A-Za-z0-9-]*$",
+      "description": "Reverse-DNS namespaced name, e.g., io.github.org/server-name."
+    },
+    "description": {
+      "type": "string",
+      "minLength": 1
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^\\d+\\.\\d+\\.\\d+(?:[-+].*)?$"
+    },
+    "repository": {
+      "type": "object",
+      "required": ["url"],
+      "additionalProperties": true,
+      "properties": {
+        "url": { "type": "string", "format": "uri" },
+        "source": { "type": "string" },
+        "id": { "type": "string" }
+      }
+    },
+    "packages": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["identifier", "registryType", "version"],
+        "additionalProperties": true,
+        "properties": {
+          "registryType": {
+            "type": "string",
+            "enum": ["npm", "pypi", "docker", "oci", "nuget", "mcpb"]
+          },
+          "identifier": { "type": "string", "minLength": 1 },
+          "version": { "type": "string" },
+          "transport": {
+            "type": "object",
+            "properties": {
+              "type": { "type": "string" }
+            }
+          },
+          "environmentVariables": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["description", "isRequired", "isSecret", "name"],
+              "additionalProperties": false,
+              "properties": {
+                "description": { "type": "string", "minLength": 1 },
+                "isRequired": { "type": "boolean" },
+                "isSecret": { "type": "boolean" },
+                "name": { "type": "string", "minLength": 1 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "remotes": {
+      "type": "array"
+    },
+    "websiteUrl": {
+      "type": "string",
+      "format": "uri"
+    }
+  }
+}
