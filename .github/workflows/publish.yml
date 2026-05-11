@@ -249,3 +249,137 @@ jobs:
           name: track-a-layer-3-report
           path: gate-layer-3.json
           if-no-files-found: warn
+
+  gate-failure-summary:
+    name: Gate failure summary (aggregate + PR comment)
+    needs: [setup, track-a-layer-1, track-a-layer-2, track-a-layer-3]
+    if: >-
+      always() &&
+      (needs.track-a-layer-1.result == 'failure' ||
+       needs.track-a-layer-2.result == 'failure' ||
+       needs.track-a-layer-3.result == 'failure')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download Layer 1 report
+        if: needs.track-a-layer-1.result != 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          name: track-a-layer-1-report
+          path: reports/layer-1
+        continue-on-error: true
+
+      - name: Download Layer 2 report
+        if: needs.track-a-layer-2.result != 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          name: track-a-layer-2-report
+          path: reports/layer-2
+        continue-on-error: true
+
+      - name: Download Layer 3 report
+        if: needs.track-a-layer-3.result != 'skipped'
+        uses: actions/download-artifact@v4
+        with:
+          name: track-a-layer-3-report
+          path: reports/layer-3
+        continue-on-error: true
+
+      - name: Aggregate error reports
+        run: |
+          set -euo pipefail
+          reports=()
+          for f in reports/layer-1/gate-layer-1.json reports/layer-2/gate-layer-2.json reports/layer-3/gate-layer-3.json; do
+            if [ -f "$f" ]; then reports+=("$f"); fi
+          done
+          if [ ${#reports[@]} -eq 0 ]; then
+            echo '{"pipeline_run_id":"'"$PIPELINE_RUN_ID"'","mcpName":null,"has_failures":true,"source_reports":[],"errors":[]}' > error-report.json
+          else
+            pnpm tsx src/ci/aggregate-error-reports.ts "${reports[@]}" --pipeline-run-id "$PIPELINE_RUN_ID" > error-report.json
+          fi
+          cp error-report.json "error-report-${PIPELINE_RUN_ID}.json"
+
+      - name: Render markdown comment body
+        env:
+          WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/ci/render-error-report-markdown.ts error-report.json --workflow-run-url "$WORKFLOW_RUN_URL" > error-report.md
+
+      - name: Upload aggregated error report
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-report-${{ env.PIPELINE_RUN_ID }}
+          path: error-report-${{ env.PIPELINE_RUN_ID }}.json
+          if-no-files-found: error
+
+      - name: Post or update PR comment
+        uses: actions/github-script@v7
+        env:
+          PIPELINE_RUN_ID: ${{ env.PIPELINE_RUN_ID }}
+        with:
+          script: |
+            const fs = require('fs');
+            const body = fs.readFileSync('error-report.md', 'utf8');
+            const marker = `<!-- error-report:${process.env.PIPELINE_RUN_ID} -->`;
+
+            // Find the PR(s) associated with the commit that produced this run.
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+            });
+            const pr = prs[0];
+            if (!pr) {
+              core.notice('No PR associated with this commit; error-report posted only as artifact.');
+              core.summary.addRaw(body).write();
+              return;
+            }
+
+            // Update an existing comment with the same marker, otherwise create one.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.startsWith(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.notice(`Updated existing error-report comment on PR #${pr.number}.`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body,
+              });
+              core.notice(`Posted error-report comment on PR #${pr.number}.`);
+            }
+            core.summary.addRaw(body).write();
