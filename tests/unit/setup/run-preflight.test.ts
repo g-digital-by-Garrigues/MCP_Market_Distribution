@@ -6,12 +6,12 @@ import yaml from 'js-yaml';
 import { runPreflight } from '../../../src/setup/run-preflight.js';
 
 const VALID_ENTRY = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/evidence-manager',
+  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
   npm_scope: '@g-digital',
-  npm_package_name: '@g-digital/mcp-evidence-manager',
-  docker_image_name: 'gdigital/evidence-manager',
+  npm_package_name: '@g-digital/mcp-ead-factory',
+  docker_image_name: 'gdigital/ead-factory',
   license: 'MIT',
-  n8n_adapter_target_name: 'n8n-node-evidence-manager',
+  n8n_adapter_target_name: 'n8n-node-ead-factory',
   credential_help_url: 'https://eadtrust.example.com/onboarding',
   target_overrides: {},
 };
@@ -20,7 +20,7 @@ const VALID_CONFIG = {
   pipeline_version: 1,
   mcp_schema_version: '2025-12-11',
   n8n_node_api_version: '1.0',
-  mcps: { 'evidence-manager': VALID_ENTRY },
+  mcps: { 'ead-factory': VALID_ENTRY },
 };
 
 async function seedFixture(opts: {
@@ -41,7 +41,7 @@ async function seedFixture(opts: {
     );
   }
   if (opts.withSource !== false) {
-    const mcpFolder = path.join(repoRoot, 'pending-to-publish', 'evidence-manager');
+    const mcpFolder = path.join(repoRoot, 'pending-to-publish', 'ead-factory');
     await fs.mkdir(mcpFolder, { recursive: true });
     const filesToWrite: Record<string, string> = {
       'package.json': JSON.stringify({ mcpName: VALID_ENTRY.reverse_dns_name }, null, 2),
@@ -67,14 +67,14 @@ describe('runPreflight', () => {
 
   it('ready=true when config + source are complete', async () => {
     repoRoot = await seedFixture();
-    const result = await runPreflight({ mcpName: 'evidence-manager', repoRoot });
+    const result = await runPreflight({ mcpName: 'ead-factory', repoRoot });
     expect(result.ready).toBe(true);
     expect(result.sourceReport.hasMissing).toBe(false);
   });
 
   it('ready=false and lists missing source elements with remediations', async () => {
     repoRoot = await seedFixture({ missing: ['.env.example', 'README.md'] });
-    const result = await runPreflight({ mcpName: 'evidence-manager', repoRoot });
+    const result = await runPreflight({ mcpName: 'ead-factory', repoRoot });
     expect(result.ready).toBe(false);
     const missing = result.sourceReport.checks.filter((c) => c.status === 'missing');
     const names = missing.map((c) => c.name);
@@ -87,15 +87,15 @@ describe('runPreflight', () => {
 
   it('ready=false when mcp-pipeline.yaml is missing', async () => {
     repoRoot = await seedFixture({ withConfig: false });
-    const result = await runPreflight({ mcpName: 'evidence-manager', repoRoot });
+    const result = await runPreflight({ mcpName: 'ead-factory', repoRoot });
     expect(result.ready).toBe(false);
     expect(result.configErrors.join(' ')).toMatch(/mcp-pipeline\.yaml not found/);
   });
 
   it('ready=false when the mcp-name has no entry in the config, listing available keys', async () => {
     repoRoot = await seedFixture({ withEntry: false });
-    const result = await runPreflight({ mcpName: 'evidence-manager', repoRoot });
+    const result = await runPreflight({ mcpName: 'ead-factory', repoRoot });
     expect(result.ready).toBe(false);
-    expect(result.configErrors.join(' ')).toMatch(/no entry for 'evidence-manager'/);
+    expect(result.configErrors.join(' ')).toMatch(/no entry for 'ead-factory'/);
   });
 });

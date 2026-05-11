@@ -7,7 +7,7 @@ import yaml from 'js-yaml';
 import { prepMcp, PrepMcpError } from '../../src/prep-agent/prep-mcp.js';
 import { README_MARKER_INSTALL, README_MARKER_ENV } from '../../src/generators/generate-readme.js';
 
-const MCP_NAME = 'evidence-manager';
+const MCP_NAME = 'ead-factory';
 const VERSION = '1.0.0';
 
 interface Fixture {
@@ -44,12 +44,12 @@ async function makeFixture(): Promise<Fixture> {
       n8n_node_api_version: '1.0',
       mcps: {
         [MCP_NAME]: {
-          reverse_dns_name: 'io.github.g-digital-by-Garrigues/evidence-manager',
+          reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
           npm_scope: '@g-digital',
-          npm_package_name: '@g-digital/mcp-evidence-manager',
-          docker_image_name: 'gdigital/evidence-manager',
+          npm_package_name: '@g-digital/mcp-ead-factory',
+          docker_image_name: 'gdigital/ead-factory',
           license: 'MIT',
-          n8n_adapter_target_name: 'n8n-node-evidence-manager',
+          n8n_adapter_target_name: 'n8n-node-ead-factory',
           credential_help_url: 'https://eadtrust.example.com/onboarding',
           target_overrides: {},
         },
@@ -59,12 +59,12 @@ async function makeFixture(): Promise<Fixture> {
   );
 
   const sourcePkg = {
-    name: '@g-digital/mcp-evidence-manager',
+    name: '@g-digital/mcp-ead-factory',
     version: VERSION,
     description: 'Evidence Manager MCP',
     license: 'MIT',
-    mcpName: 'io.github.g-digital-by-Garrigues/evidence-manager',
-    repository: { type: 'git', url: 'https://github.com/g-digital-by-Garrigues/evidence-manager.git' },
+    mcpName: 'io.github.g-digital-by-Garrigues/ead-factory',
+    repository: { type: 'git', url: 'https://github.com/g-digital-by-Garrigues/ead-factory.git' },
     main: 'index.js',
   };
   await fs.writeFile(path.join(mcpFolder, 'package.json'), JSON.stringify(sourcePkg, null, 2), 'utf8');
@@ -152,7 +152,7 @@ describe('prepMcp orchestrator (integration)', () => {
     const serverJson = JSON.parse(
       await fs.readFile(path.join(fixture.mcpFolder, 'server.json'), 'utf8'),
     );
-    expect(serverJson.name).toBe('io.github.g-digital-by-Garrigues/evidence-manager');
+    expect(serverJson.name).toBe('io.github.g-digital-by-Garrigues/ead-factory');
     expect(serverJson.version).toBe(VERSION);
   }, 30_000);
 

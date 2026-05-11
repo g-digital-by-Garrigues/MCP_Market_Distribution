@@ -12,8 +12,8 @@ import {
 import type { EnvironmentVariableEntry } from '../../../src/generators/generate-environment-variables.js';
 
 const CONFIG = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/evidence-manager',
-  npm_package_name: '@g-digital/mcp-evidence-manager',
+  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
+  npm_package_name: '@g-digital/mcp-ead-factory',
   credential_help_url: 'https://eadtrust.example.com/onboarding',
 };
 

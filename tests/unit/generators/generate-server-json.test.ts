@@ -3,8 +3,8 @@ import { generateServerJson } from '../../../src/generators/generate-server-json
 import type { EnvironmentVariableEntry } from '../../../src/generators/generate-environment-variables.js';
 
 const CONFIG = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/evidence-manager',
-  npm_package_name: '@g-digital/mcp-evidence-manager',
+  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
+  npm_package_name: '@g-digital/mcp-ead-factory',
   mcp_schema_version: '2025-12-11',
 };
 
@@ -12,7 +12,7 @@ const PACKAGE_JSON = {
   description: 'EAD Factory MCP server for evidence handling.',
   repository: {
     type: 'git',
-    url: 'git+https://github.com/g-digital-by-Garrigues/evidence-manager.git',
+    url: 'git+https://github.com/g-digital-by-Garrigues/ead-factory.git',
   },
 };
 
@@ -48,7 +48,7 @@ describe('generateServerJson — happy path', () => {
     expect(result.parsed.description).toBe(PACKAGE_JSON.description);
     expect(result.parsed.version).toBe('1.0.0');
     const repository = result.parsed.repository as { url: string; source: string };
-    expect(repository.url).toBe('https://github.com/g-digital-by-Garrigues/evidence-manager');
+    expect(repository.url).toBe('https://github.com/g-digital-by-Garrigues/ead-factory');
     expect(repository.source).toBe('github');
     const packages = result.parsed.packages as Array<Record<string, unknown>>;
     expect(packages).toHaveLength(1);
@@ -70,11 +70,11 @@ describe('generateServerJson — happy path', () => {
       ...baseOpts(),
       packageJson: {
         description: PACKAGE_JSON.description,
-        repository: 'https://github.com/g-digital-by-Garrigues/evidence-manager.git',
+        repository: 'https://github.com/g-digital-by-Garrigues/ead-factory.git',
       },
     });
     const repository = result.parsed.repository as { url: string };
-    expect(repository.url).toBe('https://github.com/g-digital-by-Garrigues/evidence-manager');
+    expect(repository.url).toBe('https://github.com/g-digital-by-Garrigues/ead-factory');
   });
 });
 

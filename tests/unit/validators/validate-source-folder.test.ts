@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { validateSourceFolder } from '../../../src/validators/validate-source-folder.js';
 
-const EXPECTED_MCP_NAME = 'io.github.g-digital-by-Garrigues/evidence-manager';
+const EXPECTED_MCP_NAME = 'io.github.g-digital-by-Garrigues/ead-factory';
 
 async function createTempFolder(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'validate-source-folder-'));
@@ -28,7 +28,7 @@ async function seedHappyFolder(
   const defaults: Record<string, string> = {
     'package.json': JSON.stringify(
       {
-        name: '@g-digital/mcp-evidence-manager',
+        name: '@g-digital/mcp-ead-factory',
         version: '1.0.0',
         mcpName: EXPECTED_MCP_NAME,
       },
@@ -37,7 +37,7 @@ async function seedHappyFolder(
     ),
     LICENSE: 'MIT License — copyright (c) g-digital.\n',
     '.env.example': '# Example env vars\nFOO=bar\n',
-    'README.md': '# evidence-manager\n\nAn MCP for evidence handling.\n',
+    'README.md': '# ead-factory\n\nAn MCP for evidence handling.\n',
   };
   const merged: Record<string, string | null> = { ...defaults, ...overrides };
   const toWrite: Record<string, string> = {};

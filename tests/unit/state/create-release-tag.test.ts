@@ -55,7 +55,7 @@ describe('createReleaseTag', () => {
     const result = createReleaseTag({
       version: '1.0.0',
       summaryLines: [
-        'server.json (npm: @g-digital/mcp-evidence-manager@1.0.0)',
+        'server.json (npm: @g-digital/mcp-ead-factory@1.0.0)',
         'smithery.yaml',
         'README.md',
       ],
@@ -67,7 +67,7 @@ describe('createReleaseTag', () => {
 
     const annotation = gitTagShow(repo, 'v1.0.0');
     expect(annotation).toContain('Release v1.0.0');
-    expect(annotation).toContain('server.json (npm: @g-digital/mcp-evidence-manager@1.0.0)');
+    expect(annotation).toContain('server.json (npm: @g-digital/mcp-ead-factory@1.0.0)');
     expect(annotation).toContain('smithery.yaml');
     expect(annotation).toContain('README.md');
   });

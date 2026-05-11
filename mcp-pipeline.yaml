@@ -11,15 +11,19 @@ n8n_node_api_version: "1.0"  # to be confirmed against n8n's current schema duri
 # Each entry under `mcps:` is keyed by the MCP's kebab-case folder name
 # (which must match the folder under pending-to-publish/<key>/).
 mcps:
-  evidence-manager:
+  # EAD Factory MCP — the first MCP through the pipeline.
+  # The MCP server itself is "EAD Factory"; it bundles two Claude Code skills
+  # (create-internal-evidence and create-signature-request) that consume the
+  # Evidence Manager and Signature Manager APIs respectively.
+  ead-factory:
     # Identity
-    reverse_dns_name: "io.github.g-digital-by-Garrigues/evidence-manager"
+    reverse_dns_name: "io.github.g-digital-by-Garrigues/ead-factory"
     npm_scope: "@g-digital"
-    npm_package_name: "@g-digital/mcp-evidence-manager"
-    docker_image_name: "gdigital/evidence-manager"
+    npm_package_name: "@g-digital/mcp-ead-factory"
+    docker_image_name: "gdigital/ead-factory"
 
     # Track B
-    n8n_adapter_target_name: "n8n-node-evidence-manager"  # → @g-digital/n8n-node-evidence-manager
+    n8n_adapter_target_name: "n8n-node-ead-factory"  # → @g-digital/n8n-node-ead-factory
 
     # License (FR14 Layer 1 validates this)
     license: "MIT"
@@ -41,7 +45,9 @@ mcps:
     # Logo asset path (FR45) — relative to pending-to-publish/<key>/
     logo_path: "assets/logo-400x400.png"
 
-    # Bundled Claude Code skills (FR45) — paths relative to pending-to-publish/<key>/
+    # Bundled Claude Code skills (FR45) — paths relative to pending-to-publish/<key>/.
+    # These two skills are NOT separate MCPs; they're consumer-facing shortcuts the
+    # EAD Factory MCP ships so installers get usable workflows out of the box.
     bundled_skills:
-      - .claude/commands/create-internal-evidence.md
-      - .claude/commands/create-signature-request.md
+      - .claude/commands/create-internal-evidence.md  # consumes Evidence Manager API
+      - .claude/commands/create-signature-request.md  # consumes Signature Manager API
