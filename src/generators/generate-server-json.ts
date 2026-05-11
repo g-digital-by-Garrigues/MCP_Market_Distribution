@@ -92,7 +92,7 @@ async function loadTemplate(): Promise<HandlebarsTemplateDelegate<unknown>> {
   if (cachedTemplate) return cachedTemplate;
   registerJsonHelper();
   const templatePath = path.join(TEMPLATES_DIR, 'v2025-12-11.hbs');
-  const content = await fs.readFile(templatePath, 'utf8');
+  const content = (await fs.readFile(templatePath, 'utf8')).replace(/\r\n/g, '\n');
   cachedTemplate = Handlebars.compile(content, { noEscape: true });
   return cachedTemplate;
 }
