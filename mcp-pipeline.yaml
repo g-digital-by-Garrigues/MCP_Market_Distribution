@@ -14,6 +14,7 @@ mcps:
   evidence-manager:
     # Identity
     reverse_dns_name: "io.github.g-digital-by-Garrigues/evidence-manager"
+    npm_scope: "@g-digital"
     npm_package_name: "@g-digital/mcp-evidence-manager"
     docker_image_name: "gdigital/evidence-manager"
 
