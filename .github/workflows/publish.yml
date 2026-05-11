@@ -158,3 +158,52 @@ jobs:
           name: track-a-layer-1-report
           path: gate-layer-1.json
           if-no-files-found: warn
+
+  track-a-layer-2:
+    name: Track A — Layer 2 (MCP protocol smoke test)
+    needs: [setup, track-a-layer-1]
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install + build the MCP source
+        working-directory: pending-to-publish/${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install --no-audit --no-fund
+          fi
+          npm run build
+
+      - name: Run Track A Layer 2 gate
+        run: |
+          set -euo pipefail
+          pnpm tsx src/gates/run-track-a-layer-2.ts "${{ needs.setup.outputs.mcp_name }}" \
+            | tee gate-layer-2.json
+
+      - name: Upload gate report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: track-a-layer-2-report
+          path: gate-layer-2.json
+          if-no-files-found: warn

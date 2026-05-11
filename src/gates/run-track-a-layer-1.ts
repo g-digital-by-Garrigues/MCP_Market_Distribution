@@ -27,6 +27,10 @@ const SCHEMA_PATH = path.resolve(
 const MIT_PATTERN = /MIT License/i;
 const APACHE_PATTERN = /Apache License[\s\S]{0,200}Version\s*2\.0/i;
 
+function gateError(check: string, fields: Omit<ErrorReport, 'stage' | 'layer' | 'target' | 'check'>): ErrorReport {
+  return { stage: 'gate', layer: 1, target: null, check, ...fields };
+}
+
 export interface CheckResult {
   name: string;
   passed: boolean;
@@ -60,10 +64,7 @@ async function loadEntry(repoRoot: string, mcpName: string): Promise<McpEntry> {
   return entry;
 }
 
-async function checkSource(
-  mcpFolder: string,
-  entry: McpEntry,
-): Promise<CheckResult> {
+async function checkSource(mcpFolder: string, entry: McpEntry): Promise<CheckResult> {
   const report = await validateSourceFolder({
     folder: mcpFolder,
     expectedMcpName: entry.reverse_dns_name,
@@ -71,20 +72,20 @@ async function checkSource(
   if (!report.hasMissing) {
     return { name: 'source-folder', passed: true };
   }
-  const missing = report.checks
+  const missingNames = report.checks.filter((c) => c.status === 'missing').map((c) => c.name);
+  const remediation = report.checks
     .filter((c) => c.status === 'missing')
     .map((c) => `${c.name}: ${c.remediation ?? '(no remediation)'}`)
     .join(' | ');
   return {
     name: 'source-folder',
     passed: false,
-    error: {
-      step: 'gate.layer_1.source_folder',
-      cause: `Source folder is missing required elements: ${missing}`,
-      action: 'Run /preflight-mcp <mcp-name> locally, apply each remediation, then re-tag the release.',
-      level: 'error',
+    error: gateError('source_folder', {
+      observation: `Source folder is missing required elements: ${missingNames.join(', ')}.`,
+      cause: `One or more files the prep-mcp orchestrator expects under pending-to-publish/<mcp>/ are absent: ${remediation}`,
+      action: 'Run /preflight-mcp <mcp-name> locally, apply each remediation in the report, then re-tag the release.',
       source_path: path.relative(path.dirname(mcpFolder), mcpFolder),
-    },
+    }),
   };
 }
 
@@ -109,13 +110,12 @@ async function checkServerJson(mcpFolder: string): Promise<CheckResult> {
     return {
       name: 'server-json',
       passed: false,
-      error: {
-        step: 'gate.layer_1.server_json',
-        cause: `server.json is missing at ${filePath}.`,
+      error: gateError('server_json', {
+        observation: `server.json is absent at ${filePath}.`,
+        cause: 'The prep-mcp orchestrator did not generate server.json or it was not committed.',
         action: 'Run /prep-mcp <mcp-name> to regenerate the artifact, commit the result, and re-tag.',
-        level: 'error',
         source_path: 'server.json',
-      },
+      }),
     };
   }
   let parsed: unknown;
@@ -125,13 +125,12 @@ async function checkServerJson(mcpFolder: string): Promise<CheckResult> {
     return {
       name: 'server-json',
       passed: false,
-      error: {
-        step: 'gate.layer_1.server_json',
-        cause: `server.json is not valid JSON: ${(err as Error).message}`,
+      error: gateError('server_json', {
+        observation: `server.json failed JSON.parse: ${(err as Error).message}.`,
+        cause: 'The committed server.json is not syntactically valid JSON.',
         action: 'Run /prep-mcp <mcp-name> to regenerate the artifact and commit the result.',
-        level: 'error',
         source_path: 'server.json',
-      },
+      }),
     };
   }
   const validate = await loadServerSchemaValidator();
@@ -142,13 +141,12 @@ async function checkServerJson(mcpFolder: string): Promise<CheckResult> {
     return {
       name: 'server-json',
       passed: false,
-      error: {
-        step: 'gate.layer_1.server_json',
-        cause: `server.json failed schema validation: ${messages}`,
+      error: gateError('server_json', {
+        observation: `server.json failed ajv schema validation: ${messages}.`,
+        cause: 'server.json does not conform to the pinned MCP 2025-12-11 schema.',
         action: 'Run /prep-mcp <mcp-name> to regenerate; if the failure persists, sync the pinned schema snapshot under templates/server-json/.',
-        level: 'error',
         source_path: 'server.json',
-      },
+      }),
     };
   }
   return { name: 'server-json', passed: true };
@@ -163,13 +161,12 @@ async function checkSmitheryYaml(mcpFolder: string): Promise<CheckResult> {
     return {
       name: 'smithery-yaml',
       passed: false,
-      error: {
-        step: 'gate.layer_1.smithery_yaml',
-        cause: `smithery.yaml is missing at ${filePath}.`,
+      error: gateError('smithery_yaml', {
+        observation: `smithery.yaml is absent at ${filePath}.`,
+        cause: 'The prep-mcp orchestrator did not generate smithery.yaml or it was not committed.',
         action: 'Run /prep-mcp <mcp-name> to regenerate the artifact and commit the result.',
-        level: 'error',
         source_path: 'smithery.yaml',
-      },
+      }),
     };
   }
   let parsed: unknown;
@@ -179,26 +176,24 @@ async function checkSmitheryYaml(mcpFolder: string): Promise<CheckResult> {
     return {
       name: 'smithery-yaml',
       passed: false,
-      error: {
-        step: 'gate.layer_1.smithery_yaml',
-        cause: `smithery.yaml does not parse as YAML: ${(err as Error).message}`,
+      error: gateError('smithery_yaml', {
+        observation: `smithery.yaml does not parse as YAML: ${(err as Error).message}.`,
+        cause: 'The committed smithery.yaml is malformed (likely a hand-edit broke indentation).',
         action: 'Run /prep-mcp <mcp-name> to regenerate the artifact and commit the result.',
-        level: 'error',
         source_path: 'smithery.yaml',
-      },
+      }),
     };
   }
   if (typeof parsed !== 'object' || parsed === null) {
     return {
       name: 'smithery-yaml',
       passed: false,
-      error: {
-        step: 'gate.layer_1.smithery_yaml',
-        cause: 'smithery.yaml parsed but the root is not an object.',
-        action: 'Run /prep-mcp <mcp-name> to regenerate; the template should emit a top-level mapping (runtime, env, configSchema).',
-        level: 'error',
+      error: gateError('smithery_yaml', {
+        observation: 'smithery.yaml parsed but the root is not an object.',
+        cause: 'Smithery expects a top-level mapping (runtime, env, configSchema); the file is something else.',
+        action: 'Run /prep-mcp <mcp-name> to regenerate; the template emits a top-level mapping by construction.',
         source_path: 'smithery.yaml',
-      },
+      }),
     };
   }
   return { name: 'smithery-yaml', passed: true };
@@ -223,13 +218,12 @@ async function checkLicense(mcpFolder: string, entry: McpEntry): Promise<CheckRe
     return {
       name: 'license',
       passed: false,
-      error: {
-        step: 'gate.layer_1.license',
-        cause: `No LICENSE file found in ${mcpFolder}.`,
+      error: gateError('license', {
+        observation: `No LICENSE / LICENSE.md / LICENSE.txt found in ${mcpFolder}.`,
+        cause: 'A LICENSE file is mandatory for npm and the MCP Official Registry.',
         action: 'Add a LICENSE file (MIT or Apache-2.0) at the MCP root and re-tag.',
-        level: 'error',
         source_path: 'LICENSE',
-      },
+      }),
     };
   }
   const raw = await fs.readFile(filePath, 'utf8');
@@ -239,13 +233,12 @@ async function checkLicense(mcpFolder: string, entry: McpEntry): Promise<CheckRe
     return {
       name: 'license',
       passed: false,
-      error: {
-        step: 'gate.layer_1.license',
-        cause: `${path.basename(filePath)} content is neither MIT License nor Apache License, Version 2.0.`,
+      error: gateError('license', {
+        observation: `${path.basename(filePath)} content matches neither 'MIT License' nor 'Apache License, Version 2.0'.`,
+        cause: 'The LICENSE file is not one of the two formats every v1 target marketplace accepts.',
         action: 'Change LICENSE to MIT or Apache-2.0; Docker MCP Catalog rejects GPL.',
-        level: 'error',
         source_path: path.basename(filePath),
-      },
+      }),
     };
   }
   const expected = entry.license;
@@ -253,26 +246,24 @@ async function checkLicense(mcpFolder: string, entry: McpEntry): Promise<CheckRe
     return {
       name: 'license',
       passed: false,
-      error: {
-        step: 'gate.layer_1.license',
-        cause: `mcp-pipeline.yaml declares license: MIT but ${path.basename(filePath)} content matches Apache-2.0.`,
+      error: gateError('license', {
+        observation: `mcp-pipeline.yaml declares license: MIT but ${path.basename(filePath)} matches Apache-2.0.`,
+        cause: 'The committed LICENSE file disagrees with the per-MCP config.',
         action: 'Align mcp-pipeline.yaml#license with the LICENSE file content, then re-tag.',
-        level: 'error',
         source_path: path.basename(filePath),
-      },
+      }),
     };
   }
   if (expected === 'Apache-2.0' && !isApache) {
     return {
       name: 'license',
       passed: false,
-      error: {
-        step: 'gate.layer_1.license',
-        cause: `mcp-pipeline.yaml declares license: Apache-2.0 but ${path.basename(filePath)} content matches MIT.`,
+      error: gateError('license', {
+        observation: `mcp-pipeline.yaml declares license: Apache-2.0 but ${path.basename(filePath)} matches MIT.`,
+        cause: 'The committed LICENSE file disagrees with the per-MCP config.',
         action: 'Align mcp-pipeline.yaml#license with the LICENSE file content, then re-tag.',
-        level: 'error',
         source_path: path.basename(filePath),
-      },
+      }),
     };
   }
   return { name: 'license', passed: true };
