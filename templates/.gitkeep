@@ -1,1 +1,0 @@
-Handlebars templates for deterministic artifact generation (NFR-R1). Subdirectories: server-json/, smithery-yaml/, install-blocks/, readme/, store-descriptions/, n8n-node/, release-report/. Each template is versioned per-schema (e.g., server-json/v2025-12-11.hbs) so ecosystem schema upgrades are explicit (NFR-I4).
