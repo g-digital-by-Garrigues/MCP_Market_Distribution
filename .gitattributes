@@ -1,0 +1,16 @@
+# Enforce LF line endings on every text file in the repo so generators are
+# byte-identical across Windows and Linux (NFR-R1).
+* text=auto eol=lf
+
+# Templates and generated artifact sources must be LF — they directly drive
+# byte-equality fixture tests and the published artifacts.
+*.hbs text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.ts text eol=lf
+*.js text eol=lf
+
+# Treat lockfile as binary so it isn't re-normalized.
+pnpm-lock.yaml -text

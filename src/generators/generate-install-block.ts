@@ -78,7 +78,7 @@ async function loadTemplate(clientId: ClientId): Promise<HandlebarsTemplateDeleg
   const cached = templateCache.get(clientId);
   if (cached) return cached;
   const templatePath = path.join(TEMPLATES_DIR, `${clientId}.hbs`);
-  const content = await fs.readFile(templatePath, 'utf8');
+  const content = (await fs.readFile(templatePath, 'utf8')).replace(/\r\n/g, '\n');
   const compiled = Handlebars.compile(content, { noEscape: true });
   templateCache.set(clientId, compiled);
   return compiled;
