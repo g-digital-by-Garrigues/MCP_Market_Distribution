@@ -8,8 +8,8 @@ import {
 import type { EnvironmentVariableEntry } from '../../../src/generators/generate-environment-variables.js';
 
 const CONFIG = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/evidence-manager',
-  npm_package_name: '@g-digital/mcp-evidence-manager',
+  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
+  npm_package_name: '@g-digital/mcp-ead-factory',
   credential_help_url: 'https://eadtrust.example.com/onboarding',
 };
 
@@ -59,15 +59,15 @@ describe('generateInstallBlock — output shape per client', () => {
 
   it('keys the server entry by the canonical short name (last segment of reverse_dns_name)', async () => {
     const result = await generateInstallBlock(baseOpts());
-    expect(result.shortName).toBe('evidence-manager');
+    expect(result.shortName).toBe('ead-factory');
     const servers = result.parsed.mcpServers as Record<string, unknown>;
-    expect(servers['evidence-manager']).toBeDefined();
+    expect(servers['ead-factory']).toBeDefined();
   });
 
   it('emits command=npx and args=[-y, <npm_package_name>]', async () => {
     const result = await generateInstallBlock(baseOpts());
     const servers = result.parsed.mcpServers as Record<string, Record<string, unknown>>;
-    const entry = servers['evidence-manager']!;
+    const entry = servers['ead-factory']!;
     expect(entry.command).toBe('npx');
     expect(entry.args).toEqual(['-y', CONFIG.npm_package_name]);
   });
@@ -77,7 +77,7 @@ describe('generateInstallBlock — env block contains only required vars', () =>
   it('env block lists every required variable and excludes non-required ones', async () => {
     const result = await generateInstallBlock(baseOpts());
     const servers = result.parsed.mcpServers as Record<string, Record<string, unknown>>;
-    const env = servers['evidence-manager']?.env as Record<string, string>;
+    const env = servers['ead-factory']?.env as Record<string, string>;
     expect(Object.keys(env).sort()).toEqual(['APP_PORT', 'EADTRUST_API_KEY']);
     expect(env).not.toHaveProperty('FEATURE_FLAG_X');
   });
@@ -95,20 +95,20 @@ describe('generateInstallBlock — env block contains only required vars', () =>
       ],
     });
     const servers = result.parsed.mcpServers as Record<string, Record<string, unknown>>;
-    expect(servers['evidence-manager']?.env).toBeUndefined();
+    expect(servers['ead-factory']?.env).toBeUndefined();
   });
 
   it('renders secret values as <PASTE_<NAME>_HERE> placeholders, never real values', async () => {
     const result = await generateInstallBlock(baseOpts());
     const servers = result.parsed.mcpServers as Record<string, Record<string, unknown>>;
-    const env = servers['evidence-manager']?.env as Record<string, string>;
+    const env = servers['ead-factory']?.env as Record<string, string>;
     expect(env.EADTRUST_API_KEY).toBe('<PASTE_EADTRUST_API_KEY_HERE>');
   });
 
   it('renders non-secret required values as empty strings (user fills in)', async () => {
     const result = await generateInstallBlock(baseOpts());
     const servers = result.parsed.mcpServers as Record<string, Record<string, unknown>>;
-    const env = servers['evidence-manager']?.env as Record<string, string>;
+    const env = servers['ead-factory']?.env as Record<string, string>;
     expect(env.APP_PORT).toBe('');
   });
 });

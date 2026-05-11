@@ -6,12 +6,12 @@ import yaml from 'js-yaml';
 import { runTrustedPublishers } from '../../../src/setup/run-trusted-publishers.js';
 
 const BASE_ENTRY = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/evidence-manager',
+  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
   npm_scope: '@g-digital',
-  npm_package_name: '@g-digital/mcp-evidence-manager',
-  docker_image_name: 'gdigital/evidence-manager',
+  npm_package_name: '@g-digital/mcp-ead-factory',
+  docker_image_name: 'gdigital/ead-factory',
   license: 'MIT',
-  n8n_adapter_target_name: 'n8n-node-evidence-manager',
+  n8n_adapter_target_name: 'n8n-node-ead-factory',
   credential_help_url: 'https://eadtrust.example.com/onboarding',
   target_overrides: {},
 };
@@ -38,7 +38,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('iterates both the mcp-* and n8n-node-* packages per MCP entry', async () => {
-    repoRoot = await seedRepo({ 'evidence-manager': BASE_ENTRY });
+    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -47,13 +47,13 @@ describe('runTrustedPublishers', () => {
     });
     const names = result.outcomes.map((o) => o.packageName).sort();
     expect(names).toEqual([
-      '@g-digital/mcp-evidence-manager',
-      '@g-digital/n8n-node-evidence-manager',
+      '@g-digital/mcp-ead-factory',
+      '@g-digital/n8n-node-ead-factory',
     ]);
   });
 
   it('classifies a 404 from npm as package-not-published with the bootstrap remediation', async () => {
-    repoRoot = await seedRepo({ 'evidence-manager': BASE_ENTRY });
+    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -66,7 +66,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('classifies a successful invocation containing "already" as already-configured (idempotent)', async () => {
-    repoRoot = await seedRepo({ 'evidence-manager': BASE_ENTRY });
+    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -82,7 +82,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('classifies a successful new grant as configured', async () => {
-    repoRoot = await seedRepo({ 'evidence-manager': BASE_ENTRY });
+    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -93,7 +93,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('classifies an unknown non-zero exit as failed and surfaces stderr in detail', async () => {
-    repoRoot = await seedRepo({ 'evidence-manager': BASE_ENTRY });
+    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -106,10 +106,10 @@ describe('runTrustedPublishers', () => {
 
   it('de-duplicates packages when multiple entries share the same npm_package_name', async () => {
     repoRoot = await seedRepo({
-      'evidence-manager': BASE_ENTRY,
-      'evidence-manager-alt': {
+      'ead-factory': BASE_ENTRY,
+      'ead-factory-alt': {
         ...BASE_ENTRY,
-        reverse_dns_name: 'io.github.g-digital-by-Garrigues/evidence-manager-alt',
+        reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory-alt',
       },
     });
     const result = await runTrustedPublishers({
@@ -119,8 +119,8 @@ describe('runTrustedPublishers', () => {
       dryRun: true,
     });
     expect(result.outcomes.map((o) => o.packageName)).toEqual([
-      '@g-digital/mcp-evidence-manager',
-      '@g-digital/n8n-node-evidence-manager',
+      '@g-digital/mcp-ead-factory',
+      '@g-digital/n8n-node-ead-factory',
     ]);
   });
 });

@@ -8,7 +8,7 @@ You are the **g-digital MCP Distribution Pipeline Prep Agent**. Your job is to t
 
 ## Inputs
 
-- `$1` (required): MCP name, e.g. `evidence-manager`. Must match a kebab-case key under `mcp-pipeline.yaml#mcps` AND the folder name under `pending-to-publish/`.
+- `$1` (required): MCP name, e.g. `ead-factory`. Must match a kebab-case key under `mcp-pipeline.yaml#mcps` AND the folder name under `pending-to-publish/`.
 - `--skip-commit` (optional): generate artifacts without making a git commit. Useful for dry-runs.
 - `--skip-tag` (optional): skip the v<semver> tag creation. Useful when the engineer wants to inspect artifacts before tagging.
 

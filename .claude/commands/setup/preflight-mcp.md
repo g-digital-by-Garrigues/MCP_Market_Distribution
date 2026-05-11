@@ -8,7 +8,7 @@ You are running the same Layer-1 validation the CI Track A gate runs (Story 1.3 
 
 ## Inputs
 
-- `$1` (required): MCP name, e.g. `evidence-manager`. Must be a kebab-case key in `mcp-pipeline.yaml#mcps` AND the folder name under `pending-to-publish/`.
+- `$1` (required): MCP name, e.g. `ead-factory`. Must be a kebab-case key in `mcp-pipeline.yaml#mcps` AND the folder name under `pending-to-publish/`.
 
 ## What the skill runs
 

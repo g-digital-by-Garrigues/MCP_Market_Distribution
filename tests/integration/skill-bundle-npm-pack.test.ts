@@ -25,7 +25,7 @@ describe('skill bundle ↔ npm pack --dry-run', () => {
 
   it('npm pack --dry-run includes every .claude/commands/**/*.md file once the bundle glob is in package.json#files', async () => {
     const basePkg = {
-      name: '@g-digital/mcp-evidence-manager',
+      name: '@g-digital/mcp-ead-factory',
       version: '1.0.0',
       description: 'Test fixture',
       license: 'MIT',

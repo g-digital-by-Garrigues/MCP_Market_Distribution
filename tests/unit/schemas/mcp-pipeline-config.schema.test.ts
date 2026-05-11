@@ -6,17 +6,17 @@ import {
 } from '../../../src/schemas/mcp-pipeline-config.schema.js';
 
 const validEntry = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/evidence-manager',
+  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
   npm_scope: '@g-digital',
-  npm_package_name: '@g-digital/mcp-evidence-manager',
-  docker_image_name: 'gdigital/evidence-manager',
+  npm_package_name: '@g-digital/mcp-ead-factory',
+  docker_image_name: 'gdigital/ead-factory',
   license: 'MIT',
-  n8n_adapter_target_name: 'n8n-node-evidence-manager',
+  n8n_adapter_target_name: 'n8n-node-ead-factory',
   credential_help_url: 'https://eadtrust.example.com/onboarding',
   target_overrides: {},
 };
 
-const wrap = (entry: unknown, key = 'evidence-manager') => ({
+const wrap = (entry: unknown, key = 'ead-factory') => ({
   pipeline_version: 1,
   mcp_schema_version: '2025-12-11',
   n8n_node_api_version: '1.0',
@@ -35,7 +35,7 @@ describe('mcpPipelineConfigSchema — valid fixtures', () => {
       mcp_schema_version: '2025-12-11',
       n8n_node_api_version: '1.0',
       mcps: {
-        'evidence-manager': validEntry,
+        'ead-factory': validEntry,
         'second-mcp': {
           ...validEntry,
           reverse_dns_name: 'io.github.g-digital-by-Garrigues/second-mcp',
@@ -73,7 +73,7 @@ describe('mcpPipelineConfigSchema — valid fixtures', () => {
     const result = mcpEntrySchema.safeParse({
       ...validEntry,
       npm_scope: 'g-digital',
-      npm_package_name: '@g-digital/mcp-evidence-manager',
+      npm_package_name: '@g-digital/mcp-ead-factory',
     });
     expect(result.success).toBe(true);
   });
@@ -146,7 +146,7 @@ describe('mcpPipelineConfigSchema — invalid fixtures', () => {
     const result = mcpEntrySchema.safeParse({
       ...validEntry,
       npm_scope: '@g-digital',
-      npm_package_name: '@other-scope/mcp-evidence-manager',
+      npm_package_name: '@other-scope/mcp-ead-factory',
     });
     expect(result.success).toBe(false);
     if (!result.success) {

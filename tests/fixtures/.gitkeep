@@ -1,1 +1,1 @@
-Per-MCP byte-equality fixtures used by deterministic generator tests (NFR-R1). Layout: tests/fixtures/<mcp-name>/inputs.json + tests/fixtures/<mcp-name>/expected/<artifact>. The first MCP fixture (evidence-manager) arrives during Stories 1.5-1.9.
+Per-MCP byte-equality fixtures used by deterministic generator tests (NFR-R1). Layout: tests/fixtures/<mcp-name>/inputs.json + tests/fixtures/<mcp-name>/expected/<artifact>. The first MCP fixture (ead-factory) arrives during Stories 1.5-1.9.
