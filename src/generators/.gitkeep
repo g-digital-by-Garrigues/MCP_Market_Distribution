@@ -1,1 +1,0 @@
-Pure deterministic generators (NFR-R1). One generator per artifact: server.json, smithery.yaml, environment-variables, install-block, README, n8n-node, store-description, release-report. Files arrive in Stories 1.5-1.9 and 5.1.
