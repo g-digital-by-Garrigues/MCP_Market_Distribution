@@ -1,1 +1,0 @@
-Cross-run state ledger (FR39). Reads from / writes to the orphan branch releases/state. Reconciles final status (FR40). Files arrive in Stories 3.9, 4.7-4.8.
