@@ -194,6 +194,262 @@ Parámetros opcionales adicionales: `--lang ES|EN`, `--close "2025-12-31T23:59:5
 
 ## Quick Start
 
+### Claude Desktop
+
+```json
+{
+  "mcpServers": {
+    "ead-factory": {
+      "args": [
+        "-y",
+        "@g-digital/mcp-ead-factory"
+      ],
+      "command": "npx",
+      "env": {
+        "API_BASE_URL": "",
+        "FULL_FLOW_EMAIL_BASE": "",
+        "FULL_FLOW_FILE_PATH": "",
+        "HTTP_PORT": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "<PASTE_OKTA_CLIENT_SECRET_HERE>",
+        "OKTA_SCOPE": "",
+        "OKTA_TOKEN_URL": "",
+        "POLL_INTERVAL_MS": "",
+        "POLL_MAX_ATTEMPTS": "",
+        "SIGNATURE_API_BASE_URL": "",
+        "TRANSPORT": ""
+      }
+    }
+  }
+}
+```
+
+> Need credentials? See: https://eadtrust.example.com/onboarding
+
+### Claude Code (CLI)
+
+```json
+{
+  "mcpServers": {
+    "ead-factory": {
+      "args": [
+        "-y",
+        "@g-digital/mcp-ead-factory"
+      ],
+      "command": "npx",
+      "env": {
+        "API_BASE_URL": "",
+        "FULL_FLOW_EMAIL_BASE": "",
+        "FULL_FLOW_FILE_PATH": "",
+        "HTTP_PORT": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "<PASTE_OKTA_CLIENT_SECRET_HERE>",
+        "OKTA_SCOPE": "",
+        "OKTA_TOKEN_URL": "",
+        "POLL_INTERVAL_MS": "",
+        "POLL_MAX_ATTEMPTS": "",
+        "SIGNATURE_API_BASE_URL": "",
+        "TRANSPORT": ""
+      }
+    }
+  }
+}
+```
+
+> Need credentials? See: https://eadtrust.example.com/onboarding
+
+### Cursor
+
+```json
+{
+  "mcpServers": {
+    "ead-factory": {
+      "args": [
+        "-y",
+        "@g-digital/mcp-ead-factory"
+      ],
+      "command": "npx",
+      "env": {
+        "API_BASE_URL": "",
+        "FULL_FLOW_EMAIL_BASE": "",
+        "FULL_FLOW_FILE_PATH": "",
+        "HTTP_PORT": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "<PASTE_OKTA_CLIENT_SECRET_HERE>",
+        "OKTA_SCOPE": "",
+        "OKTA_TOKEN_URL": "",
+        "POLL_INTERVAL_MS": "",
+        "POLL_MAX_ATTEMPTS": "",
+        "SIGNATURE_API_BASE_URL": "",
+        "TRANSPORT": ""
+      }
+    }
+  }
+}
+```
+
+> Need credentials? See: https://eadtrust.example.com/onboarding
+
+### Windsurf
+
+```json
+{
+  "mcpServers": {
+    "ead-factory": {
+      "args": [
+        "-y",
+        "@g-digital/mcp-ead-factory"
+      ],
+      "command": "npx",
+      "env": {
+        "API_BASE_URL": "",
+        "FULL_FLOW_EMAIL_BASE": "",
+        "FULL_FLOW_FILE_PATH": "",
+        "HTTP_PORT": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "<PASTE_OKTA_CLIENT_SECRET_HERE>",
+        "OKTA_SCOPE": "",
+        "OKTA_TOKEN_URL": "",
+        "POLL_INTERVAL_MS": "",
+        "POLL_MAX_ATTEMPTS": "",
+        "SIGNATURE_API_BASE_URL": "",
+        "TRANSPORT": ""
+      }
+    }
+  }
+}
+```
+
+> Need credentials? See: https://eadtrust.example.com/onboarding
+
+### Cline
+
+```json
+{
+  "mcpServers": {
+    "ead-factory": {
+      "args": [
+        "-y",
+        "@g-digital/mcp-ead-factory"
+      ],
+      "command": "npx",
+      "env": {
+        "API_BASE_URL": "",
+        "FULL_FLOW_EMAIL_BASE": "",
+        "FULL_FLOW_FILE_PATH": "",
+        "HTTP_PORT": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "<PASTE_OKTA_CLIENT_SECRET_HERE>",
+        "OKTA_SCOPE": "",
+        "OKTA_TOKEN_URL": "",
+        "POLL_INTERVAL_MS": "",
+        "POLL_MAX_ATTEMPTS": "",
+        "SIGNATURE_API_BASE_URL": "",
+        "TRANSPORT": ""
+      }
+    }
+  }
+}
+```
+
+> Need credentials? See: https://eadtrust.example.com/onboarding
+
+### VS Code
+
+```json
+{
+  "servers": {
+    "ead-factory": {
+      "args": [
+        "-y",
+        "@g-digital/mcp-ead-factory"
+      ],
+      "command": "npx",
+      "env": {
+        "API_BASE_URL": "",
+        "FULL_FLOW_EMAIL_BASE": "",
+        "FULL_FLOW_FILE_PATH": "",
+        "HTTP_PORT": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "<PASTE_OKTA_CLIENT_SECRET_HERE>",
+        "OKTA_SCOPE": "",
+        "OKTA_TOKEN_URL": "",
+        "POLL_INTERVAL_MS": "",
+        "POLL_MAX_ATTEMPTS": "",
+        "SIGNATURE_API_BASE_URL": "",
+        "TRANSPORT": ""
+      }
+    }
+  }
+}
+```
+
+> Need credentials? See: https://eadtrust.example.com/onboarding
+
+### JetBrains
+
+```json
+{
+  "mcpServers": {
+    "ead-factory": {
+      "args": [
+        "-y",
+        "@g-digital/mcp-ead-factory"
+      ],
+      "command": "npx",
+      "env": {
+        "API_BASE_URL": "",
+        "FULL_FLOW_EMAIL_BASE": "",
+        "FULL_FLOW_FILE_PATH": "",
+        "HTTP_PORT": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "<PASTE_OKTA_CLIENT_SECRET_HERE>",
+        "OKTA_SCOPE": "",
+        "OKTA_TOKEN_URL": "",
+        "POLL_INTERVAL_MS": "",
+        "POLL_MAX_ATTEMPTS": "",
+        "SIGNATURE_API_BASE_URL": "",
+        "TRANSPORT": ""
+      }
+    }
+  }
+}
+```
+
+> Need credentials? See: https://eadtrust.example.com/onboarding
+
+### Zed
+
+```json
+{
+  "mcpServers": {
+    "ead-factory": {
+      "args": [
+        "-y",
+        "@g-digital/mcp-ead-factory"
+      ],
+      "command": "npx",
+      "env": {
+        "API_BASE_URL": "",
+        "FULL_FLOW_EMAIL_BASE": "",
+        "FULL_FLOW_FILE_PATH": "",
+        "HTTP_PORT": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "<PASTE_OKTA_CLIENT_SECRET_HERE>",
+        "OKTA_SCOPE": "",
+        "OKTA_TOKEN_URL": "",
+        "POLL_INTERVAL_MS": "",
+        "POLL_MAX_ATTEMPTS": "",
+        "SIGNATURE_API_BASE_URL": "",
+        "TRANSPORT": ""
+      }
+    }
+  }
+}
+```
+
+> Need credentials? See: https://eadtrust.example.com/onboarding
+
 ```bash
 npm install
 npm run build
@@ -249,6 +505,21 @@ The `/mcp` endpoint requires a valid Okta Bearer token. Tokens are verified agai
 The `/health` endpoint is unauthenticated (for monitoring).
 
 ## Configuration
+
+| Name | Required | Secret | Description |
+| --- | --- | --- | --- |
+| `API_BASE_URL` | Yes | No | Evidence Manager API base URL |
+| `FULL_FLOW_EMAIL_BASE` | Yes | No | Full flow base email — used to compose participant emails (user+signatory@domain, etc.) |
+| `FULL_FLOW_FILE_PATH` | Yes | No | Full flow default file path |
+| `HTTP_PORT` | Yes | No | HTTP_PORT |
+| `OKTA_CLIENT_ID` | Yes | No | OKTA_CLIENT_ID |
+| `OKTA_CLIENT_SECRET` | Yes | Yes | OKTA_CLIENT_SECRET (See https://eadtrust.example.com/onboarding for credential acquisition.) |
+| `OKTA_SCOPE` | Yes | No | OKTA_SCOPE |
+| `OKTA_TOKEN_URL` | Yes | No | OAuth credentials (Okta client_credentials flow) Used both for calling Evidence Manager API and for verifying incoming Bearer tokens (HTTP mode) |
+| `POLL_INTERVAL_MS` | Yes | No | Polling configuration for evidence status |
+| `POLL_MAX_ATTEMPTS` | Yes | No | POLL_MAX_ATTEMPTS |
+| `SIGNATURE_API_BASE_URL` | Yes | No | Signature Manager API base URL |
+| `TRANSPORT` | Yes | No | Transport: "stdio" for local Claude Code, "http" for remote deployment with auth |
 
 | Variable | Required | Default | Description |
 |---|---|---|---|

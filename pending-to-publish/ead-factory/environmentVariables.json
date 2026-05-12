@@ -1,0 +1,76 @@
+{
+  "environmentVariables": [
+    {
+      "description": "Evidence Manager API base URL",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "API_BASE_URL"
+    },
+    {
+      "description": "Full flow base email — used to compose participant emails (user+signatory@domain, etc.)",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "FULL_FLOW_EMAIL_BASE"
+    },
+    {
+      "description": "Full flow default file path",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "FULL_FLOW_FILE_PATH"
+    },
+    {
+      "description": "HTTP_PORT",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "HTTP_PORT"
+    },
+    {
+      "description": "OKTA_CLIENT_ID",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "OKTA_CLIENT_ID"
+    },
+    {
+      "description": "OKTA_CLIENT_SECRET (See https://eadtrust.example.com/onboarding for credential acquisition.)",
+      "isRequired": true,
+      "isSecret": true,
+      "name": "OKTA_CLIENT_SECRET"
+    },
+    {
+      "description": "OKTA_SCOPE",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "OKTA_SCOPE"
+    },
+    {
+      "description": "OAuth credentials (Okta client_credentials flow) Used both for calling Evidence Manager API and for verifying incoming Bearer tokens (HTTP mode)",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "OKTA_TOKEN_URL"
+    },
+    {
+      "description": "Polling configuration for evidence status",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "POLL_INTERVAL_MS"
+    },
+    {
+      "description": "POLL_MAX_ATTEMPTS",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "POLL_MAX_ATTEMPTS"
+    },
+    {
+      "description": "Signature Manager API base URL",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "SIGNATURE_API_BASE_URL"
+    },
+    {
+      "description": "Transport: \"stdio\" for local Claude Code, \"http\" for remote deployment with auth",
+      "isRequired": true,
+      "isSecret": false,
+      "name": "TRANSPORT"
+    }
+  ]
+}
