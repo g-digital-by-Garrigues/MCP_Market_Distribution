@@ -1,0 +1,150 @@
+name: retry-dispatch
+
+# Story 4.10: triggered when an engineer comments `/retry-publish...` on a
+# release PR. Parses the comment, validates the author has write access,
+# extracts the MCP + version from the PR (looking at the open release-
+# report comment), and dispatches `publish.yml` with the parsed inputs.
+#
+# Wall-clock budget: <30 seconds. We refuse to do any heavy lifting here;
+# every action is a single GH API call or a tiny pnpm tsx invocation.
+
+on:
+  issue_comment:
+    types: [created]
+
+# Concurrency: at most one dispatcher running per PR at a time. If an
+# engineer rapid-fires /retry-publish comments, only one dispatch fires.
+# cancel-in-progress is true here (unlike publish.yml) because the
+# dispatcher itself is fast and idempotent — a queued dispatcher waiting
+# behind a stale one is just wasted CI minutes.
+concurrency:
+  group: retry-dispatch-${{ github.event.issue.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  issues: write
+  pull-requests: write
+  actions: write   # to dispatch publish.yml
+
+jobs:
+  dispatch:
+    name: Parse + validate + dispatch
+    if: github.event.issue.pull_request != null
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Parse + validate + dispatch
+        uses: actions/github-script@v7
+        env:
+          COMMENT_BODY: ${{ github.event.comment.body }}
+          COMMENTER: ${{ github.event.comment.user.login }}
+          PR_NUMBER: ${{ github.event.issue.number }}
+        with:
+          script: |
+            const { execSync } = require('child_process');
+            const { COMMENT_BODY, COMMENTER, PR_NUMBER } = process.env;
+
+            // Short-circuit: if the comment doesn't start with /retry-publish
+            // we don't run the parser. Saves CI minutes on every random PR comment.
+            const trimmed = COMMENT_BODY.split('\n').map((l) => l.trim()).find((l) => l) ?? '';
+            if (!trimmed.startsWith('/retry-publish')) {
+              core.notice('Comment is not a slash-command; ignoring.');
+              return;
+            }
+
+            // Invoke the parser as a child process so the workflow runs the
+            // exact same code path as the unit-tested parser.
+            const raw = execSync(
+              `pnpm tsx -e "import('./src/slash-command/parse-command.js').then(({parseCommand,formatUsageMessage})=>{const r=parseCommand(${JSON.stringify(COMMENT_BODY)});console.log(JSON.stringify({result:r,usage:formatUsageMessage()}))})"`,
+              { encoding: 'utf8' },
+            );
+            const { result, usage } = JSON.parse(raw.trim().split('\n').pop());
+
+            async function reply(body) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: Number(PR_NUMBER),
+                body,
+              });
+            }
+
+            // Invalid syntax → post usage reply, take no action.
+            if (result === null) {
+              await reply(`@${COMMENTER} ${usage}`);
+              core.notice('Invalid slash-command syntax; usage reply posted.');
+              return;
+            }
+
+            // Permission check: commenter must have write access. We use
+            // the collaborators API rather than checking the comment's
+            // 'author_association' because association is unreliable for
+            // org members not in the repo's contributor list.
+            const perm = await github.rest.repos.getCollaboratorPermissionLevel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              username: COMMENTER,
+            }).catch(() => null);
+            const role = perm?.data?.permission ?? 'none';
+            if (role !== 'admin' && role !== 'write' && role !== 'maintain') {
+              await reply(`@${COMMENTER} you need write access to this repo to dispatch a retry. Current role: \`${role}\`.`);
+              core.notice('Unauthorized commenter; reply posted.');
+              return;
+            }
+
+            // Resolve mcp_name + version from the existing release-report
+            // comment on this PR. The comment body's first line is
+            // <!-- release-report:<mcp>-v<version> --> — Story 3.5 guarantees that.
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: Number(PR_NUMBER),
+              per_page: 100,
+            });
+            const reportMarkerRe = /<!-- release-report:([^-]+(?:-[^-]+)*)-v(\d[^\s-]*) -->/;
+            const reportComment = comments.find((c) => c.body && reportMarkerRe.test(c.body));
+            if (!reportComment) {
+              await reply(`@${COMMENTER} cannot find an existing release-report comment on this PR; nothing to retry. Dispatch publish.yml manually from the Actions tab if this is a fresh release.`);
+              return;
+            }
+            const m = reportComment.body.match(reportMarkerRe);
+            const mcp_name = m[1];
+            const version = m[2];
+
+            // Build the workflow_dispatch inputs.
+            const inputs = {
+              mcp_name,
+              version,
+              step: result.step ?? (result.track ? 'publish' : 'all'),
+              track: result.track ?? 'both',
+              bump: result.bump ?? '',
+              dry_run: 'false',
+            };
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'publish.yml',
+              ref: 'main',
+              inputs,
+            });
+
+            await reply(`@${COMMENTER} 🚀 dispatched \`publish.yml\` with inputs: \`${JSON.stringify(inputs)}\`. Track progress in the [Actions tab](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/workflows/publish.yml).`);
+            core.notice(`Dispatched publish.yml for ${mcp_name} v${version}.`);
