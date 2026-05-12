@@ -1,0 +1,29 @@
+# Submission: {{mcp_name}}
+
+**Description:** {{description}}
+
+**Logo:** ![logo]({{logo_url}})
+
+**Source repo:** {{repo_url}}
+
+**License:** {{license}}
+
+## Installation
+
+```bash
+npx -y {{npm_package_name}}@{{version}}
+```
+
+```bash
+docker run --rm -it --env-file .env {{docker_image_name}}:{{version}}
+```
+
+## Required environment variables
+
+{{#each environment_variables}}
+- `{{name}}` — {{description}}
+{{/each}}
+
+---
+
+Submitted by g-digital by Garrigues' MCP Distribution Pipeline (run `{{pipeline_run_id}}`).
