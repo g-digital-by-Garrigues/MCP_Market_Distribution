@@ -1,0 +1,37 @@
+{
+  "metadata": {
+    "mcp_name": "ead-factory",
+    "version": "1.0.0",
+    "pipeline_run_id": "12345678-1",
+    "workflow_run_url": "https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution/actions/runs/12345678"
+  },
+  "outputs": [
+    {
+      "target": "npm",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.0",
+      "version_published": "1.0.0",
+      "duration_ms": 23456,
+      "attempts": 2,
+      "dry_run": false
+    },
+    {
+      "target": "docker-hub",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/ead-factory",
+      "version_published": "1.0.0",
+      "duration_ms": 187432,
+      "attempts": 2,
+      "dry_run": false
+    },
+    {
+      "target": "mcp-publisher",
+      "status": "succeeded",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory",
+      "version_published": "1.0.0",
+      "duration_ms": 4521,
+      "attempts": 3,
+      "dry_run": false
+    }
+  ]
+}

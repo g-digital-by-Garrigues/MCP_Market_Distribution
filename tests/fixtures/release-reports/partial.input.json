@@ -1,0 +1,42 @@
+{
+  "metadata": {
+    "mcp_name": "ead-factory",
+    "version": "1.0.1",
+    "pipeline_run_id": "12345679-1",
+    "workflow_run_url": "https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution/actions/runs/12345679"
+  },
+  "outputs": [
+    {
+      "target": "npm",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.1",
+      "version_published": "1.0.1",
+      "duration_ms": 19842,
+      "attempts": 1,
+      "dry_run": false
+    },
+    {
+      "target": "docker-hub",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/docker-hub/gdigital%2Fead-factory/1.0.1",
+      "version_published": null,
+      "duration_ms": 9421,
+      "attempts": 2,
+      "dry_run": false,
+      "error": {
+        "message": "docker login failed: unauthorized",
+        "cause": "DOCKERHUB_TOKEN may be expired or scoped incorrectly.",
+        "action": "Rotate the token at https://hub.docker.com/settings/security and update the DOCKERHUB_TOKEN repo secret."
+      }
+    },
+    {
+      "target": "mcp-publisher",
+      "status": "skipped",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory",
+      "version_published": "1.0.1",
+      "duration_ms": 1230,
+      "attempts": 1,
+      "dry_run": false
+    }
+  ]
+}
