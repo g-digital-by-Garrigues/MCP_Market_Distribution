@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
+import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 // Story 3.9: idempotent setup script that ensures the `releases/state`
 // orphan branch exists. Epic 4's retry semantics (Story 4.8) read+write
@@ -147,7 +149,9 @@ async function main(): Promise<number> {
   }
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`;
-if (isMain) {
+const invokedDirectly =
+  typeof process.argv[1] === 'string' &&
+  path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+if (invokedDirectly) {
   void main().then((code) => process.exit(code));
 }

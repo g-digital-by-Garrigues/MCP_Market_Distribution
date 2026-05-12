@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 import yaml from 'js-yaml';
 
@@ -138,7 +139,9 @@ async function main(): Promise<number> {
   return result.passed ? 0 : 1;
 }
 
-const isMain = import.meta.url === `file://${process.argv[1]?.replace(/\\/g, '/')}`;
-if (isMain) {
+const invokedDirectly =
+  typeof process.argv[1] === 'string' &&
+  path.resolve(fileURLToPath(import.meta.url)) === path.resolve(process.argv[1]);
+if (invokedDirectly) {
   void main().then((code) => process.exit(code));
 }
