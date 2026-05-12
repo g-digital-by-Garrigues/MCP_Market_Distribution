@@ -1,0 +1,61 @@
+name: "Publish to npm"
+description: "Publishes @g-digital/* MCP packages to the npm registry with idempotency + OIDC/token auth. Emits a PublisherOutputSchema-conforming JSON on the result_json output."
+
+inputs:
+  mcp_name:
+    description: "Pipeline-internal MCP id (kebab-case, e.g. 'ead-factory'). Used to locate pending-to-publish/<mcp_name>/."
+    required: true
+  version:
+    description: "Semver to publish (without leading 'v')."
+    required: true
+  pipeline_run_id:
+    description: "Run correlation id from the setup job. Threaded into every log event."
+    required: true
+  dry_run:
+    description: "When 'true', runs `npm publish --dry-run` instead of a real publish. Used by Journey 3 (verify-only)."
+    required: false
+    default: "false"
+
+outputs:
+  result_json:
+    description: "PublisherOutputSchema-conforming JSON: { target, status, target_url, version_published, duration_ms, attempts, dry_run, error?, metadata? }."
+    value: ${{ steps.publish.outputs.result_json }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+        registry-url: https://registry.npmjs.org/
+
+    - name: Install pipeline dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Publish to npm
+      id: publish
+      shell: bash
+      env:
+        INPUT_MCP_NAME: ${{ inputs.mcp_name }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_PIPELINE_RUN_ID: ${{ inputs.pipeline_run_id }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        # NPM_TOKEN is read inside the publisher; expose it here so the
+        # underlying script and `npm publish` both see it. The publisher
+        # falls back to OIDC if this env var is empty.
+        NPM_TOKEN: ${{ env.NPM_TOKEN }}
+      run: |
+        set -euo pipefail
+        pnpm tsx src/publishers/run-publish-npm.ts > result.json
+        printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json >> "$GITHUB_OUTPUT"
+        printf 'EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json

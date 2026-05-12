@@ -1,0 +1,41 @@
+import path from 'node:path';
+import process from 'node:process';
+
+import { parseDryRunFlag } from '../ci/dry-run.js';
+import { publishNpm } from './publish-npm.js';
+
+// CLI shim invoked from actions/publish-npm/action.yml. Reads the canonical
+// composite-action inputs from env vars (set by `with:` → `env:`), calls
+// the orchestrator, and emits the PublisherOutput JSON on stdout. The
+// composite action pipes stdout into $GITHUB_OUTPUT so the final-report
+// job can read it.
+
+async function main(): Promise<number> {
+  const mcpName = process.env.INPUT_MCP_NAME ?? '';
+  const version = process.env.INPUT_VERSION ?? '';
+  const pipelineRunId = process.env.INPUT_PIPELINE_RUN_ID ?? '';
+  const dryRun = parseDryRunFlag(process.env.INPUT_DRY_RUN);
+
+  if (!mcpName || !version || !pipelineRunId) {
+    process.stderr.write(
+      `actions/publish-npm requires INPUT_MCP_NAME, INPUT_VERSION, INPUT_PIPELINE_RUN_ID env vars\n`,
+    );
+    return 2;
+  }
+
+  const repoRoot = process.cwd();
+  const packageDir = path.join(repoRoot, 'pending-to-publish', mcpName);
+
+  const output = await publishNpm({
+    mcp_name: mcpName,
+    version,
+    pipeline_run_id: pipelineRunId,
+    dry_run: dryRun,
+    package_dir: packageDir,
+  });
+
+  process.stdout.write(JSON.stringify(output) + '\n');
+  return output.status === 'failed' ? 1 : 0;
+}
+
+void main().then((code) => process.exit(code));
