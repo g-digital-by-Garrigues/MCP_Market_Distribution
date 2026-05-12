@@ -509,6 +509,58 @@ jobs:
           dry_run: ${{ needs.setup.outputs.dry_run }}
 
   # ---------------------------------------------------------------------
+  # Story 3.8: npx install-path verification (FR47).
+  # Runs `npx -y @g-digital/mcp-<name>@<version>` as a fresh process and
+  # does the MCP initialize + tools/list handshake to confirm the
+  # consumer install path actually works. Gated on publish-npm success
+  # so we never npx-install a version that didn't actually publish.
+  # ---------------------------------------------------------------------
+
+  npx-verification:
+    name: npx install-path verification
+    needs: [setup, publish-npm]
+    if: |
+      needs.publish-npm.result == 'success'
+      && needs.setup.outputs.dry_run != 'true'
+      && fromJson(needs.publish-npm.outputs.result_json).status == 'succeeded'
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Verify npx install path (initialize + tools/list)
+        run: |
+          set -euo pipefail
+          pnpm tsx src/ci/verify-npx-install.ts \
+            "${{ needs.setup.outputs.mcp_name }}" \
+            "${{ needs.setup.outputs.version }}" \
+            | tee npx-verification.json
+
+      - name: Upload verification report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npx-verification-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
+          path: npx-verification.json
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------
   # Story 3.7: final-report job — aggregates Track A publishers,
   # commits the release report, and upserts the PR comment.
   # Always runs so partial-publish + full-failure cases still get a report.
