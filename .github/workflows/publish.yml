@@ -18,13 +18,9 @@ on:
         required: true
         type: string
       step:
-        description: "Which pipeline step to run"
+        description: "Which target/phase to run. 'gate'/'publish'/'all' OR a single target ID (npm, cline, etc.)"
         required: false
-        type: choice
-        options:
-          - gate
-          - publish
-          - all
+        type: string
         default: all
       track:
         description: "Track(s) to run"
@@ -130,6 +126,57 @@ jobs:
 
       - name: Verify the build still compiles on the runner
         run: pnpm run typecheck && pnpm run test
+
+  # ---------------------------------------------------------------------
+  # Story 4.8: read the releases/state ledger so each publisher can be
+  # skipped when this same (mcp, version) tuple already has it at
+  # status='succeeded'. Output: per-target run_<id> = 'true' | 'false'.
+  # ---------------------------------------------------------------------
+
+  ledger-read:
+    name: Read release-state ledger
+    needs: setup
+    runs-on: ubuntu-latest
+    outputs:
+      run_npm: ${{ steps.read.outputs.run_npm }}
+      run_docker_hub: ${{ steps.read.outputs.run_docker_hub }}
+      run_mcp_publisher: ${{ steps.read.outputs.run_mcp_publisher }}
+      run_smithery: ${{ steps.read.outputs.run_smithery }}
+      run_docker_mcp_catalog: ${{ steps.read.outputs.run_docker_mcp_catalog }}
+      run_cline: ${{ steps.read.outputs.run_cline }}
+      run_mcpso: ${{ steps.read.outputs.run_mcpso }}
+      run_n8n: ${{ steps.read.outputs.run_n8n }}
+      run_make_rom: ${{ steps.read.outputs.run_make_rom }}
+      ledger_json: ${{ steps.read.outputs.ledger_json }}
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+      VERSION: ${{ needs.setup.outputs.version }}
+      # When dispatched via /retry-publish?step=<id>, the dispatcher sets
+      # inputs.step to the target id (npm/cline/etc.). When it's one of
+      # the phase keywords ('gate'/'publish'/'all') we treat it as
+      # "all targets eligible" — the ledger still filters the already-
+      # succeeded ones. RETRY_STEP only carries the target-id case.
+      RETRY_STEP: ${{ contains(fromJson('["gate","publish","all",""]'), inputs.step) && '' || inputs.step }}
+      RETRY_TRACK: ${{ inputs.track == 'both' && '' || inputs.track }}
+      BOT_PAT: ${{ secrets.BOT_PAT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Read ledger from releases/state branch
+        id: read
+        run: pnpm tsx src/state/read-ledger.ts
 
   nfr-s3-audit:
     name: NFR-S3 audit (no consumer credentials in CI)
@@ -425,8 +472,10 @@ jobs:
 
   publish-npm:
     name: Publish to npm
-    needs: [setup, track-a-layer-3]
-    if: needs.track-a-layer-3.result == 'success'
+    needs: [setup, ledger-read, track-a-layer-3]
+    if: |
+      needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_npm == 'true'
     runs-on: ubuntu-latest
     permissions:
       # id-token: write enables the OIDC trusted-publisher path. NPM_TOKEN
@@ -453,8 +502,10 @@ jobs:
 
   publish-docker-hub:
     name: Publish to Docker Hub
-    needs: [setup, track-a-layer-3]
-    if: needs.track-a-layer-3.result == 'success'
+    needs: [setup, ledger-read, track-a-layer-3]
+    if: |
+      needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_docker_hub == 'true'
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -482,10 +533,11 @@ jobs:
     # We need the package to be live first. Use always() so a failed npm
     # publish doesn't silently skip this — the dependency expresses order,
     # not blocking semantics, and the conditional below adds the gate.
-    needs: [setup, track-a-layer-3, publish-npm]
+    needs: [setup, ledger-read, track-a-layer-3, publish-npm]
     if: |
       always()
       && needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_mcp_publisher == 'true'
       && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
     runs-on: ubuntu-latest
     permissions:
@@ -516,8 +568,10 @@ jobs:
 
   publish-smithery:
     name: Publish to Smithery
-    needs: [setup, track-a-layer-3]
-    if: needs.track-a-layer-3.result == 'success'
+    needs: [setup, ledger-read, track-a-layer-3]
+    if: |
+      needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_smithery == 'true'
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -538,8 +592,10 @@ jobs:
 
   publish-docker-mcp-catalog:
     name: Publish to Docker MCP Catalog
-    needs: [setup, track-a-layer-3]
-    if: needs.track-a-layer-3.result == 'success'
+    needs: [setup, ledger-read, track-a-layer-3]
+    if: |
+      needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_docker_mcp_catalog == 'true'
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -561,8 +617,10 @@ jobs:
 
   publish-cline:
     name: Publish to Cline Marketplace
-    needs: [setup, track-a-layer-3]
-    if: needs.track-a-layer-3.result == 'success'
+    needs: [setup, ledger-read, track-a-layer-3]
+    if: |
+      needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_cline == 'true'
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -584,8 +642,10 @@ jobs:
 
   publish-mcpso:
     name: Publish to mcp.so
-    needs: [setup, track-a-layer-3]
-    if: needs.track-a-layer-3.result == 'success'
+    needs: [setup, ledger-read, track-a-layer-3]
+    if: |
+      needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_mcpso == 'true'
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -732,6 +792,28 @@ jobs:
           name: release-report-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
           path: _bmad-output/release-reports/${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}.md
           if-no-files-found: error
+
+      - name: Write release-state ledger (Story 4.8)
+        # Merge this run's PublisherOutputs into releases/state/<mcp>/<version>.json
+        # on the orphan branch so the next retry knows which targets are
+        # already done. Skipped in dry-run; non-fatal if it fails so a
+        # ledger-push transient doesn't make the whole release look broken.
+        if: needs.setup.outputs.dry_run != 'true'
+        continue-on-error: true
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+          VERSION: ${{ needs.setup.outputs.version }}
+          PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+          BOT_PAT: ${{ secrets.BOT_PAT }}
+          PUBLISHER_RESULTS_JSON: |
+            ${{ needs.publish-npm.outputs.result_json || '' }}
+            ${{ needs.publish-docker-hub.outputs.result_json || '' }}
+            ${{ needs.publish-mcp-registry.outputs.result_json || '' }}
+            ${{ needs.publish-smithery.outputs.result_json || '' }}
+            ${{ needs.publish-docker-mcp-catalog.outputs.result_json || '' }}
+            ${{ needs.publish-cline.outputs.result_json || '' }}
+            ${{ needs.publish-mcpso.outputs.result_json || '' }}
+        run: pnpm tsx src/state/write-ledger.ts
 
       - name: Commit + push release-report to main
         # NEVER commit in dry-run mode; the workflow artifact above is the
