@@ -1,1 +1,0 @@
-Input source folders for MCPs that go through the pipeline (FR1). One subdirectory per MCP, keyed by kebab-case name (e.g., pending-to-publish/ead-factory/). Per-MCP build outputs (dist/, node_modules/) are gitignored.
