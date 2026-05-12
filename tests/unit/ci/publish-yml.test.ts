@@ -86,7 +86,7 @@ describe('.github/workflows/publish.yml scaffold', () => {
     }
   });
 
-  it('Track A publisher jobs (Stories 3.2/3.3/3.4) gate on track-a-layer-3 success and expose result_json', () => {
+  it('Track A publisher jobs (Stories 3.2/3.3/3.4) gate on track-a-layer-3 success + ledger-read flag, expose result_json', () => {
     const publishers = ['publish-npm', 'publish-docker-hub', 'publish-mcp-registry'];
     for (const name of publishers) {
       const job = parsed.jobs[name] as unknown as {
@@ -97,7 +97,10 @@ describe('.github/workflows/publish.yml scaffold', () => {
       } | undefined;
       expect(job, name).toBeDefined();
       expect(job!.needs, name).toContain('setup');
+      expect(job!.needs, name).toContain('ledger-read');
       expect(job!.needs, name).toContain('track-a-layer-3');
+      // The if-guard must check the per-target ledger flag.
+      expect(job!.if, name).toContain('ledger-read.outputs.run_');
       // result_json must be exported so final-report can consume it.
       expect(job!.outputs?.result_json, name).toBe('${{ steps.publish.outputs.result_json }}');
       // The composite action is referenced as a relative path.
@@ -105,6 +108,17 @@ describe('.github/workflows/publish.yml scaffold', () => {
         .map((s) => (s as { uses?: string }).uses)
         .filter((u): u is string => typeof u === 'string');
       expect(usesValues.some((u) => u.startsWith('./actions/publish-')), name).toBe(true);
+    }
+  });
+
+  it('ledger-read job exposes per-target run flags + ledger_json', () => {
+    const job = parsed.jobs['ledger-read'] as unknown as {
+      outputs?: Record<string, string>;
+    } | undefined;
+    expect(job).toBeDefined();
+    const expected = ['run_npm', 'run_docker_hub', 'run_mcp_publisher', 'run_smithery', 'run_docker_mcp_catalog', 'run_cline', 'run_mcpso', 'run_n8n', 'run_make_rom', 'ledger_json'];
+    for (const key of expected) {
+      expect(job!.outputs?.[key], key).toBeDefined();
     }
   });
 
@@ -120,15 +134,18 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(job.needs).toContain('publish-npm');
   });
 
-  it('Epic 4 publisher jobs (smithery, docker-mcp-catalog, cline, mcpso) exist with result_json outputs', () => {
+  it('Epic 4 publisher jobs (smithery, docker-mcp-catalog, cline, mcpso) gate on ledger-read flag and expose result_json', () => {
     for (const name of ['publish-smithery', 'publish-docker-mcp-catalog', 'publish-cline', 'publish-mcpso']) {
       const job = parsed.jobs[name] as unknown as {
         needs?: string[];
+        if?: string;
         outputs?: Record<string, string>;
       } | undefined;
       expect(job, name).toBeDefined();
       expect(job!.needs, name).toContain('setup');
+      expect(job!.needs, name).toContain('ledger-read');
       expect(job!.needs, name).toContain('track-a-layer-3');
+      expect(job!.if, name).toContain('ledger-read.outputs.run_');
       expect(job!.outputs?.result_json, name).toBe('${{ steps.publish.outputs.result_json }}');
     }
   });
