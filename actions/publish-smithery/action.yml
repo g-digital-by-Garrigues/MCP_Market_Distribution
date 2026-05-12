@@ -1,0 +1,56 @@
+name: "Publish to Smithery"
+description: "Verifies Smithery's auto-deploy of the linked repo by polling the public API for ≤15 minutes."
+
+inputs:
+  mcp_name:
+    description: "Pipeline-internal MCP id (kebab-case). Used to look up the reverse_dns_name from mcp-pipeline.yaml."
+    required: true
+  version:
+    description: "Semver to verify as deployed on Smithery."
+    required: true
+  pipeline_run_id:
+    description: "Run correlation id from the setup job."
+    required: true
+  dry_run:
+    description: "When 'true', skips the API poll and returns immediately with a placeholder target_url."
+    required: false
+    default: "false"
+
+outputs:
+  result_json:
+    description: "PublisherOutputSchema-conforming JSON."
+    value: ${{ steps.publish.outputs.result_json }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+
+    - name: Install pipeline dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Verify Smithery deployment
+      id: publish
+      shell: bash
+      env:
+        INPUT_MCP_NAME: ${{ inputs.mcp_name }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_PIPELINE_RUN_ID: ${{ inputs.pipeline_run_id }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+      run: |
+        set -euo pipefail
+        pnpm tsx src/publishers/run-publish-smithery.ts > result.json
+        printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json >> "$GITHUB_OUTPUT"
+        printf 'EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json
