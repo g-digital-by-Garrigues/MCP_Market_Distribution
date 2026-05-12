@@ -1,0 +1,64 @@
+name: "Publish to Docker Hub"
+description: "Builds and pushes multi-arch Docker images to Docker Hub with idempotency. Emits a PublisherOutputSchema-conforming JSON on result_json."
+
+inputs:
+  mcp_name:
+    description: "Pipeline-internal MCP id (kebab-case). Used to locate pending-to-publish/<mcp_name>/Dockerfile and read docker_image_name from mcp-pipeline.yaml."
+    required: true
+  version:
+    description: "Semver to tag the image with (also tagged as :latest)."
+    required: true
+  pipeline_run_id:
+    description: "Run correlation id from the setup job."
+    required: true
+  dry_run:
+    description: "When 'true', builds the image (validates the Dockerfile) but does not push."
+    required: false
+    default: "false"
+
+outputs:
+  result_json:
+    description: "PublisherOutputSchema-conforming JSON; metadata.digest carries the pushed image digest when status=succeeded."
+    value: ${{ steps.publish.outputs.result_json }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up Docker Buildx (multi-arch + BuildKit cache)
+      uses: docker/setup-buildx-action@v3
+
+    - name: Set up QEMU (cross-build for linux/arm64)
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+
+    - name: Install pipeline dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Publish to Docker Hub
+      id: publish
+      shell: bash
+      env:
+        INPUT_MCP_NAME: ${{ inputs.mcp_name }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_PIPELINE_RUN_ID: ${{ inputs.pipeline_run_id }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        DOCKERHUB_USERNAME: ${{ env.DOCKERHUB_USERNAME }}
+        DOCKERHUB_TOKEN: ${{ env.DOCKERHUB_TOKEN }}
+      run: |
+        set -euo pipefail
+        pnpm tsx src/publishers/run-publish-docker-hub.ts > result.json
+        printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json >> "$GITHUB_OUTPUT"
+        printf 'EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json
