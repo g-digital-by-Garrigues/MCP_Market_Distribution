@@ -418,3 +418,231 @@ jobs:
               core.notice(`Posted error-report comment on PR #${pr.number}.`);
             }
             core.summary.addRaw(body).write();
+
+  # ---------------------------------------------------------------------
+  # Track A core publishers (Stories 3.2 / 3.3 / 3.4)
+  # ---------------------------------------------------------------------
+
+  publish-npm:
+    name: Publish to npm
+    needs: [setup, track-a-layer-3]
+    if: needs.track-a-layer-3.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      # id-token: write enables the OIDC trusted-publisher path. NPM_TOKEN
+      # still takes precedence when set (Story 3.2's first-publish path).
+      contents: read
+      id-token: write
+    outputs:
+      result_json: ${{ steps.publish.outputs.result_json }}
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Publish via composite action
+        id: publish
+        uses: ./actions/publish-npm
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          version: ${{ needs.setup.outputs.version }}
+          pipeline_run_id: ${{ needs.setup.outputs.pipeline_run_id }}
+          dry_run: ${{ needs.setup.outputs.dry_run }}
+
+  publish-docker-hub:
+    name: Publish to Docker Hub
+    needs: [setup, track-a-layer-3]
+    if: needs.track-a-layer-3.result == 'success'
+    runs-on: ubuntu-latest
+    outputs:
+      result_json: ${{ steps.publish.outputs.result_json }}
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+      DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+      DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Publish via composite action
+        id: publish
+        uses: ./actions/publish-docker-hub
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          version: ${{ needs.setup.outputs.version }}
+          pipeline_run_id: ${{ needs.setup.outputs.pipeline_run_id }}
+          dry_run: ${{ needs.setup.outputs.dry_run }}
+
+  publish-mcp-registry:
+    name: Publish to MCP Official Registry
+    # mcp-registry depends on publish-npm because the registry's package-
+    # ownership verification reads the mcpName field from the npm package.
+    # We need the package to be live first. Use always() so a failed npm
+    # publish doesn't silently skip this — the dependency expresses order,
+    # not blocking semantics, and the conditional below adds the gate.
+    needs: [setup, track-a-layer-3, publish-npm]
+    if: |
+      always()
+      && needs.track-a-layer-3.result == 'success'
+      && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      result_json: ${{ steps.publish.outputs.result_json }}
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Publish via composite action
+        id: publish
+        uses: ./actions/publish-mcp-registry
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          version: ${{ needs.setup.outputs.version }}
+          pipeline_run_id: ${{ needs.setup.outputs.pipeline_run_id }}
+          dry_run: ${{ needs.setup.outputs.dry_run }}
+
+  # ---------------------------------------------------------------------
+  # Story 3.7: final-report job — aggregates Track A publishers,
+  # commits the release report, and upserts the PR comment.
+  # Always runs so partial-publish + full-failure cases still get a report.
+  # ---------------------------------------------------------------------
+
+  final-report:
+    name: Final release report
+    needs: [setup, publish-npm, publish-docker-hub, publish-mcp-registry]
+    if: always() && needs.setup.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write        # commit the markdown report
+      pull-requests: write   # upsert the PR comment
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+      MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+      VERSION: ${{ needs.setup.outputs.version }}
+      WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # We need full history so the commit-and-push step can rebase
+          # against any concurrent commits on main / the PR branch.
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Render release report
+        env:
+          # The result_json output is a JSON object string; we collect them
+          # one per line so the render script can JSON-parse each line.
+          # Use '{"status":"failed",...}' fallback when a publisher job was
+          # skipped (e.g. mcp-registry skipped because publish-npm failed)
+          # so the report still renders a row for it.
+          PUBLISHER_RESULTS_JSON: |
+            ${{ needs.publish-npm.outputs.result_json || format('{{"target":"npm","status":"failed","target_url":"https://example.invalid/skipped/npm","version_published":null,"duration_ms":0,"attempts":0,"dry_run":{0},"error":{{"message":"publish-npm job did not run (skipped or pre-empted by upstream failure).","cause":"Upstream gate or dependency was not successful.","action":"Inspect the workflow run; re-run after fixing the upstream gate."}}}}', needs.setup.outputs.dry_run) }}
+            ${{ needs.publish-docker-hub.outputs.result_json || format('{{"target":"docker-hub","status":"failed","target_url":"https://example.invalid/skipped/docker-hub","version_published":null,"duration_ms":0,"attempts":0,"dry_run":{0},"error":{{"message":"publish-docker-hub job did not run.","cause":"Upstream gate or dependency was not successful.","action":"Inspect the workflow run; re-run after fixing the upstream gate."}}}}', needs.setup.outputs.dry_run) }}
+            ${{ needs.publish-mcp-registry.outputs.result_json || format('{{"target":"mcp-publisher","status":"failed","target_url":"https://example.invalid/skipped/mcp-publisher","version_published":null,"duration_ms":0,"attempts":0,"dry_run":{0},"error":{{"message":"publish-mcp-registry job did not run.","cause":"Upstream npm publish did not succeed.","action":"Re-run /retry-publish?step=mcp-publisher after npm succeeds."}}}}', needs.setup.outputs.dry_run) }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/ci/render-release-report.ts > /dev/null
+
+      - name: Upload release-report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-report-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
+          path: _bmad-output/release-reports/${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}.md
+          if-no-files-found: error
+
+      - name: Commit + push release-report to main
+        # NEVER commit in dry-run mode; the workflow artifact above is the
+        # only output. Same when there is no PR (manual dispatch off main)
+        # but we still want to land the file on main.
+        if: needs.setup.outputs.dry_run != 'true'
+        env:
+          REPORT_PATH: _bmad-output/release-reports/${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}.md
+        run: |
+          set -euo pipefail
+          git config user.name "g-digital-mcp-bot"
+          git config user.email "g-digital-mcp-bot@users.noreply.github.com"
+          git add "$REPORT_PATH"
+          if git diff --staged --quiet; then
+            echo "No changes to release report — nothing to commit."
+            exit 0
+          fi
+          git commit -m "docs(release): ${MCP_NAME} v${VERSION} release report"
+          # Rebase any concurrent commits in case another run landed
+          # something while this one was in flight.
+          git pull --rebase origin "${GITHUB_REF_NAME}" || git pull --rebase origin main
+          git push
+
+      - name: Upsert PR comment with release report
+        if: needs.setup.outputs.dry_run != 'true'
+        uses: actions/github-script@v7
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+          VERSION: ${{ needs.setup.outputs.version }}
+        with:
+          script: |
+            const fs = require('fs');
+            const mcpName = process.env.MCP_NAME;
+            const version = process.env.VERSION;
+            const reportPath = `_bmad-output/release-reports/${mcpName}-v${version}.md`;
+            const body = fs.readFileSync(reportPath, 'utf8');
+            const marker = `<!-- release-report:${mcpName}-v${version} -->`;
+
+            const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              commit_sha: context.sha,
+            });
+            const pr = prs[0];
+            if (!pr) {
+              core.notice('No PR associated with this commit; release report posted only as artifact + main commit.');
+              core.summary.addRaw(body).write();
+              return;
+            }
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: pr.number,
+              per_page: 100,
+            });
+            const existing = comments.find((c) => c.body && c.body.includes(marker));
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.notice(`Updated release-report comment on PR #${pr.number}.`);
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: pr.number,
+                body,
+              });
+              core.notice(`Posted release-report comment on PR #${pr.number}.`);
+            }
+            core.summary.addRaw(body).write();

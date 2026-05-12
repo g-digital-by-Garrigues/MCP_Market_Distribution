@@ -85,4 +85,53 @@ describe('.github/workflows/publish.yml scaffold', () => {
       expect(job!.env!.DRY_RUN, name).toBe('${{ needs.setup.outputs.dry_run }}');
     }
   });
+
+  it('Track A publisher jobs (Stories 3.2/3.3/3.4) gate on track-a-layer-3 success and expose result_json', () => {
+    const publishers = ['publish-npm', 'publish-docker-hub', 'publish-mcp-registry'];
+    for (const name of publishers) {
+      const job = parsed.jobs[name] as unknown as {
+        needs?: string[];
+        if?: string;
+        outputs?: Record<string, string>;
+        steps: Array<Record<string, unknown>>;
+      } | undefined;
+      expect(job, name).toBeDefined();
+      expect(job!.needs, name).toContain('setup');
+      expect(job!.needs, name).toContain('track-a-layer-3');
+      // result_json must be exported so final-report can consume it.
+      expect(job!.outputs?.result_json, name).toBe('${{ steps.publish.outputs.result_json }}');
+      // The composite action is referenced as a relative path.
+      const usesValues = job!.steps
+        .map((s) => (s as { uses?: string }).uses)
+        .filter((u): u is string => typeof u === 'string');
+      expect(usesValues.some((u) => u.startsWith('./actions/publish-')), name).toBe(true);
+    }
+  });
+
+  it('publish-npm and publish-mcp-registry both have id-token: write for OIDC', () => {
+    for (const name of ['publish-npm', 'publish-mcp-registry']) {
+      const job = parsed.jobs[name] as unknown as { permissions?: Record<string, string> } | undefined;
+      expect(job!.permissions?.['id-token'], name).toBe('write');
+    }
+  });
+
+  it('publish-mcp-registry depends on publish-npm so package-ownership verification can read mcpName', () => {
+    const job = parsed.jobs['publish-mcp-registry'] as unknown as { needs: string[] };
+    expect(job.needs).toContain('publish-npm');
+  });
+
+  it('final-report job runs always() and aggregates all 3 Track A publishers', () => {
+    const job = parsed.jobs['final-report'] as unknown as {
+      needs: string[];
+      if?: string;
+      permissions?: Record<string, string>;
+    } | undefined;
+    expect(job).toBeDefined();
+    expect(job!.needs).toEqual(
+      expect.arrayContaining(['setup', 'publish-npm', 'publish-docker-hub', 'publish-mcp-registry']),
+    );
+    expect(job!.if).toContain('always()');
+    expect(job!.permissions?.contents).toBe('write');
+    expect(job!.permissions?.['pull-requests']).toBe('write');
+  });
 });
