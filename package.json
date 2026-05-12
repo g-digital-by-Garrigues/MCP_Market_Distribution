@@ -15,7 +15,8 @@
     "test:watch": "vitest",
     "lint": "eslint src tests",
     "format": "prettier --write \"**/*.{ts,json,yaml,yml,md}\"",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "init-state-branch": "tsx src/setup/init-state-branch.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
