@@ -1,0 +1,47 @@
+{
+  "metadata": {
+    "mcp_name": "ead-factory",
+    "version": "1.0.2",
+    "pipeline_run_id": "12345680-1",
+    "workflow_run_url": "https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution/actions/runs/12345680"
+  },
+  "outputs": [
+    {
+      "target": "npm",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.2",
+      "version_published": "1.0.2",
+      "duration_ms": 18000,
+      "attempts": 1,
+      "dry_run": false
+    },
+    {
+      "target": "cline",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/cline/ead-factory/1.0.2",
+      "version_published": null,
+      "duration_ms": 320000,
+      "attempts": 3,
+      "dry_run": false,
+      "error": {
+        "message": "gh issue create returned 403: HTTP 403: API rate limit exceeded for user",
+        "cause": "GitHub rate limit on bot account.",
+        "action": "Wait for the rate limit reset (~47 minutes) or retry via /retry-publish?step=cline."
+      }
+    },
+    {
+      "target": "mcpso",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/mcpso/ead-factory/1.0.2",
+      "version_published": null,
+      "duration_ms": 320000,
+      "attempts": 3,
+      "dry_run": false,
+      "error": {
+        "message": "gh issue create returned 403: HTTP 403: API rate limit exceeded for user",
+        "cause": "GitHub rate limit on bot account.",
+        "action": "Wait for the rate limit reset (~47 minutes) or retry via /retry-publish?step=mcpso."
+      }
+    }
+  ]
+}

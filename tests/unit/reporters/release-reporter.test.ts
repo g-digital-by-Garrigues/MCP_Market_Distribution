@@ -43,6 +43,16 @@ describe('generateReleaseReport (byte-equality fixtures)', () => {
     expect(generateReleaseReport(input)).toBe(expected);
   });
 
+  it('renders a multi-failed partial release with one Failures subsection per failed target', async () => {
+    const { input, expected } = await loadFixture('multi-failed');
+    expect(generateReleaseReport(input)).toBe(expected);
+  });
+
+  it('renders an all-failed release as ❌ Failed with one Failures subsection per target', async () => {
+    const { input, expected } = await loadFixture('all-failed');
+    expect(generateReleaseReport(input)).toBe(expected);
+  });
+
   it('is deterministic: same input emitted twice produces identical bytes', async () => {
     const { input } = await loadFixture('complete');
     const a = generateReleaseReport(input);

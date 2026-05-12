@@ -108,6 +108,26 @@ export function generateReleaseReport(input: GenerateReleaseReportInput): string
     );
   }
   lines.push('');
+
+  // Story 4.7: failure detail block. We render this for any partial OR
+  // fully-failed release so engineers see the cause + remediation inline
+  // without clicking out to the workflow logs. Each failed row gets a
+  // 4-line subsection matching the AC: Error / Cause / Retry / Manual.
+  const failed = rows.filter((r) => r.status === 'failed');
+  if (failed.length > 0) {
+    lines.push('## Failures');
+    lines.push('');
+    for (const row of failed) {
+      lines.push(`### ${row.target}`);
+      lines.push('');
+      lines.push(`- **Error:** ${row.error?.message ?? '(no error message)'}`);
+      lines.push(`- **Cause:** ${row.error?.cause ?? '(no cause attached)'}`);
+      lines.push(`- **Retry:** \`/retry-publish?step=${row.target}\``);
+      lines.push(`- **Manual:** ${row.error?.action ?? '(no manual remediation attached)'}`);
+      lines.push('');
+    }
+  }
+
   lines.push('## Notes');
   lines.push('');
   lines.push(
