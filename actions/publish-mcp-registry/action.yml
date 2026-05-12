@@ -1,0 +1,83 @@
+name: "Publish to MCP Official Registry"
+description: "Installs the pinned mcp-publisher CLI, exchanges the workflow's GitHub OIDC token for a registry session, validates server.json, and publishes. Emits a PublisherOutputSchema-conforming JSON on result_json."
+
+inputs:
+  mcp_name:
+    description: "Pipeline-internal MCP id (kebab-case). Used to locate pending-to-publish/<mcp_name>/server.json."
+    required: true
+  version:
+    description: "Semver to publish (matches the version_detail.version in server.json)."
+    required: true
+  pipeline_run_id:
+    description: "Run correlation id from the setup job."
+    required: true
+  dry_run:
+    description: "When 'true', runs only `mcp-publisher publish --dry-run` (registry schema validation) and never mutates the registry."
+    required: false
+    default: "false"
+
+outputs:
+  result_json:
+    description: "PublisherOutputSchema-conforming JSON; target_url points at the registry's /v0/servers/<reverse_dns_name> endpoint when status=succeeded."
+    value: ${{ steps.publish.outputs.result_json }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+
+    - name: Install pipeline dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Install mcp-publisher CLI
+      shell: bash
+      # MCP_PUBLISHER_VERSION here must match the constant in
+      # src/publishers/publish-mcp-registry.ts. The CLI is a single Go
+      # binary distributed as a tarball on GitHub Releases.
+      env:
+        MCP_PUBLISHER_VERSION: "1.2.0"
+      run: |
+        set -euo pipefail
+        case "${RUNNER_OS:-Linux}" in
+          Linux)  archive="mcp-publisher_${MCP_PUBLISHER_VERSION}_linux_amd64.tar.gz" ;;
+          macOS)  archive="mcp-publisher_${MCP_PUBLISHER_VERSION}_darwin_amd64.tar.gz" ;;
+          *) echo "Unsupported RUNNER_OS=${RUNNER_OS}" >&2; exit 1 ;;
+        esac
+        url="https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/${archive}"
+        echo "Downloading $url"
+        curl -fsSL "$url" -o "$archive"
+        tar -xzf "$archive" mcp-publisher
+        chmod +x mcp-publisher
+        sudo mv mcp-publisher /usr/local/bin/mcp-publisher
+        mcp-publisher --version
+
+    - name: Publish to MCP Registry
+      id: publish
+      shell: bash
+      env:
+        INPUT_MCP_NAME: ${{ inputs.mcp_name }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_PIPELINE_RUN_ID: ${{ inputs.pipeline_run_id }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        # OIDC token request env vars (set automatically by GH Actions when
+        # `permissions: id-token: write` is on the job). The mcp-publisher
+        # CLI reads them when invoked with `login github-oidc`.
+        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
+        ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+      run: |
+        set -euo pipefail
+        pnpm tsx src/publishers/run-publish-mcp-registry.ts > result.json
+        printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json >> "$GITHUB_OUTPUT"
+        printf 'EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json
