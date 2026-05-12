@@ -1,0 +1,18 @@
+{
+  "mcpServers": {
+    "evidence-manager": {
+      "command": "node",
+      "args": ["/absolute/path/to/evidence-manager-mcp-server/dist/server.js"],
+      "env": {
+        "OKTA_TOKEN_URL": "",
+        "OKTA_CLIENT_ID": "",
+        "OKTA_CLIENT_SECRET": "",
+        "OKTA_SCOPE": "token",
+        "API_BASE_URL": "",
+        "POLL_INTERVAL_MS": "3000",
+        "POLL_MAX_ATTEMPTS": "20"
+      }
+    }
+  },
+  "imports": []
+}
