@@ -1,0 +1,10 @@
+{
+  "tools": [
+{{#each tools}}
+    {
+      "name": "{{name}}",
+      "description": "{{description}}"
+    }{{#unless @last}},{{/unless}}
+{{/each}}
+  ]
+}
