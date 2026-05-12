@@ -69,6 +69,7 @@ jobs:
       version: ${{ steps.resolve.outputs.version }}
       pipeline_run_id: ${{ steps.resolve.outputs.pipeline_run_id }}
       source: ${{ steps.resolve.outputs.source }}
+      dry_run: ${{ steps.resolve.outputs.dry_run }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -96,6 +97,7 @@ jobs:
           GH_RUN_ATTEMPT: ${{ github.run_attempt }}
           INPUT_MCP_NAME: ${{ inputs.mcp_name }}
           INPUT_VERSION: ${{ inputs.version }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
         run: |
           set -euo pipefail
           pnpm tsx src/ci/resolve-workflow-context.ts > resolved.json
@@ -103,10 +105,18 @@ jobs:
           version=$(node -p "JSON.parse(require('fs').readFileSync('resolved.json','utf8')).version")
           pipeline_run_id=$(node -p "JSON.parse(require('fs').readFileSync('resolved.json','utf8')).pipeline_run_id")
           source=$(node -p "JSON.parse(require('fs').readFileSync('resolved.json','utf8')).source")
+          # Tag pushes never carry a dry_run input; fall back to "false" so
+          # downstream publishers can treat this output as a stable boolean.
+          dry_run_raw="${INPUT_DRY_RUN:-false}"
+          case "$(printf '%s' "$dry_run_raw" | tr '[:upper:]' '[:lower:]')" in
+            true|1|yes) dry_run=true ;;
+            *) dry_run=false ;;
+          esac
           echo "mcp_name=$mcp_name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "pipeline_run_id=$pipeline_run_id" >> "$GITHUB_OUTPUT"
           echo "source=$source" >> "$GITHUB_OUTPUT"
+          echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
           {
             echo "## Resolved context"
             echo "- mcp_name: \`$mcp_name\`"
@@ -148,6 +158,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -186,6 +197,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -235,6 +247,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
       DOCKER_BUILDKIT: '1'
     steps:
       - name: Checkout
@@ -285,6 +298,7 @@ jobs:
       pull-requests: write
     env:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

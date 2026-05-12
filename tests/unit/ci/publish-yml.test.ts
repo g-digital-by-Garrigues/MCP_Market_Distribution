@@ -66,13 +66,23 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(stepFlat).toContain('pnpm run test');
   });
 
-  it('exports pipeline_run_id, mcp_name, version, source as job outputs', () => {
+  it('exports pipeline_run_id, mcp_name, version, source, dry_run as job outputs', () => {
     const setup = parsed.jobs.setup as unknown as {
       outputs: Record<string, string>;
     } | undefined;
     expect(setup).toBeDefined();
     expect(Object.keys(setup!.outputs).sort()).toEqual(
-      ['mcp_name', 'pipeline_run_id', 'source', 'version'],
+      ['dry_run', 'mcp_name', 'pipeline_run_id', 'source', 'version'],
     );
+  });
+
+  it('propagates DRY_RUN env to every Track A gate job and to gate-failure-summary', () => {
+    const consumers = ['track-a-layer-1', 'track-a-layer-2', 'track-a-layer-3', 'gate-failure-summary'];
+    for (const name of consumers) {
+      const job = parsed.jobs[name] as unknown as { env?: Record<string, string> } | undefined;
+      expect(job, name).toBeDefined();
+      expect(job!.env, name).toBeDefined();
+      expect(job!.env!.DRY_RUN, name).toBe('${{ needs.setup.outputs.dry_run }}');
+    }
   });
 });
