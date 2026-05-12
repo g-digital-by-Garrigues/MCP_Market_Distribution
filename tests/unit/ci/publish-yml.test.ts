@@ -120,7 +120,20 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(job.needs).toContain('publish-npm');
   });
 
-  it('final-report job runs always() and aggregates all 3 Track A publishers', () => {
+  it('Epic 4 publisher jobs (smithery, docker-mcp-catalog, cline, mcpso) exist with result_json outputs', () => {
+    for (const name of ['publish-smithery', 'publish-docker-mcp-catalog', 'publish-cline', 'publish-mcpso']) {
+      const job = parsed.jobs[name] as unknown as {
+        needs?: string[];
+        outputs?: Record<string, string>;
+      } | undefined;
+      expect(job, name).toBeDefined();
+      expect(job!.needs, name).toContain('setup');
+      expect(job!.needs, name).toContain('track-a-layer-3');
+      expect(job!.outputs?.result_json, name).toBe('${{ steps.publish.outputs.result_json }}');
+    }
+  });
+
+  it('final-report job runs always() and aggregates all 7 Track A publishers', () => {
     const job = parsed.jobs['final-report'] as unknown as {
       needs: string[];
       if?: string;
@@ -128,7 +141,16 @@ describe('.github/workflows/publish.yml scaffold', () => {
     } | undefined;
     expect(job).toBeDefined();
     expect(job!.needs).toEqual(
-      expect.arrayContaining(['setup', 'publish-npm', 'publish-docker-hub', 'publish-mcp-registry']),
+      expect.arrayContaining([
+        'setup',
+        'publish-npm',
+        'publish-docker-hub',
+        'publish-mcp-registry',
+        'publish-smithery',
+        'publish-docker-mcp-catalog',
+        'publish-cline',
+        'publish-mcpso',
+      ]),
     );
     expect(job!.if).toContain('always()');
     expect(job!.permissions?.contents).toBe('write');
