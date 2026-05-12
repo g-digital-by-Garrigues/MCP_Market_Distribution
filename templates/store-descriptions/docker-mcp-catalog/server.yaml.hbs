@@ -1,0 +1,19 @@
+name: {{mcp_name}}
+description: {{description}}
+image: {{docker_image_name}}:{{version}}
+about:
+  homepage: https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution
+  publisher: g-digital by Garrigues
+  license: {{license}}
+source:
+  repository: https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution
+  directory: pending-to-publish/{{mcp_name}}
+config:
+  description: |
+    Consumer credentials are required to run this MCP. See README for setup.
+  env:
+{{#each environment_variables}}
+    - name: {{name}}
+      example: {{example}}
+      description: {{description}}
+{{/each}}
