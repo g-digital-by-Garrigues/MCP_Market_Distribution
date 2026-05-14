@@ -352,6 +352,33 @@ export async function publishMcpRegistry(
   // Real publish.
   const publishResult = await exec('mcp-publisher', ['publish'], { cwd: input.package_dir });
   if (publishResult.exitCode !== 0) {
+    // Idempotency: the registry returns 400 with "cannot publish duplicate
+    // version" when this exact (name, version) tuple is already in its
+    // database. The probe at the top of the function only checks the
+    // LATEST version in version_detail — if v1.0.1 was published earlier
+    // but a higher version became "latest" since, or if the probe missed
+    // it for any reason (race, cached response, etc.), we'd land here.
+    // Treat this as 'skipped' instead of 'failed' so a re-run of a
+    // partially-failed release doesn't flip the report to red just
+    // because mcp-publisher had nothing to do this time.
+    if (isDuplicateVersionError(publishResult.stderr)) {
+      const duration = now() - started;
+      log.info('target.publish_skipped', {
+        ...baseEvent,
+        reason: 'version_already_in_registry',
+        stderr_excerpt: publishResult.stderr.trim().slice(0, 400),
+      });
+      return validate({
+        target: 'mcp-publisher',
+        status: 'skipped',
+        target_url: registryUrl(reverseDnsName),
+        version_published: input.version,
+        duration_ms: duration,
+        attempts: probe.attempts + 2,
+        dry_run: isDryRun,
+      });
+    }
+
     const duration = now() - started;
     process.stderr.write(
       `[mcp-publisher publish] exit ${publishResult.exitCode}\n--- stdout ---\n${publishResult.stdout}\n--- stderr ---\n${publishResult.stderr}\n--- end ---\n`,
@@ -393,6 +420,19 @@ export async function publishMcpRegistry(
     dry_run: false,
     metadata: { reverse_dns_name: reverseDnsName, cli_version: MCP_PUBLISHER_VERSION },
   });
+}
+
+// Detects the registry's "this exact version is already published" error,
+// which mcp-publisher v1.7.x surfaces as a 400 with body
+// {"errors":[{"message":"invalid version: cannot publish duplicate version"}]}.
+// We also accept the older 409 + "version already published" wording in case
+// the registry tightens or relaxes the contract.
+function isDuplicateVersionError(stderr: string): boolean {
+  return (
+    /cannot publish duplicate version/i.test(stderr) ||
+    /version.*already published/i.test(stderr) ||
+    /status:?\s*409/i.test(stderr)
+  );
 }
 
 function classifyRegistryFailure(stderr: string): string {

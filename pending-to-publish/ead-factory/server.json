@@ -83,12 +83,12 @@
       "transport": {
         "type": "stdio"
       },
-      "version": "1.0.1"
+      "version": "1.0.2"
     }
   ],
   "repository": {
     "source": "github",
     "url": "https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution"
   },
-  "version": "1.0.1"
+  "version": "1.0.2"
 }
