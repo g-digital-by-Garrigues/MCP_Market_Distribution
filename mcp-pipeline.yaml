@@ -37,6 +37,14 @@ mcps:
     # Track A targets — must include all 7 v1 stores or use 'default' for full coverage
     track_a_targets: default
 
+    # Targets the pipeline must SKIP for this MCP. Smithery is deferred
+    # to v1.1 — Smithery's 2026 model (MCPB bundles or self-hosted URL)
+    # requires pipeline work not yet implemented (see
+    # memory/smithery-mcpb-deferred.md for the plan). Remove 'smithery'
+    # from this list once the MCPB generator/publisher lands.
+    skip_targets:
+      - smithery
+
     # Track B targets
     track_b_targets:
       - n8n
