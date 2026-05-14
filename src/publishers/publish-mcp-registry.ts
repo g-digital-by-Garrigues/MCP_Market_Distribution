@@ -238,7 +238,21 @@ export async function publishMcpRegistry(
   const loginResult = await exec('mcp-publisher', ['login', 'github-oidc'], { cwd: input.package_dir });
   if (loginResult.exitCode !== 0) {
     const duration = now() - started;
-    log.error('target.publish_failed', { ...baseEvent, reason: 'oidc_login_failed' });
+    // Surface the CLI's raw stdout + stderr to OUR stderr so the workflow
+    // log shows the exact failure reason inline. Without this, the only
+    // signal is the orchestrator's structured event with `reason:
+    // 'oidc_login_failed'` — the CLI's actual error message gets buried
+    // inside the PublisherOutput JSON that bash echoes at the very end of
+    // the step, and engineers have to scroll/grep to find it.
+    process.stderr.write(
+      `[mcp-publisher login github-oidc] exit ${loginResult.exitCode}\n--- stdout ---\n${loginResult.stdout}\n--- stderr ---\n${loginResult.stderr}\n--- end ---\n`,
+    );
+    log.error('target.publish_failed', {
+      ...baseEvent,
+      reason: 'oidc_login_failed',
+      exit_code: loginResult.exitCode,
+      stderr_excerpt: loginResult.stderr.trim().slice(0, 400),
+    });
     return validate({
       target: 'mcp-publisher',
       status: 'failed',
