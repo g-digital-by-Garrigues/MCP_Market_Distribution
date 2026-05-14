@@ -533,12 +533,20 @@ jobs:
     # We need the package to be live first. Use always() so a failed npm
     # publish doesn't silently skip this — the dependency expresses order,
     # not blocking semantics, and the conditional below adds the gate.
+    #
+    # The `result == 'skipped'` branch handles the retry-only case (e.g.
+    # /retry-publish?step=mcp-publisher) where publish-npm is skipped
+    # because the ledger says npm already succeeded for this version.
+    # Without this branch, the `contains(result_json, succeeded)` check
+    # would treat that as "npm failed" (because result_json is empty and
+    # falls back to '{"status":"failed"}') and skip mcp-registry too.
     needs: [setup, ledger-read, track-a-layer-3, publish-npm]
     if: |
       always()
       && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_mcp_publisher == 'true'
-      && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+      && (needs.publish-npm.result == 'skipped'
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -596,12 +604,17 @@ jobs:
     # the npm package and the issue body uses unpkg.com URLs (logo,
     # install command). Those URLs don't resolve until the npm package
     # is actually published.
+    #
+    # The `result == 'skipped'` branch covers retry-only dispatches where
+    # publish-npm is skipped because the ledger already records it as
+    # succeeded for this version (run #25869794563 retry — caught us).
     needs: [setup, ledger-read, track-a-layer-3, publish-npm]
     if: |
       always()
       && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_docker_mcp_catalog == 'true'
-      && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+      && (needs.publish-npm.result == 'skipped'
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -625,12 +638,16 @@ jobs:
     name: Publish to Cline Marketplace
     # Depends on publish-npm so the unpkg.com logo URL in the issue body
     # actually resolves when Cline maintainers review.
+    #
+    # The `result == 'skipped'` branch covers retry-only dispatches (see
+    # publish-mcp-registry above).
     needs: [setup, ledger-read, track-a-layer-3, publish-npm]
     if: |
       always()
       && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_cline == 'true'
-      && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+      && (needs.publish-npm.result == 'skipped'
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -654,12 +671,16 @@ jobs:
     name: Publish to mcp.so
     # Depends on publish-npm so the unpkg.com logo URL in the issue body
     # actually resolves when mcp.so maintainers review.
+    #
+    # The `result == 'skipped'` branch covers retry-only dispatches (see
+    # publish-mcp-registry above).
     needs: [setup, ledger-read, track-a-layer-3, publish-npm]
     if: |
       always()
       && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_mcpso == 'true'
-      && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+      && (needs.publish-npm.result == 'skipped'
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
