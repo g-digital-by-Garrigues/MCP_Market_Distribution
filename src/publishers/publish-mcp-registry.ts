@@ -40,7 +40,12 @@ import {
 // We pin the mcp-publisher CLI version to keep CI deterministic; bumping
 // is a deliberate change to MCP_PUBLISHER_VERSION below.
 
-export const MCP_PUBLISHER_VERSION = '1.2.0';
+// Bumped 2026-05-14 from 1.2.0 → 1.7.9 to fix OIDC audience mismatch:
+// the registry server (v1.7.6+) requires the JWT audience to be
+// `https://registry.modelcontextprotocol.io`, but mcp-publisher v1.2.0
+// hardcoded `mcp-registry` and got a 401 'invalid audience' on every
+// `login github-oidc` call. v1.7.x ships the matching client audience.
+export const MCP_PUBLISHER_VERSION = '1.7.9';
 
 export interface PublishMcpRegistryInput {
   readonly mcp_name: string;

@@ -45,7 +45,7 @@ runs:
       # src/publishers/publish-mcp-registry.ts. The CLI is a single Go
       # binary distributed as a tarball on GitHub Releases.
       env:
-        MCP_PUBLISHER_VERSION: "1.2.0"
+        MCP_PUBLISHER_VERSION: "1.7.9"
       run: |
         set -euo pipefail
         case "${RUNNER_OS:-Linux}" in
