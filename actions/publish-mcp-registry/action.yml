@@ -69,11 +69,17 @@ runs:
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_PIPELINE_RUN_ID: ${{ inputs.pipeline_run_id }}
         INPUT_DRY_RUN: ${{ inputs.dry_run }}
-        # OIDC token request env vars (set automatically by GH Actions when
-        # `permissions: id-token: write` is on the job). The mcp-publisher
-        # CLI reads them when invoked with `login github-oidc`.
-        ACTIONS_ID_TOKEN_REQUEST_TOKEN: ${{ env.ACTIONS_ID_TOKEN_REQUEST_TOKEN }}
-        ACTIONS_ID_TOKEN_REQUEST_URL: ${{ env.ACTIONS_ID_TOKEN_REQUEST_URL }}
+        # IMPORTANT: do NOT re-export ACTIONS_ID_TOKEN_REQUEST_TOKEN /
+        # ACTIONS_ID_TOKEN_REQUEST_URL via `${{ env.X }}` here. The runner
+        # auto-injects them into process.env of every step in a job that
+        # declares `permissions: id-token: write`. Re-exporting via
+        # `${{ env.X }}` reads the JOB-context env (which does NOT contain
+        # them — they're step-level runtime-injected) and ends up writing
+        # empty strings, overwriting the auto-set values. That's exactly
+        # what made `mcp-publisher login github-oidc` fail in dry-run
+        # #25856276479 with reason: 'oidc_login_failed'. The CLI binary
+        # reads them directly from os.Getenv; the step inherits them
+        # automatically.
       run: |
         set -uo pipefail
         pnpm tsx src/publishers/run-publish-mcp-registry.ts > result.json
