@@ -55,6 +55,12 @@ export const mcpEntrySchema = z
     target_overrides: targetOverridesSchema,
     track_a_targets: trackATargetsSchema.optional(),
     track_b_targets: trackBTargetsSchema.optional(),
+    // Per-MCP list of target ids the pipeline should NOT publish to.
+    // Used to defer a store whose contract the pipeline doesn't yet
+    // satisfy (e.g. Smithery's 2026 model requires MCPB bundles or
+    // self-hosted URL — neither of which v1.0 implements). Items must
+    // match canonical target ids from src/schemas/target-ids.ts.
+    skip_targets: z.array(z.string().min(1)).optional(),
     logo_path: z.string().min(1).optional(),
     bundled_skills: z.array(z.string().min(1)).optional(),
     git_tag_prefix: z

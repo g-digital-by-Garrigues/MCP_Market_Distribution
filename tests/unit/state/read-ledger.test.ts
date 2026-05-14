@@ -94,7 +94,11 @@ describe('read-ledger CLI', () => {
     // which the script interpreted as filter=['all'] and produced
     // run_*=false for every real target.
     const r = await runScript({
-      MCP_NAME: 'ead-factory',
+      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
+      // skip_targets (which excludes smithery for ead-factory) doesn't
+      // interfere with these tests' expectations. The skip_targets
+      // behavior is exercised by its own dedicated test below.
+      MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: 'all',
@@ -108,7 +112,11 @@ describe('read-ledger CLI', () => {
 
   it('empty step + empty track → ALL run_*=true', async () => {
     const r = await runScript({
-      MCP_NAME: 'ead-factory',
+      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
+      // skip_targets (which excludes smithery for ead-factory) doesn't
+      // interfere with these tests' expectations. The skip_targets
+      // behavior is exercised by its own dedicated test below.
+      MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: '',
@@ -121,7 +129,11 @@ describe('read-ledger CLI', () => {
 
   it('step="gate" → ALL run_*=false (gate-only run, no publishers)', async () => {
     const r = await runScript({
-      MCP_NAME: 'ead-factory',
+      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
+      // skip_targets (which excludes smithery for ead-factory) doesn't
+      // interfere with these tests' expectations. The skip_targets
+      // behavior is exercised by its own dedicated test below.
+      MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: 'gate',
@@ -134,7 +146,11 @@ describe('read-ledger CLI', () => {
 
   it('step="cline" (single-target retry) → only run_cline=true', async () => {
     const r = await runScript({
-      MCP_NAME: 'ead-factory',
+      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
+      // skip_targets (which excludes smithery for ead-factory) doesn't
+      // interfere with these tests' expectations. The skip_targets
+      // behavior is exercised by its own dedicated test below.
+      MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: 'cline',
@@ -148,7 +164,11 @@ describe('read-ledger CLI', () => {
 
   it('track="a" + empty step → only Track A run_*=true', async () => {
     const r = await runScript({
-      MCP_NAME: 'ead-factory',
+      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
+      // skip_targets (which excludes smithery for ead-factory) doesn't
+      // interfere with these tests' expectations. The skip_targets
+      // behavior is exercised by its own dedicated test below.
+      MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: '',
@@ -158,5 +178,43 @@ describe('read-ledger CLI', () => {
     for (const flag of trackA) expect(r.outputs[flag], flag).toBe('true');
     expect(r.outputs.run_n8n).toBe('false');
     expect(r.outputs.run_make_rom).toBe('false');
+  }, 30_000);
+
+  it('skip_targets: ead-factory excludes smithery (per mcp-pipeline.yaml) even with no retry filter', async () => {
+    // mcp-pipeline.yaml has skip_targets: [smithery] for ead-factory
+    // because Smithery's 2026 model requires MCPB bundles (deferred to
+    // v1.1). The script must honor that — run_smithery=false even
+    // though all other targets in Track A should run.
+    const r = await runScript({
+      MCP_NAME: 'ead-factory',
+      VERSION: '1.0.0',
+      PIPELINE_RUN_ID: 'run-1',
+      RETRY_STEP: '',
+      RETRY_TRACK: '',
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.outputs.run_smithery).toBe('false');
+    // The other 6 Track A targets are unaffected.
+    expect(r.outputs.run_npm).toBe('true');
+    expect(r.outputs.run_docker_hub).toBe('true');
+    expect(r.outputs.run_mcp_publisher).toBe('true');
+    expect(r.outputs.run_docker_mcp_catalog).toBe('true');
+    expect(r.outputs.run_cline).toBe('true');
+    expect(r.outputs.run_mcpso).toBe('true');
+  }, 30_000);
+
+  it('skip_targets overrides an explicit retry step (engineer cannot bypass)', async () => {
+    // Even if someone dispatches /retry-publish?step=smithery, the
+    // skip_targets entry must win — the pipeline currently has no
+    // working publisher for smithery in this MCP. run_smithery=false.
+    const r = await runScript({
+      MCP_NAME: 'ead-factory',
+      VERSION: '1.0.0',
+      PIPELINE_RUN_ID: 'run-1',
+      RETRY_STEP: 'smithery',
+      RETRY_TRACK: 'both',
+    });
+    expect(r.exitCode).toBe(0);
+    expect(r.outputs.run_smithery).toBe('false');
   }, 30_000);
 });
