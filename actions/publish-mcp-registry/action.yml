@@ -48,9 +48,14 @@ runs:
         MCP_PUBLISHER_VERSION: "1.7.9"
       run: |
         set -euo pipefail
+        # Asset naming changed at v1.7.x: the version is no longer in the
+        # filename, only in the URL path. Old (v1.2.0):
+        #   mcp-publisher_1.2.0_linux_amd64.tar.gz
+        # New (v1.7.x):
+        #   mcp-publisher_linux_amd64.tar.gz
         case "${RUNNER_OS:-Linux}" in
-          Linux)  archive="mcp-publisher_${MCP_PUBLISHER_VERSION}_linux_amd64.tar.gz" ;;
-          macOS)  archive="mcp-publisher_${MCP_PUBLISHER_VERSION}_darwin_amd64.tar.gz" ;;
+          Linux)  archive="mcp-publisher_linux_amd64.tar.gz" ;;
+          macOS)  archive="mcp-publisher_darwin_amd64.tar.gz" ;;
           *) echo "Unsupported RUNNER_OS=${RUNNER_OS}" >&2; exit 1 ;;
         esac
         url="https://github.com/modelcontextprotocol/registry/releases/download/v${MCP_PUBLISHER_VERSION}/${archive}"
