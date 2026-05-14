@@ -277,9 +277,18 @@ export async function publishDockerHub(
   // auth before the build even starts. Without the cache the dry-run
   // builds from scratch — that's the right trade-off for verifying the
   // Dockerfile without touching the registry.
+  // Platform list: full multi-arch (amd64 + arm64) for real publish; only
+  // amd64 in dry-run. arm64 is cross-compiled via QEMU on a stock GH
+  // runner (10-20x slower than native), which doubles dry-run time from
+  // ~1 min to ~5-10 min without adding diagnostic value — a Dockerfile
+  // that builds on amd64 is overwhelmingly likely to build on arm64 too
+  // (the arch-specific failure modes are rare and not what dry-run is
+  // for). Real publishes still build both arches because we WANT the
+  // arm64 image on Docker Hub.
+  const platforms = isDryRun ? 'linux/amd64' : 'linux/amd64,linux/arm64';
   const buildArgs: string[] = [
     'buildx', 'build',
-    '--platform', 'linux/amd64,linux/arm64',
+    '--platform', platforms,
     '--tag', versionedTag,
     '--tag', latestTag,
   ];
