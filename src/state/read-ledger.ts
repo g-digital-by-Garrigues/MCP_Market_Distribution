@@ -103,9 +103,19 @@ async function main(): Promise<number> {
 
   const ledger = parseLedger(ledgerJson);
 
-  // Compute the filter set based on the retry hint (if any).
+  // Interpret RETRY_STEP / RETRY_TRACK. The workflow passes them raw,
+  // including phase keywords ('gate', 'publish', 'all') and track value
+  // 'both'. Doing the interpretation here (instead of in the YAML
+  // expression) sidesteps the GH Actions footgun where `a && '' || b`
+  // evaluates to `b` because '' is falsy (caught in run 25853475366,
+  // where every target ended up skipped because filter=['all']).
+  const PHASE_KEYWORDS = new Set(['gate', 'publish', 'all']);
   let filter: readonly string[] | undefined;
-  if (retryStep) {
+  if (retryStep === 'gate') {
+    // gate-only run → no publishers should fire
+    filter = [];
+  } else if (retryStep && !PHASE_KEYWORDS.has(retryStep)) {
+    // retryStep is an explicit target id (npm / cline / ...)
     filter = [retryStep];
   } else if (retryTrack === 'a') {
     filter = TRACK_A_TARGET_IDS;

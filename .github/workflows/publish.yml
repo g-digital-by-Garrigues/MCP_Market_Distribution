@@ -152,13 +152,13 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
       VERSION: ${{ needs.setup.outputs.version }}
-      # When dispatched via /retry-publish?step=<id>, the dispatcher sets
-      # inputs.step to the target id (npm/cline/etc.). When it's one of
-      # the phase keywords ('gate'/'publish'/'all') we treat it as
-      # "all targets eligible" — the ledger still filters the already-
-      # succeeded ones. RETRY_STEP only carries the target-id case.
-      RETRY_STEP: ${{ contains(fromJson('["gate","publish","all",""]'), inputs.step) && '' || inputs.step }}
-      RETRY_TRACK: ${{ inputs.track == 'both' && '' || inputs.track }}
+      # Pass the raw inputs.step / inputs.track through. The read-ledger
+      # script interprets phase keywords ('gate'/'publish'/'all'/'') and
+      # the 'both' track value — doing the conditional in YAML hit the
+      # GH Actions expression footgun where `a && '' || b` evaluates to
+      # `b` because '' is falsy (caught in dry-run run 25853475366).
+      RETRY_STEP: ${{ inputs.step }}
+      RETRY_TRACK: ${{ inputs.track }}
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
       - name: Checkout
