@@ -9,7 +9,7 @@
     "express": "^5.2.1",
     "zod": "^3.24.2"
   },
-  "description": "EAD Factory MCP — digital evidence creation via Evidence + Signature Manager APIs",
+  "description": "EAD Factory MCP — Digital Trust services APIs for your agents",
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^22.13.5",

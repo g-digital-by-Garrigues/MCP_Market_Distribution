@@ -113,6 +113,19 @@ async function loadEntry(repoRoot: string, mcpName: string): Promise<McpEntry> {
   return entry;
 }
 
+async function readPackageDescription(packageDir: string, mcpName: string): Promise<string> {
+  try {
+    const raw = await fs.readFile(path.join(packageDir, 'package.json'), 'utf8');
+    const pkg = JSON.parse(raw) as { description?: unknown };
+    if (typeof pkg.description === 'string' && pkg.description.trim().length > 0) {
+      return pkg.description.trim();
+    }
+  } catch {
+    // Fall through to the generic fallback.
+  }
+  return `${mcpName} MCP server — published from g-digital by Garrigues`;
+}
+
 async function readEnvVars(packageDir: string): Promise<Array<{ name: string; description: string }>> {
   try {
     const raw = await fs.readFile(path.join(packageDir, '.env.example'), 'utf8');
@@ -217,12 +230,17 @@ export async function fileMarketplaceIssue(
   );
   const packageDir = path.join(input.repo_root, 'pending-to-publish', input.mcp_name);
   const envVars = await readEnvVars(packageDir);
+  // Read the canonical description from package.json#description so the
+  // marketplace body matches what npm and the MCP Registry show. Falls
+  // back to a generic line if package.json isn't readable (shouldn't
+  // normally happen — Layer 1 enforces its presence).
+  const description = await readPackageDescription(packageDir, input.mcp_name);
   const repoUrl = 'https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution';
   const logoUrl = `${repoUrl}/raw/main/pending-to-publish/${input.mcp_name}/${entry.logo_path}`;
   const body = Handlebars.compile(tpl, { noEscape: true })({
     mcp_name: input.mcp_name,
     version: input.version,
-    description: `${input.mcp_name} MCP server — published from g-digital by Garrigues`,
+    description,
     npm_package_name: entry.npm_package_name,
     docker_image_name: entry.docker_image_name,
     license: entry.license,
