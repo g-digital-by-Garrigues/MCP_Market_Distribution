@@ -28,4 +28,33 @@ async function main(): Promise<number> {
   return output.status === 'failed' ? 1 : 0;
 }
 
-void main().then((code) => process.exit(code));
+main()
+  .then((code) => process.exit(code))
+  .catch((err: unknown) => {
+    // Without this catch the script exited 1 with only the publish_started
+    // log line in result.json — the runner-yaml then has nothing to surface,
+    // so final-report falls back to the generic "did not run" message and
+    // the engineer is left blind. Print the stack to stderr (captured by
+    // GH Actions) AND emit a failedOutput-shaped JSON to stdout so the
+    // composite action's `> result.json` redirect still produces something
+    // the PublisherOutputSchema can parse.
+    const stack = err instanceof Error ? err.stack ?? err.message : String(err);
+    const message = err instanceof Error ? err.message : String(err);
+    process.stderr.write(`${stack}\n`);
+    const failed = {
+      target: 'docker-mcp-catalog',
+      status: 'failed' as const,
+      target_url: 'https://example.invalid/crashed/docker-mcp-catalog',
+      version_published: null,
+      duration_ms: 0,
+      attempts: 1,
+      dry_run: process.env.INPUT_DRY_RUN === 'true',
+      error: {
+        message: `Publisher crashed before writing result.json: ${message}`,
+        cause: 'Unhandled rejection in publishDockerMcpCatalog. See stderr above for the stack trace.',
+        action: 'Inspect the workflow log for the stack trace and fix the failing await.',
+      },
+    };
+    process.stdout.write(JSON.stringify(failed) + '\n');
+    process.exit(1);
+  });
