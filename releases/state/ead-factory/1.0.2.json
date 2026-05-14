@@ -1,7 +1,7 @@
 {
   "mcp_name": "ead-factory",
   "started_at": "2026-05-14T15:52:17.691Z",
-  "status": "partial",
+  "status": "complete",
   "targets": {
     "cline": {
       "attempts": [
@@ -95,12 +95,20 @@
           "pipeline_run_id": "25869794563-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/docker-mcp-catalog/ead-factory/1.0.2"
+        },
+        {
+          "at": "2026-05-14T16:16:12.426Z",
+          "attempt": 4,
+          "duration_ms": 7589,
+          "pipeline_run_id": "25871154972-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/docker/mcp-registry/pull/3511"
         }
       ],
-      "last_attempt_at": "2026-05-14T15:58:06.199Z",
-      "status": "failed",
-      "target_url": "https://example.invalid/dry-run/docker-mcp-catalog/ead-factory/1.0.2",
-      "version_published": null
+      "last_attempt_at": "2026-05-14T16:16:12.426Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/3511",
+      "version_published": "1.0.2"
     },
     "mcp-publisher": {
       "attempts": [
@@ -199,6 +207,6 @@
       "version_published": "1.0.2"
     }
   },
-  "updated_at": "2026-05-14T16:07:43.844Z",
+  "updated_at": "2026-05-14T16:16:12.426Z",
   "version": "1.0.2"
 }
