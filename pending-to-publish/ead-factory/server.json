@@ -1,6 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "description": "MCP server for creating digital evidences via the Evidence Manager + Signature Manager APIs (EAD Factory).",
+  "description": "EAD Factory MCP — digital evidence creation via Evidence + Signature Manager APIs",
   "name": "io.github.g-digital-by-Garrigues/ead-factory",
   "packages": [
     {
