@@ -53,6 +53,11 @@ describe('generateReleaseReport (byte-equality fixtures)', () => {
     expect(generateReleaseReport(input)).toBe(expected);
   });
 
+  it('renders 6-succeeded + 1-skipped as ✅ Complete (skipped does NOT degrade status to Partial)', async () => {
+    const { input, expected } = await loadFixture('one-skipped');
+    expect(generateReleaseReport(input)).toBe(expected);
+  });
+
   it('is deterministic: same input emitted twice produces identical bytes', async () => {
     const { input } = await loadFixture('complete');
     const a = generateReleaseReport(input);

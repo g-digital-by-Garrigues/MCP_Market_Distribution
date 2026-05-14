@@ -1,0 +1,73 @@
+{
+  "metadata": {
+    "mcp_name": "ead-factory",
+    "version": "1.0.0",
+    "pipeline_run_id": "12345682-1",
+    "workflow_run_url": "https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution/actions/runs/12345682"
+  },
+  "outputs": [
+    {
+      "target": "npm",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.0",
+      "version_published": "1.0.0",
+      "duration_ms": 18000,
+      "attempts": 1,
+      "dry_run": false
+    },
+    {
+      "target": "docker-hub",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/ead-factory",
+      "version_published": "1.0.0",
+      "duration_ms": 165000,
+      "attempts": 2,
+      "dry_run": false
+    },
+    {
+      "target": "mcp-publisher",
+      "status": "succeeded",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory",
+      "version_published": "1.0.0",
+      "duration_ms": 4500,
+      "attempts": 3,
+      "dry_run": false
+    },
+    {
+      "target": "docker-mcp-catalog",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/901",
+      "version_published": "1.0.0",
+      "duration_ms": 22000,
+      "attempts": 1,
+      "dry_run": false
+    },
+    {
+      "target": "cline",
+      "status": "succeeded",
+      "target_url": "https://github.com/cline/mcp-marketplace/issues/512",
+      "version_published": "1.0.0",
+      "duration_ms": 3100,
+      "attempts": 1,
+      "dry_run": false
+    },
+    {
+      "target": "mcpso",
+      "status": "succeeded",
+      "target_url": "https://github.com/chatmcp/mcp-directory/issues/189",
+      "version_published": "1.0.0",
+      "duration_ms": 2900,
+      "attempts": 1,
+      "dry_run": false
+    },
+    {
+      "target": "smithery",
+      "status": "skipped",
+      "target_url": "https://example.invalid/skipped/smithery",
+      "version_published": null,
+      "duration_ms": 0,
+      "attempts": 1,
+      "dry_run": false
+    }
+  ]
+}
