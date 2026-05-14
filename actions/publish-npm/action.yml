@@ -40,6 +40,27 @@ runs:
       shell: bash
       run: pnpm install --frozen-lockfile
 
+    - name: Install + build the MCP source
+      # Layer 2 of the gate ALREADY ran `npm install && npm run build` in
+      # pending-to-publish/<mcp_name>/ — but that's a separate job and
+      # GH Actions runners don't share state across jobs. We need to
+      # rebuild dist/ here so `npm publish` ships it. Without this step,
+      # the tarball is missing dist/server.js → consumers `npx -y` and
+      # see 'MCP error -32000: Connection closed' (caught in v1.0.0
+      # which had to be patched in v1.0.1). The MCP's own .gitignore
+      # has dist/ in it, which is correct — build output should never
+      # be in git.
+      shell: bash
+      working-directory: pending-to-publish/${{ inputs.mcp_name }}
+      run: |
+        set -euo pipefail
+        if [ -f package-lock.json ]; then
+          npm ci --no-audit --no-fund
+        else
+          npm install --no-audit --no-fund
+        fi
+        npm run build
+
     - name: Publish to npm
       id: publish
       shell: bash
