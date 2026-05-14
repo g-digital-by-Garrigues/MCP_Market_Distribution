@@ -220,7 +220,19 @@ export async function publishDockerMcpCatalog(
   const packageDir = path.join(input.repo_root, 'pending-to-publish', input.mcp_name);
   const envVars = await readEnvironmentVariables(packageDir);
 
-  const description = `${input.mcp_name} MCP server — published from g-digital-by-Garrigues/MCP_Market_Distribution.`;
+  // Read the canonical description from package.json#description so the
+  // catalog server.yaml matches what npm + MCP Registry show. Falls
+  // back to a generic line if package.json isn't readable.
+  let description = `${input.mcp_name} MCP server — published from g-digital-by-Garrigues/MCP_Market_Distribution.`;
+  try {
+    const pkgRaw = await fs.readFile(path.join(packageDir, 'package.json'), 'utf8');
+    const pkg = JSON.parse(pkgRaw) as { description?: unknown };
+    if (typeof pkg.description === 'string' && pkg.description.trim().length > 0) {
+      description = pkg.description.trim();
+    }
+  } catch {
+    // Keep the generic fallback.
+  }
   const data = {
     mcp_name: input.mcp_name,
     version: input.version,
