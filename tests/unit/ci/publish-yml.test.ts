@@ -134,6 +134,17 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(job.needs).toContain('publish-npm');
   });
 
+  it('marketplace publishers (cline / mcpso / docker-mcp-catalog) depend on publish-npm so unpkg.com logo URLs resolve', () => {
+    for (const name of ['publish-cline', 'publish-mcpso', 'publish-docker-mcp-catalog']) {
+      const job = parsed.jobs[name] as unknown as { needs: string[]; if?: string };
+      expect(job.needs, name).toContain('publish-npm');
+      // The if-guard must check that publish-npm.outputs.result_json indicates 'succeeded',
+      // otherwise we'd file marketplace issues referencing an npm version that doesn't exist.
+      expect(job.if, name).toContain('publish-npm.outputs.result_json');
+      expect(job.if, name).toContain('succeeded');
+    }
+  });
+
   it('Epic 4 publisher jobs (smithery, docker-mcp-catalog, cline, mcpso) gate on ledger-read flag and expose result_json', () => {
     for (const name of ['publish-smithery', 'publish-docker-mcp-catalog', 'publish-cline', 'publish-mcpso']) {
       const job = parsed.jobs[name] as unknown as {
