@@ -168,10 +168,20 @@ export async function runTrackALayer2(
     }
   }
 
-  const sampleInputs: InspectorSampleCallInput[] = probe.tools_list.map((tool) => ({
-    toolName: tool.name,
-    arguments: pickSampleArgs(tool, fixture),
-  }));
+  // If no fixture file exists for this MCP, skip the tools_call probe.
+  // The fixture file is the engineer's signal "I've defined sample inputs
+  // for these tools that don't require external dependencies in CI."
+  // Without it, calling tools with hallucinated placeholder args against
+  // external APIs (Okta, registries, etc.) always fails — and that's a
+  // false negative, not a real protocol-wiring bug. Layer 2 still
+  // validates initialize + tools_list, which is the protocol contract
+  // every MCP must satisfy regardless of consumer credentials.
+  const sampleInputs: InspectorSampleCallInput[] = fixture === null
+    ? []
+    : probe.tools_list.map((tool) => ({
+        toolName: tool.name,
+        arguments: pickSampleArgs(tool, fixture),
+      }));
 
   if (sampleInputs.length > 0) {
     const callProbe = await runInspectorHarness({

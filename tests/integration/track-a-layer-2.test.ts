@@ -74,6 +74,7 @@ describe('Track A — Layer 2 protocol smoke test gate', () => {
       serverCommand: process.execPath,
       serverArgs: [STUB_NO_HANDLER],
       serverCwd: FIXTURES_DIR,
+      sampleInputsPath: SAMPLE_INPUTS_PATH,
       timeoutMs: 15_000,
     });
     expect(result.passed).toBe(false);
