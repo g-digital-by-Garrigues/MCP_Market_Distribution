@@ -279,10 +279,17 @@ export async function publishMcpRegistry(
   const preflight = await exec('mcp-publisher', ['publish', '--dry-run'], { cwd: input.package_dir });
   if (preflight.exitCode !== 0) {
     const duration = now() - started;
+    // Surface the CLI output to OUR stderr so the workflow log shows the
+    // actual schema error inline (same rationale as the login-failure
+    // branch added in PR #50).
+    process.stderr.write(
+      `[mcp-publisher publish --dry-run] exit ${preflight.exitCode}\n--- stdout ---\n${preflight.stdout}\n--- stderr ---\n${preflight.stderr}\n--- end ---\n`,
+    );
     log.error('target.publish_failed', {
       ...baseEvent,
       reason: 'dry_run_validation_failed',
       exit_code: preflight.exitCode,
+      stderr_excerpt: preflight.stderr.trim().slice(0, 400),
     });
     return validate({
       target: 'mcp-publisher',
@@ -318,10 +325,14 @@ export async function publishMcpRegistry(
   const publishResult = await exec('mcp-publisher', ['publish'], { cwd: input.package_dir });
   if (publishResult.exitCode !== 0) {
     const duration = now() - started;
+    process.stderr.write(
+      `[mcp-publisher publish] exit ${publishResult.exitCode}\n--- stdout ---\n${publishResult.stdout}\n--- stderr ---\n${publishResult.stderr}\n--- end ---\n`,
+    );
     log.error('target.publish_failed', {
       ...baseEvent,
       reason: 'mcp_publisher_failed',
       exit_code: publishResult.exitCode,
+      stderr_excerpt: publishResult.stderr.trim().slice(0, 400),
     });
     return validate({
       target: 'mcp-publisher',
