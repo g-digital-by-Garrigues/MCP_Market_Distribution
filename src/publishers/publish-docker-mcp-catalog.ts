@@ -249,7 +249,12 @@ export async function publishDockerMcpCatalog(
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'docker-mcp-catalog-'));
   try {
     // 1. Fork the upstream repo (idempotent — gh repo fork no-ops if fork exists).
-    const fork = await exec('gh', ['repo', 'fork', UPSTREAM_REPO, '--clone=false', '--remote=false'],
+    // Newer gh CLI (≥ 2.40) rejects `--remote=false` when a repository
+    // argument is provided ("the `--remote` flag is unsupported when a
+    // repository argument is provided"). The flag was only meaningful when
+    // pairing with `--clone`; we explicitly do not clone here, so omitting
+    // `--remote` is the right call. Caught in run #25869794563.
+    const fork = await exec('gh', ['repo', 'fork', UPSTREAM_REPO, '--clone=false'],
       { env: { GH_TOKEN: env.BOT_PAT } });
     if (fork.exitCode !== 0 && !/already exists/i.test(fork.stderr)) {
       return failedOutput(input, isDryRun, now() - started, 1,
