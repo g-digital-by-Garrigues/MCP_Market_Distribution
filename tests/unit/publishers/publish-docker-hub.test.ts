@@ -156,6 +156,13 @@ describe('publishDockerHub', () => {
       const build = calls.find((c) => c.args.includes('build'));
       expect(build?.args.includes('--push')).toBe(false);
       expect(build?.args).toContain('--output=type=cacheonly');
+      // PERF: dry-run builds amd64 only (skips arm64 cross-compile via
+      // QEMU). Multi-arch in dry-run takes ~5-10 min on a GH runner
+      // without adding diagnostic value — Dockerfile correctness
+      // doesn't normally differ by arch.
+      const platformIdx = build?.args.findIndex((a) => a === '--platform') ?? -1;
+      expect(platformIdx).toBeGreaterThanOrEqual(0);
+      expect(build?.args[platformIdx + 1]).toBe('linux/amd64');
       // REGRESSION (dry-run #25855xxx): --cache-from / --cache-to MUST
       // be absent in dry-run. type=registry needs auth, and we skip
       // docker login in dry-run, so buildx would fail before the build
