@@ -295,9 +295,23 @@ export async function publishDockerHub(
   if (isDryRun) {
     buildArgs.push('--output=type=cacheonly');
   } else {
+    // Supply-chain attestations (Docker Scout score gate):
+    //   --sbom=true            attaches a Software Bill of Materials
+    //                          (buildkit uses syft under the hood) to the
+    //                          pushed manifest. Without this, Scout flags
+    //                          "Missing supply chain attestation(s)".
+    //   --provenance=mode=max  upgrades the default mode=min provenance
+    //                          (which `--push` emits implicitly) to include
+    //                          the full build invocation metadata. Note that
+    //                          mode=max embeds build args — we don't pass
+    //                          secrets via build args (DOCKERHUB_TOKEN goes
+    //                          through `docker login` env), so there's
+    //                          nothing sensitive to leak here.
     buildArgs.push(
       '--cache-from', `type=registry,ref=${cacheTag}`,
       '--cache-to', `type=registry,ref=${cacheTag},mode=max`,
+      '--sbom=true',
+      '--provenance=mode=max',
       '--push',
     );
   }
