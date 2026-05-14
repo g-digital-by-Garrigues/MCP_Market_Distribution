@@ -86,7 +86,7 @@ runs:
         # reads them directly from os.Getenv; the step inherits them
         # automatically.
       run: |
-        set -uo pipefail
+        set +e -uo pipefail
         pnpm tsx src/publishers/run-publish-mcp-registry.ts > result.json
         exit_code=$?
         printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
