@@ -49,7 +49,7 @@ runs:
         INPUT_DRY_RUN: ${{ inputs.dry_run }}
         BOT_PAT: ${{ env.BOT_PAT }}
       run: |
-        set -uo pipefail
+        set +e -uo pipefail
         pnpm tsx src/publishers/run-publish-docker-mcp-catalog.ts > result.json
         exit_code=$?
         printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
