@@ -56,9 +56,11 @@ runs:
         DOCKERHUB_USERNAME: ${{ env.DOCKERHUB_USERNAME }}
         DOCKERHUB_TOKEN: ${{ env.DOCKERHUB_TOKEN }}
       run: |
-        set -euo pipefail
+        set -uo pipefail
         pnpm tsx src/publishers/run-publish-docker-hub.ts > result.json
+        exit_code=$?
         printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
         cat result.json >> "$GITHUB_OUTPUT"
         printf 'EOF\n' >> "$GITHUB_OUTPUT"
         cat result.json
+        exit $exit_code

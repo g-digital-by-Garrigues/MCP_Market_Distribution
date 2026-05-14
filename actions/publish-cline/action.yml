@@ -49,9 +49,11 @@ runs:
         INPUT_DRY_RUN: ${{ inputs.dry_run }}
         BOT_PAT: ${{ env.BOT_PAT }}
       run: |
-        set -euo pipefail
+        set -uo pipefail
         pnpm tsx src/publishers/run-publish-cline.ts > result.json
+        exit_code=$?
         printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
         cat result.json >> "$GITHUB_OUTPUT"
         printf 'EOF\n' >> "$GITHUB_OUTPUT"
         cat result.json
+        exit $exit_code

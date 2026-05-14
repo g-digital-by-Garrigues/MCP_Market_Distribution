@@ -53,9 +53,16 @@ runs:
         # falls back to OIDC if this env var is empty.
         NPM_TOKEN: ${{ env.NPM_TOKEN }}
       run: |
-        set -euo pipefail
+        # `-e` removed so we always echo result.json to GITHUB_OUTPUT even
+        # when the publisher returns status='failed' (exit 1). The final-
+        # report job needs the failed PublisherOutput to render the
+        # error/cause/action block — losing it leaves engineers with the
+        # generic "did not run" fallback.
+        set -uo pipefail
         pnpm tsx src/publishers/run-publish-npm.ts > result.json
+        exit_code=$?
         printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
         cat result.json >> "$GITHUB_OUTPUT"
         printf 'EOF\n' >> "$GITHUB_OUTPUT"
         cat result.json
+        exit $exit_code
