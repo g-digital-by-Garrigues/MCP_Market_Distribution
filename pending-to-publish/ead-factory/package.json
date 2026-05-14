@@ -19,11 +19,26 @@
   "files": [
     "dist",
     "config",
+    "assets",
     "README.md",
     "LICENSE",
     ".claude/commands/**/*.md"
   ],
   "homepage": "https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution#readme",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "digital-evidence",
+    "electronic-signature",
+    "qualified timestamp",
+    "eidas",
+    "QTS",
+    "QTSP",
+    "okta",
+    "legal-tech",
+    "eadtrust",
+    "garrigues"
+  ],
   "license": "MIT",
   "main": "dist/server.js",
   "mcpName": "io.github.g-digital-by-Garrigues/ead-factory",

@@ -236,7 +236,18 @@ export async function fileMarketplaceIssue(
   // normally happen — Layer 1 enforces its presence).
   const description = await readPackageDescription(packageDir, input.mcp_name);
   const repoUrl = 'https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution';
-  const logoUrl = `${repoUrl}/raw/main/pending-to-publish/${input.mcp_name}/${entry.logo_path}`;
+  // Logo URL points at the npm-published copy via unpkg.com, NOT at the
+  // private repo's raw.githubusercontent.com path. Reasons:
+  //   - The repo is private. raw.githubusercontent.com URLs return 404
+  //     to anyone without repo access — including Cline / mcp.so / Docker
+  //     MCP Catalog maintainers, who need to see the logo to triage the
+  //     submission.
+  //   - The npm tarball includes assets/ (package.json#files), so unpkg
+  //     serves the file with the right cache headers and no auth.
+  //   - This requires publish-npm to have succeeded first. publish.yml
+  //     chains the marketplace publishers behind publish-npm via the
+  //     `needs.publish-npm` dependency + status-check guard.
+  const logoUrl = `https://unpkg.com/${entry.npm_package_name}@${input.version}/${entry.logo_path}`;
   const body = Handlebars.compile(tpl, { noEscape: true })({
     mcp_name: input.mcp_name,
     version: input.version,

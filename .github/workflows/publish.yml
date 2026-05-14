@@ -592,10 +592,16 @@ jobs:
 
   publish-docker-mcp-catalog:
     name: Publish to Docker MCP Catalog
-    needs: [setup, ledger-read, track-a-layer-3]
+    # Depends on publish-npm because the catalog server.yaml references
+    # the npm package and the issue body uses unpkg.com URLs (logo,
+    # install command). Those URLs don't resolve until the npm package
+    # is actually published.
+    needs: [setup, ledger-read, track-a-layer-3, publish-npm]
     if: |
-      needs.track-a-layer-3.result == 'success'
+      always()
+      && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_docker_mcp_catalog == 'true'
+      && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -617,10 +623,14 @@ jobs:
 
   publish-cline:
     name: Publish to Cline Marketplace
-    needs: [setup, ledger-read, track-a-layer-3]
+    # Depends on publish-npm so the unpkg.com logo URL in the issue body
+    # actually resolves when Cline maintainers review.
+    needs: [setup, ledger-read, track-a-layer-3, publish-npm]
     if: |
-      needs.track-a-layer-3.result == 'success'
+      always()
+      && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_cline == 'true'
+      && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -642,10 +652,14 @@ jobs:
 
   publish-mcpso:
     name: Publish to mcp.so
-    needs: [setup, ledger-read, track-a-layer-3]
+    # Depends on publish-npm so the unpkg.com logo URL in the issue body
+    # actually resolves when mcp.so maintainers review.
+    needs: [setup, ledger-read, track-a-layer-3, publish-npm]
     if: |
-      needs.track-a-layer-3.result == 'success'
+      always()
+      && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_mcpso == 'true'
+      && contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
