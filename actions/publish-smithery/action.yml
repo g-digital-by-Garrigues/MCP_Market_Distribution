@@ -48,9 +48,14 @@ runs:
         INPUT_PIPELINE_RUN_ID: ${{ inputs.pipeline_run_id }}
         INPUT_DRY_RUN: ${{ inputs.dry_run }}
       run: |
-        set -euo pipefail
+        # See actions/publish-npm/action.yml for the rationale on dropping
+        # `-e`: we want result.json to reach GITHUB_OUTPUT even when the
+        # publisher returns status='failed' (exit 1).
+        set -uo pipefail
         pnpm tsx src/publishers/run-publish-smithery.ts > result.json
+        exit_code=$?
         printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
         cat result.json >> "$GITHUB_OUTPUT"
         printf 'EOF\n' >> "$GITHUB_OUTPUT"
         cat result.json
+        exit $exit_code

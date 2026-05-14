@@ -66,7 +66,16 @@ interface InternalLogger {
 }
 
 export function createLogger(options: LoggerOptions = {}): InternalLogger {
-  const write = options.write ?? ((line: string) => process.stdout.write(line));
+  // Default writer goes to STDERR. Publisher CLI shims and gate scripts
+  // use stdout to emit their final structured result JSON (PublisherOutput,
+  // gate-report, etc.) which the workflow bash captures with
+  // `> result.json`. Mixing log events with that capture is what broke
+  // the dry-run #25853475366 — render-release-report parsed log events
+  // as PublisherOutputs and zod blew up on 'Unrecognized key(s) in
+  // object: ts, run_id, level, ...'. Stdout = "the result"; stderr =
+  // "everything else" matches the Unix convention every composition
+  // tool already assumes.
+  const write = options.write ?? ((line: string) => process.stderr.write(line));
   const now = options.now ?? (() => new Date());
   const runIdSource = options.runId ?? (() => process.env.PIPELINE_RUN_ID);
 

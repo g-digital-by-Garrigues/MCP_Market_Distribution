@@ -270,16 +270,29 @@ export async function publishDockerHub(
   // Build the image. We always build (even in dry-run) so the build step
   // itself acts as part of the gate — a Dockerfile that doesn't compile
   // shouldn't be allowed through, dry-run or not.
-  const buildArgs = [
+  //
+  // Cache-from/cache-to type=registry both authenticate against Docker
+  // Hub (writing the :cache tag pushes layers). In dry-run we skip
+  // docker login, so we MUST also skip the cache flags or buildx fails
+  // auth before the build even starts. Without the cache the dry-run
+  // builds from scratch — that's the right trade-off for verifying the
+  // Dockerfile without touching the registry.
+  const buildArgs: string[] = [
     'buildx', 'build',
     '--platform', 'linux/amd64,linux/arm64',
     '--tag', versionedTag,
     '--tag', latestTag,
-    '--cache-from', `type=registry,ref=${cacheTag}`,
-    '--cache-to', `type=registry,ref=${cacheTag},mode=max`,
-    isDryRun ? '--output=type=cacheonly' : '--push',
-    '.',
   ];
+  if (isDryRun) {
+    buildArgs.push('--output=type=cacheonly');
+  } else {
+    buildArgs.push(
+      '--cache-from', `type=registry,ref=${cacheTag}`,
+      '--cache-to', `type=registry,ref=${cacheTag},mode=max`,
+      '--push',
+    );
+  }
+  buildArgs.push('.');
   const buildResult = await exec('docker', buildArgs, { cwd: input.package_dir });
   if (buildResult.exitCode !== 0) {
     const duration = now() - started;

@@ -156,6 +156,12 @@ describe('publishDockerHub', () => {
       const build = calls.find((c) => c.args.includes('build'));
       expect(build?.args.includes('--push')).toBe(false);
       expect(build?.args).toContain('--output=type=cacheonly');
+      // REGRESSION (dry-run #25855xxx): --cache-from / --cache-to MUST
+      // be absent in dry-run. type=registry needs auth, and we skip
+      // docker login in dry-run, so buildx would fail before the build
+      // even starts.
+      expect(build?.args.includes('--cache-from')).toBe(false);
+      expect(build?.args.includes('--cache-to')).toBe(false);
     });
   });
 
