@@ -281,6 +281,68 @@ describe('publishMcpRegistry', () => {
     });
   });
 
+  it('REGRESSION dry-run #25858xxx: package-not-found 404 in dry-run preflight → status=succeeded (npm not published yet is expected)', async () => {
+    await withRepoRoot(async ({ repoRoot, packageDir }) => {
+      const probeExec = fakeProbe([
+        { stdout: `${JSON.stringify({ servers: [] })}\n200`, stderr: '', exitCode: 0 },
+      ]);
+      const stderr = `Error: publish failed: server returned status 400: {"errors":[{"message":"registry validation failed for package 0 (@g-digital/mcp-ead-factory): NPM package '@g-digital/mcp-ead-factory' not found (status: 404)"}]}`;
+      const { exec, calls } = fakeExec([
+        { exitCode: 0 },                  // login
+        { exitCode: 1, stderr },          // dry-run preflight returns 400 with package-not-found
+      ]);
+
+      const output = await publishMcpRegistry(
+        {
+          mcp_name: 'ead-factory',
+          version: '1.0.0',
+          pipeline_run_id: 'run-7',
+          dry_run: true,
+          package_dir: packageDir,
+          repo_root: repoRoot,
+        },
+        { exec, probeExec, logger: silentLogger, env: {} },
+      );
+
+      expect(output.status).toBe('succeeded');
+      expect(output.dry_run).toBe(true);
+      expect(output.target_url).toContain('https://example.invalid/dry-run/mcp-publisher/');
+      // Confirm we ran login + preflight but NOT real publish (dry_run early-return).
+      const mcpCalls = calls.filter((c) => c.cmd === 'mcp-publisher');
+      expect(mcpCalls.map((c) => c.args)).toEqual([
+        ['login', 'github-oidc'],
+        ['publish', '--dry-run'],
+      ]);
+    });
+  });
+
+  it('NON-dry-run: same 404 error from preflight DOES still fail (the tolerance is dry-run-scoped)', async () => {
+    await withRepoRoot(async ({ repoRoot, packageDir }) => {
+      const probeExec = fakeProbe([
+        { stdout: `${JSON.stringify({ servers: [] })}\n200`, stderr: '', exitCode: 0 },
+      ]);
+      const stderr404 = `Error: publish failed: server returned status 400: NPM package '@g-digital/mcp-ead-factory' not found (status: 404)`;
+      const { exec } = fakeExec([
+        { exitCode: 0 },
+        { exitCode: 1, stderr: stderr404 },
+      ]);
+
+      const output = await publishMcpRegistry(
+        {
+          mcp_name: 'ead-factory',
+          version: '1.0.0',
+          pipeline_run_id: 'run-7',
+          dry_run: false,
+          package_dir: packageDir,
+          repo_root: repoRoot,
+        },
+        { exec, probeExec, logger: silentLogger, env: {} },
+      );
+
+      expect(output.status).toBe('failed');
+    });
+  });
+
   it('publish failure due to package ownership → routes to mcpName remediation', async () => {
     await withRepoRoot(async ({ repoRoot, packageDir }) => {
       const probeExec = fakeProbe([

@@ -278,32 +278,60 @@ export async function publishMcpRegistry(
   // schema error surfaces before we mutate the registry.
   const preflight = await exec('mcp-publisher', ['publish', '--dry-run'], { cwd: input.package_dir });
   if (preflight.exitCode !== 0) {
-    const duration = now() - started;
-    // Surface the CLI output to OUR stderr so the workflow log shows the
-    // actual schema error inline (same rationale as the login-failure
-    // branch added in PR #50).
-    process.stderr.write(
-      `[mcp-publisher publish --dry-run] exit ${preflight.exitCode}\n--- stdout ---\n${preflight.stdout}\n--- stderr ---\n${preflight.stderr}\n--- end ---\n`,
-    );
-    log.error('target.publish_failed', {
+    // Expected-in-dry-run case: the registry's `publish --dry-run` does
+    // BOTH schema validation AND package-ownership verification in a
+    // single server-side call. The ownership check verifies that the npm
+    // package referenced in server.json actually exists on npmjs.com.
+    // In our dry-run, npm hasn't published yet (publish-npm runs in dry-
+    // run mode too), so the registry gets a 404 looking up the package —
+    // not a real bug.
+    //
+    // We treat the "NPM package ... not found (status: 404)" error as
+    // expected-in-dry-run and continue to the success branch. Any other
+    // error (schema mismatch, namespace conflict, malformed json, etc.)
+    // still fails the gate.
+    const isPackageNotFoundInDryRun =
+      isDryRun &&
+      /NPM package .* not found.*status:\s*404/i.test(preflight.stderr);
+
+    if (!isPackageNotFoundInDryRun) {
+      const duration = now() - started;
+      // Surface the CLI output to OUR stderr so the workflow log shows the
+      // actual schema error inline (same rationale as the login-failure
+      // branch added in PR #50).
+      process.stderr.write(
+        `[mcp-publisher publish --dry-run] exit ${preflight.exitCode}\n--- stdout ---\n${preflight.stdout}\n--- stderr ---\n${preflight.stderr}\n--- end ---\n`,
+      );
+      log.error('target.publish_failed', {
+        ...baseEvent,
+        reason: 'dry_run_validation_failed',
+        exit_code: preflight.exitCode,
+        stderr_excerpt: preflight.stderr.trim().slice(0, 400),
+      });
+      return validate({
+        target: 'mcp-publisher',
+        status: 'failed',
+        target_url: dryRunPlaceholderUrl('mcp-publisher', reverseDnsName, input.version),
+        version_published: null,
+        duration_ms: duration,
+        attempts: probe.attempts + 1,
+        dry_run: isDryRun,
+        error: {
+          message: `mcp-publisher publish --dry-run exited ${preflight.exitCode}: ${preflight.stderr.trim().slice(0, 400)}`,
+          cause: classifyRegistryFailure(preflight.stderr),
+          action: `Open pending-to-publish/${input.mcp_name}/server.json and fix the reported issue. Layer 1 (Story 2.2) should normally catch these — file an issue if this fired without Layer 1 also failing.`,
+        },
+      });
+    }
+
+    // Expected dry-run case: surface as a structured info event (not
+    // error) so engineers see in the log that the schema passed and
+    // only the package-ownership check failed because npm hasn't
+    // published yet.
+    log.info('target.publish_skipped', {
       ...baseEvent,
-      reason: 'dry_run_validation_failed',
-      exit_code: preflight.exitCode,
-      stderr_excerpt: preflight.stderr.trim().slice(0, 400),
-    });
-    return validate({
-      target: 'mcp-publisher',
-      status: 'failed',
-      target_url: dryRunPlaceholderUrl('mcp-publisher', reverseDnsName, input.version),
-      version_published: null,
-      duration_ms: duration,
-      attempts: probe.attempts + 1,
-      dry_run: isDryRun,
-      error: {
-        message: `mcp-publisher publish --dry-run exited ${preflight.exitCode}: ${preflight.stderr.trim().slice(0, 400)}`,
-        cause: classifyRegistryFailure(preflight.stderr),
-        action: `Open pending-to-publish/${input.mcp_name}/server.json and fix the reported issue. Layer 1 (Story 2.2) should normally catch these — file an issue if this fired without Layer 1 also failing.`,
-      },
+      reason: 'dry_run_package_not_published_yet',
+      detail: 'mcp-publisher schema validation passed; ownership check skipped because npm has no real package in dry-run.',
     });
   }
 
