@@ -20,9 +20,17 @@
           "pipeline_run_id": "25869794563-1",
           "status": "skipped",
           "target_url": "https://github.com/cline/mcp-marketplace/issues/1566"
+        },
+        {
+          "at": "2026-05-14T15:58:06.199Z",
+          "attempt": 3,
+          "duration_ms": 799,
+          "pipeline_run_id": "25869794563-1",
+          "status": "skipped",
+          "target_url": "https://github.com/cline/mcp-marketplace/issues/1566"
         }
       ],
-      "last_attempt_at": "2026-05-14T15:56:11.174Z",
+      "last_attempt_at": "2026-05-14T15:58:06.199Z",
       "status": "skipped",
       "target_url": "https://github.com/cline/mcp-marketplace/issues/1566",
       "version_published": "1.0.2"
@@ -44,9 +52,17 @@
           "pipeline_run_id": "25869794563-1",
           "status": "succeeded",
           "target_url": "https://hub.docker.com/r/gdigital/ead-factory"
+        },
+        {
+          "at": "2026-05-14T15:58:06.199Z",
+          "attempt": 3,
+          "duration_ms": 137864,
+          "pipeline_run_id": "25869794563-1",
+          "status": "succeeded",
+          "target_url": "https://hub.docker.com/r/gdigital/ead-factory"
         }
       ],
-      "last_attempt_at": "2026-05-14T15:56:11.174Z",
+      "last_attempt_at": "2026-05-14T15:58:06.199Z",
       "status": "succeeded",
       "target_url": "https://hub.docker.com/r/gdigital/ead-factory",
       "version_published": "1.0.2"
@@ -70,9 +86,18 @@
           "pipeline_run_id": "25869794563-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/docker-mcp-catalog/ead-factory/1.0.2"
+        },
+        {
+          "at": "2026-05-14T15:58:06.199Z",
+          "attempt": 3,
+          "duration_ms": 988,
+          "error_message": "gh repo fork failed: the `--remote` flag is unsupported when a repository argument is provided\n\nUsage:  gh repo fork [<repository>] [-- <gitflags>...] [flags]\n\nFlags:\n  --clone                 Clone the fork\n  --default-branch-only   Only include the default branch in the fork\n  --fork-name string      Rename the forked",
+          "pipeline_run_id": "25869794563-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/docker-mcp-catalog/ead-factory/1.0.2"
         }
       ],
-      "last_attempt_at": "2026-05-14T15:56:11.174Z",
+      "last_attempt_at": "2026-05-14T15:58:06.199Z",
       "status": "failed",
       "target_url": "https://example.invalid/dry-run/docker-mcp-catalog/ead-factory/1.0.2",
       "version_published": null
@@ -94,9 +119,17 @@
           "pipeline_run_id": "25869794563-1",
           "status": "skipped",
           "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory"
+        },
+        {
+          "at": "2026-05-14T15:58:06.199Z",
+          "attempt": 3,
+          "duration_ms": 1208,
+          "pipeline_run_id": "25869794563-1",
+          "status": "skipped",
+          "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory"
         }
       ],
-      "last_attempt_at": "2026-05-14T15:56:11.174Z",
+      "last_attempt_at": "2026-05-14T15:58:06.199Z",
       "status": "skipped",
       "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory",
       "version_published": "1.0.2"
@@ -118,9 +151,17 @@
           "pipeline_run_id": "25869794563-1",
           "status": "succeeded",
           "target_url": "https://github.com/chatmcp/mcpso/issues/2308"
+        },
+        {
+          "at": "2026-05-14T15:58:06.199Z",
+          "attempt": 3,
+          "duration_ms": 1606,
+          "pipeline_run_id": "25869794563-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/chatmcp/mcpso/issues/2308"
         }
       ],
-      "last_attempt_at": "2026-05-14T15:56:11.174Z",
+      "last_attempt_at": "2026-05-14T15:58:06.199Z",
       "status": "succeeded",
       "target_url": "https://github.com/chatmcp/mcpso/issues/2308",
       "version_published": "1.0.2"
@@ -142,14 +183,22 @@
           "pipeline_run_id": "25869794563-1",
           "status": "succeeded",
           "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.2"
+        },
+        {
+          "at": "2026-05-14T15:58:06.199Z",
+          "attempt": 3,
+          "duration_ms": 3056,
+          "pipeline_run_id": "25869794563-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.2"
         }
       ],
-      "last_attempt_at": "2026-05-14T15:56:11.174Z",
+      "last_attempt_at": "2026-05-14T15:58:06.199Z",
       "status": "succeeded",
       "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.2",
       "version_published": "1.0.2"
     }
   },
-  "updated_at": "2026-05-14T15:56:11.174Z",
+  "updated_at": "2026-05-14T15:58:06.199Z",
   "version": "1.0.2"
 }
