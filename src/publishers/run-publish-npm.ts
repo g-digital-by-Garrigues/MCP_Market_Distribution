@@ -2,6 +2,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { parseDryRunFlag } from '../ci/dry-run.js';
+import { runWithCrashHandler } from './crash-handler.js';
 import { publishNpm } from './publish-npm.js';
 
 // CLI shim invoked from actions/publish-npm/action.yml. Reads the canonical
@@ -38,4 +39,4 @@ async function main(): Promise<number> {
   return output.status === 'failed' ? 1 : 0;
 }
 
-void main().then((code) => process.exit(code));
+runWithCrashHandler('npm', main);

@@ -2,6 +2,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import { parseDryRunFlag } from '../ci/dry-run.js';
+import { runWithCrashHandler } from './crash-handler.js';
 import { publishDockerHub } from './publish-docker-hub.js';
 
 async function main(): Promise<number> {
@@ -33,4 +34,4 @@ async function main(): Promise<number> {
   return output.status === 'failed' ? 1 : 0;
 }
 
-void main().then((code) => process.exit(code));
+runWithCrashHandler('docker-hub', main);

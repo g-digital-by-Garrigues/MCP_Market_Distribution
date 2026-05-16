@@ -1,6 +1,7 @@
 import process from 'node:process';
 
 import { parseDryRunFlag } from '../ci/dry-run.js';
+import { runWithCrashHandler } from './crash-handler.js';
 import { publishCline } from './publish-cline.js';
 
 async function main(): Promise<number> {
@@ -28,4 +29,4 @@ async function main(): Promise<number> {
   return output.status === 'failed' ? 1 : 0;
 }
 
-void main().then((code) => process.exit(code));
+runWithCrashHandler('cline', main);
