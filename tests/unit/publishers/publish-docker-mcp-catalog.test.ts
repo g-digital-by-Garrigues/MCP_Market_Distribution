@@ -33,7 +33,19 @@ const TEMPLATES = {
   'readme.md.hbs': '# {{mcp_name}}\n',
 };
 
-async function withRepoRoot(body: (repoRoot: string) => Promise<void>): Promise<void> {
+interface RepoRootOverrides {
+  /** Omit `tools` from the mcp-pipeline.yaml entry to test the empty-tools gate. */
+  omitTools?: boolean;
+  /** Omit the env vars in server.json to test the empty-envvars gate. */
+  omitEnvVars?: boolean;
+  /** Blank out the description on these env vars to test the empty-description gate. */
+  blankDescriptionsFor?: string[];
+}
+
+async function withRepoRoot(
+  body: (repoRoot: string) => Promise<void>,
+  overrides: RepoRootOverrides = {},
+): Promise<void> {
   const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'docker-catalog-test-'));
   const config = {
     pipeline_version: 1,
@@ -52,6 +64,14 @@ async function withRepoRoot(body: (repoRoot: string) => Promise<void>): Promise<
         track_a_targets: 'default',
         track_b_targets: ['n8n'],
         logo_path: 'assets/logo.png',
+        ...(overrides.omitTools
+          ? {}
+          : {
+              tools: [
+                { name: 'do_thing', description: 'Does the thing.' },
+                { name: 'undo_thing', description: 'Undoes the thing.' },
+              ],
+            }),
       },
     },
   };
@@ -61,7 +81,44 @@ async function withRepoRoot(body: (repoRoot: string) => Promise<void>): Promise<
   for (const [name, content] of Object.entries(TEMPLATES)) {
     await fs.writeFile(path.join(tplDir, name), content);
   }
-  await fs.mkdir(path.join(repoRoot, 'pending-to-publish', 'ead-factory'), { recursive: true });
+  const pendingDir = path.join(repoRoot, 'pending-to-publish', 'ead-factory');
+  await fs.mkdir(pendingDir, { recursive: true });
+  // server.json is the canonical source for env-var descriptions consumed
+  // by the docker-mcp-catalog publisher (it used to read .env.example, but
+  // that landed garbage descriptions in PR #3511 — see publisher comment).
+  const envVarsForServerJson = overrides.omitEnvVars
+    ? []
+    : [
+        {
+          name: 'API_BASE_URL',
+          description: (overrides.blankDescriptionsFor ?? []).includes('API_BASE_URL')
+            ? ''
+            : 'Evidence Manager API base URL.',
+          isRequired: true,
+          isSecret: false,
+        },
+        {
+          name: 'OKTA_CLIENT_SECRET',
+          description: (overrides.blankDescriptionsFor ?? []).includes('OKTA_CLIENT_SECRET')
+            ? ''
+            : 'Okta client secret.',
+          isRequired: true,
+          isSecret: true,
+        },
+      ];
+  await fs.writeFile(
+    path.join(pendingDir, 'server.json'),
+    JSON.stringify(
+      {
+        name: 'io.github.g-digital-by-Garrigues/ead-factory',
+        description: 'EAD Factory MCP — Digital Trust services APIs for your agents.',
+        version: '1.0.0',
+        packages: [{ environmentVariables: envVarsForServerJson }],
+      },
+      null,
+      2,
+    ),
+  );
   try {
     await body(repoRoot);
   } finally {
@@ -174,5 +231,69 @@ describe('publishDockerMcpCatalog', () => {
       expect(result.error?.cause).toContain('Bot PAT lacks public-repo issues permission');
       expect(result.error?.action).toContain('public_repo');
     });
+  });
+
+  // Metadata-quality gate (added after PR #3511 against docker/mcp-registry
+  // shipped half-baked metadata — empty env-var descriptions and tools=[]).
+  // The publisher must refuse to open a catalog PR before fork/clone/push if
+  // the submission would look uncurated to a Docker reviewer.
+
+  it('metadata gate: empty tools[] in mcp-pipeline.yaml → status=failed before any fork/clone/push', async () => {
+    await withRepoRoot(
+      async (repoRoot) => {
+        const { exec, calls } = fakeExec(({ args }) => {
+          if (args[0] === 'pr' && args[1] === 'list') return { exitCode: 0, stdout: '[]' };
+          return { exitCode: 1, stderr: 'should not be called' };
+        });
+        const result = await publishDockerMcpCatalog(
+          { mcp_name: 'ead-factory', version: '1.0.0', pipeline_run_id: 'r1', dry_run: false, repo_root: repoRoot },
+          { exec, logger: silentLogger, env: { BOT_PAT: 'pat_x' } },
+        );
+        expect(result.status).toBe('failed');
+        expect(result.error?.message).toContain('empty tools[]');
+        expect(result.error?.action).toContain('mcp-pipeline.yaml');
+        // Only the idempotency search call should have happened.
+        expect(calls.filter((c) => c.cmd === 'gh' && c.args[1] === 'fork')).toHaveLength(0);
+        expect(calls.filter((c) => c.cmd === 'git' && c.args[0] === 'clone')).toHaveLength(0);
+      },
+      { omitTools: true },
+    );
+  });
+
+  it('metadata gate: any env var with empty description in server.json → status=failed', async () => {
+    await withRepoRoot(
+      async (repoRoot) => {
+        const { exec } = fakeExec(({ args }) => {
+          if (args[0] === 'pr' && args[1] === 'list') return { exitCode: 0, stdout: '[]' };
+          return { exitCode: 1, stderr: 'should not be called' };
+        });
+        const result = await publishDockerMcpCatalog(
+          { mcp_name: 'ead-factory', version: '1.0.0', pipeline_run_id: 'r1', dry_run: false, repo_root: repoRoot },
+          { exec, logger: silentLogger, env: { BOT_PAT: 'pat_x' } },
+        );
+        expect(result.status).toBe('failed');
+        expect(result.error?.message).toContain('API_BASE_URL');
+        expect(result.error?.action).toContain('server.json');
+      },
+      { blankDescriptionsFor: ['API_BASE_URL'] },
+    );
+  });
+
+  it('metadata gate: server.json with no environmentVariables → status=failed', async () => {
+    await withRepoRoot(
+      async (repoRoot) => {
+        const { exec } = fakeExec(({ args }) => {
+          if (args[0] === 'pr' && args[1] === 'list') return { exitCode: 0, stdout: '[]' };
+          return { exitCode: 1, stderr: 'should not be called' };
+        });
+        const result = await publishDockerMcpCatalog(
+          { mcp_name: 'ead-factory', version: '1.0.0', pipeline_run_id: 'r1', dry_run: false, repo_root: repoRoot },
+          { exec, logger: silentLogger, env: { BOT_PAT: 'pat_x' } },
+        );
+        expect(result.status).toBe('failed');
+        expect(result.error?.message).toContain('no env vars found');
+      },
+      { omitEnvVars: true },
+    );
   });
 });

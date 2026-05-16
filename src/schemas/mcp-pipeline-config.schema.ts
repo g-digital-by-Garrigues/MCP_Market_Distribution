@@ -63,6 +63,24 @@ export const mcpEntrySchema = z
     skip_targets: z.array(z.string().min(1)).optional(),
     logo_path: z.string().min(1).optional(),
     bundled_skills: z.array(z.string().min(1)).optional(),
+    // Static tool inventory shipped to Docker MCP Catalog. Each entry needs
+    // a non-empty description; the docker-mcp-catalog publisher refuses to
+    // ship an empty list or any tool with a blank description (so reviewers
+    // don't see a half-baked submission).
+    tools: z
+      .array(
+        z
+          .object({
+            name: z.string().regex(/^[a-z][a-z0-9_]*$/, {
+              message: 'tool name must be snake_case ASCII (e.g., generate_evidence)',
+            }),
+            description: z.string().min(1, {
+              message: 'tool description cannot be empty',
+            }),
+          })
+          .strict(),
+      )
+      .optional(),
     git_tag_prefix: z
       .string()
       .regex(GIT_TAG_PREFIX, {
