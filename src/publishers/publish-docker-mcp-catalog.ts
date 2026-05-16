@@ -122,27 +122,44 @@ async function renderTemplate(
 }
 
 async function readEnvironmentVariables(packageDir: string): Promise<Array<{ name: string; example: string; description: string }>> {
-  // Best-effort: parse the .env.example shipped with the source. We only
-  // need a list of names + examples + descriptions for the template.
+  // Canonical source: server.json#packages[0].environmentVariables — the same
+  // file the MCP Official Registry publisher consumes, so catalog reviewers
+  // see identical descriptions there as on registry.modelcontextprotocol.io.
+  // .env.example is consulted only for example values (best-effort) because
+  // server.json doesn't carry them.
+  //
+  // Previous version of this function read everything from .env.example,
+  // which gave the Docker catalog server.yaml empty/garbage descriptions
+  // when .env.example lacked good `# comment` lines above each KEY=value.
+  // That's what landed in PR #3511 against docker/mcp-registry and looked
+  // half-baked. Switching to server.json fixes the single-source-of-truth
+  // problem in one move.
+  const examples: Record<string, string> = {};
   try {
     const raw = await fs.readFile(path.join(packageDir, '.env.example'), 'utf8');
-    const entries: Array<{ name: string; example: string; description: string }> = [];
-    let pendingComment = '';
     for (const line of raw.split(/\r?\n/)) {
-      const trimmed = line.trim();
-      if (trimmed.startsWith('#')) {
-        pendingComment = trimmed.replace(/^#\s*/, '');
-        continue;
+      const m = line.trim().match(/^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$/);
+      if (m) {
+        examples[m[1]!] = m[2] ?? '';
       }
-      const m = trimmed.match(/^([A-Z][A-Z0-9_]*)\s*=\s*(.*)$/);
-      if (!m) {
-        pendingComment = '';
-        continue;
-      }
-      entries.push({ name: m[1]!, example: m[2] ?? '', description: pendingComment });
-      pendingComment = '';
     }
-    return entries;
+  } catch {
+    // No .env.example present — that's OK, examples just stay blank.
+  }
+
+  try {
+    const raw = await fs.readFile(path.join(packageDir, 'server.json'), 'utf8');
+    const serverJson = JSON.parse(raw) as {
+      packages?: Array<{ environmentVariables?: Array<{ name?: string; description?: string }> }>;
+    };
+    const envFromServer = serverJson.packages?.[0]?.environmentVariables ?? [];
+    return envFromServer
+      .filter((v): v is { name: string; description?: string } => typeof v.name === 'string' && v.name.length > 0)
+      .map((v) => ({
+        name: v.name,
+        example: examples[v.name] ?? '',
+        description: (v.description ?? '').trim(),
+      }));
   } catch {
     return [];
   }
@@ -233,6 +250,48 @@ export async function publishDockerMcpCatalog(
   } catch {
     // Keep the generic fallback.
   }
+
+  // Quality gate (added after PR #3511 against docker/mcp-registry shipped
+  // half-baked metadata). Reviewers reject submissions where server.yaml
+  // has empty env-var descriptions or where tools[] is empty — both signal
+  // "this wasn't curated". We catch both here so they never leave the
+  // pipeline.
+  const emptyDescVars = envVars.filter((v) => !v.description).map((v) => v.name);
+  if (emptyDescVars.length > 0) {
+    return failedOutput(
+      input,
+      isDryRun,
+      now() - started,
+      1,
+      `Docker MCP Catalog metadata gate failed: empty description on env var(s) [${emptyDescVars.join(', ')}].`,
+      'Catalog reviewers reject server.yaml entries with empty env-var descriptions — it signals an uncurated submission.',
+      `Fill in pending-to-publish/${input.mcp_name}/server.json#packages[0].environmentVariables[].description for each listed var.`,
+    );
+  }
+  if (envVars.length === 0) {
+    return failedOutput(
+      input,
+      isDryRun,
+      now() - started,
+      1,
+      `Docker MCP Catalog metadata gate failed: no env vars found for ${input.mcp_name}.`,
+      'server.json#packages[0].environmentVariables[] is missing or empty.',
+      `Populate pending-to-publish/${input.mcp_name}/server.json with the env vars the MCP requires at runtime.`,
+    );
+  }
+  const tools = entry.tools ?? [];
+  if (tools.length === 0) {
+    return failedOutput(
+      input,
+      isDryRun,
+      now() - started,
+      1,
+      `Docker MCP Catalog metadata gate failed: empty tools[] for ${input.mcp_name}.`,
+      'Catalog discovery UI needs the tool list so consumers see what the MCP exposes.',
+      `Add mcps.${input.mcp_name}.tools[] in mcp-pipeline.yaml (static list per MCP — v1.1 will pull this automatically via tools/list).`,
+    );
+  }
+
   const data = {
     mcp_name: input.mcp_name,
     version: input.version,
@@ -240,7 +299,7 @@ export async function publishDockerMcpCatalog(
     license: entry.license,
     description,
     environment_variables: envVars,
-    tools: [], // We don't statically know the tools at this layer; an enhancement would call tools/list.
+    tools,
   };
   const serverYaml = await renderTemplate(input.repo_root, 'server.yaml.hbs', data);
   const toolsJson = await renderTemplate(input.repo_root, 'tools.json.hbs', data);
