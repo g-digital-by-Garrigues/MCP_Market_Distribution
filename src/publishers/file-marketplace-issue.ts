@@ -270,9 +270,25 @@ export async function fileMarketplaceIssue(
             log.info('target.issue_body_updated', {
               ...baseEvent,
               issue_number: exact.number,
+              existing_issue_url: exact.url,
               dry_run_no_op: true,
             });
-            return success(config, input, isDryRun, now() - started, 1, exact.url, 'succeeded');
+            // Return the placeholder URL (not exact.url) so the dry-run
+            // release report stays consistent with the other targets'
+            // example.invalid/dry-run/... URLs. Otherwise a reader of
+            // the report sees a real github.com issue link next to
+            // status=succeeded and reasonably worries something was
+            // posted in dry-run — caught in run #26040942667. The real
+            // issue URL we'd have edited is in the structured log above.
+            return success(
+              config,
+              input,
+              isDryRun,
+              now() - started,
+              1,
+              dryRunPlaceholderUrl(config.target, input.mcp_name, input.version),
+              'succeeded',
+            );
           }
           let body: string;
           try {

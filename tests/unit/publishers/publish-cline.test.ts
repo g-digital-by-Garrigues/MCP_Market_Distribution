@@ -112,7 +112,14 @@ describe('publishCline', () => {
       );
       expect(result.status).toBe('succeeded');
       expect(result.dry_run).toBe(true);
-      expect(result.target_url).toBe(existingUrl);
+      // The dry-run branch returns the placeholder URL (not the
+      // existing issue URL) so the release report stays consistent
+      // with every other target's example.invalid/dry-run/... URL —
+      // a reader of the report should never see a real github.com
+      // link next to status=succeeded in dry-run and reasonably
+      // assume something was posted. Caught in run #26040942667.
+      expect(result.target_url).toContain('example.invalid/dry-run/cline');
+      expect(result.target_url).not.toBe(existingUrl);
       // Only the idempotency search call should have happened. No edit.
       expect(calls).toHaveLength(1);
       const edit = calls.find((c) => c.args[1] === 'edit');
