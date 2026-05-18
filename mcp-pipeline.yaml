@@ -16,6 +16,17 @@ mcps:
   # (create-internal-evidence and create-signature-request) that consume the
   # Evidence Manager and Signature Manager APIs respectively.
   ead-factory:
+    # Source repo (v1.1 per-MCP-repo refactor — Phase B). When set, the
+    # publish workflow clones the MCP from here at workflow time:
+    #   - real publish (dry_run=false) → tag v<version> (MUST exist, see
+    #                                     the "Release flow" section in
+    #                                     this repo's README.md)
+    #   - dry-run dispatch              → main (HEAD)
+    # The clone overwrites whatever is checked into pending-to-publish/<id>/
+    # in THIS repo so the pipeline always operates on the authoritative
+    # source. Phase C will delete the committed copy under pending-to-publish/.
+    repo_url: "https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP"
+
     # Identity
     reverse_dns_name: "io.github.g-digital-by-Garrigues/ead-factory"
     npm_scope: "@g-digital"

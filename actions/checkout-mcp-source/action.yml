@@ -1,0 +1,32 @@
+name: "Checkout MCP source repo"
+description: "Clones a per-MCP source repo into pending-to-publish/<mcp_name>/, replacing any committed copy. No-op when repo_url is empty (legacy path before the v1.1 per-MCP-repo refactor)."
+
+inputs:
+  mcp_name:
+    description: "MCP id (kebab-case, e.g. 'ead-factory')."
+    required: true
+  repo_url:
+    description: "HTTPS URL of the MCP source repo (e.g. https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP). Pass an empty string to keep the committed copy under pending-to-publish/<mcp_name>/ in this repo."
+    required: true
+  repo_ref:
+    description: "Branch or tag to clone — typically 'main' for dry-runs and 'v<version>' for real publishes."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Clone MCP source over pending-to-publish/
+      shell: bash
+      run: |
+        set -euo pipefail
+        if [ -z "${{ inputs.repo_url }}" ]; then
+          echo "::notice::No repo_url configured for ${{ inputs.mcp_name }} — keeping the copy committed under pending-to-publish/${{ inputs.mcp_name }}/."
+          exit 0
+        fi
+        TARGET="pending-to-publish/${{ inputs.mcp_name }}"
+        if [ -d "$TARGET" ]; then
+          rm -rf "$TARGET"
+        fi
+        echo "Cloning ${{ inputs.repo_url }} @ ${{ inputs.repo_ref }} into $TARGET"
+        git clone --branch "${{ inputs.repo_ref }}" --depth 1 "${{ inputs.repo_url }}" "$TARGET"
+        echo "MCP source ready at $TARGET (HEAD = $(git -C "$TARGET" rev-parse --short HEAD))"
