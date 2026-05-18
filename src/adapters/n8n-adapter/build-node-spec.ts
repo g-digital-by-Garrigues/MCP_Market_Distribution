@@ -234,19 +234,27 @@ export async function buildN8nNodeSpec(
   }
 
   const credentials = buildCredentials(server);
-  const className = toPascalCase(distribution.n8n_adapter_target_name.replace(/^n8n-node-/, ''));
-  const resourceLabel = toTitleCase(distribution.n8n_adapter_target_name.replace(/^n8n-node-/, ''));
+  const bareTargetName = distribution.n8n_adapter_target_name.replace(/^n8n-node-/, '');
+  const className = toPascalCase(bareTargetName);
+  const resourceLabel = toTitleCase(bareTargetName);
+  const paramName = className.charAt(0).toLowerCase() + className.slice(1);
+  const credentialClassName = `${className}Api`;
+  const credentialParamName = `${paramName}Api`;
 
   const spec: N8nNodeSpec = {
     packageName: npmPackageName(distribution.npm_scope, distribution.n8n_adapter_target_name),
+    sourceMcpPackageName: distribution.npm_package_name,
     version: input.version,
     className,
     displayName: resourceLabel,
     description: server.description ?? `n8n community node for the ${resourceLabel} MCP.`,
     nodeName: input.mcpName,
+    paramName,
     resourceDisplayName: resourceLabel,
     operations,
     credentials,
+    credentialClassName,
+    credentialParamName,
     sourceRepoUrl: resolveRepoUrl(distribution, server),
     author: 'g-digital by Garrigues',
   };
