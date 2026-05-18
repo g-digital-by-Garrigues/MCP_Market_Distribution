@@ -1,0 +1,200 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+import yaml from 'js-yaml';
+
+import {
+  buildN8nNodeSpec,
+  BuildN8nNodeSpecError,
+} from '../../../src/adapters/n8n-adapter/build-node-spec.js';
+
+const REPO_ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  '..',
+  '..',
+  '..',
+);
+const MULTI_TOOL_STUB = path.join(REPO_ROOT, 'tests', 'fixtures', 'test-mcp', 'server-multi-tool.mjs');
+
+interface SetupOpts {
+  mcpName: string;
+  /** Extra fields merged into the .distribution.yaml fixture. */
+  distributionOverrides?: Record<string, unknown>;
+  /** When omitted, server.json is written with two environmentVariables. */
+  envVars?: Array<{ name: string; description: string; isSecret: boolean; isRequired: boolean }>;
+  /** When false, no server.json is written so we can exercise the missing-file branch. */
+  writeServerJson?: boolean;
+}
+
+async function setupFixture(opts: SetupOpts): Promise<{
+  repoRoot: string;
+  packageDir: string;
+  cleanup: () => Promise<void>;
+}> {
+  const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-adapter-spec-'));
+  const packageDir = path.join(repoRoot, 'pending-to-publish', opts.mcpName);
+  await fs.mkdir(packageDir, { recursive: true });
+
+  const distribution = {
+    distribution_schema_version: 1,
+    reverse_dns_name: `io.github.test/${opts.mcpName}`,
+    npm_scope: '@g-digital',
+    npm_package_name: `@g-digital/mcp-${opts.mcpName}`,
+    docker_image_name: `gdigital/${opts.mcpName}`,
+    n8n_adapter_target_name: `n8n-node-${opts.mcpName}`,
+    license: 'MIT',
+    credential_help_url: 'https://example.com',
+    target_overrides: {},
+    ...(opts.distributionOverrides ?? {}),
+  };
+  await fs.writeFile(path.join(packageDir, '.distribution.yaml'), yaml.dump(distribution));
+  // Minimal mcp-pipeline.yaml so the loader's parent registry parses.
+  const registry = {
+    pipeline_version: 1,
+    mcp_schema_version: '2025-12-11',
+    n8n_node_api_version: '1.0',
+    mcps: { [opts.mcpName]: { repo_url: 'https://github.com/test/test-mcp' } },
+  };
+  await fs.writeFile(path.join(repoRoot, 'mcp-pipeline.yaml'), yaml.dump(registry));
+
+  if (opts.writeServerJson !== false) {
+    const envVars = opts.envVars ?? [
+      { name: 'TEST_API_KEY', description: 'API key for the test backend.', isSecret: true, isRequired: true },
+      { name: 'TEST_BASE_URL', description: 'Base URL of the test backend.', isSecret: false, isRequired: true },
+    ];
+    const serverJson = {
+      $schema: 'https://example.com/server.schema.json',
+      name: distribution.reverse_dns_name,
+      description: 'A test multi-tool MCP.',
+      version: '1.0.0',
+      repository: { source: 'github', url: 'https://github.com/test/test-mcp' },
+      packages: [
+        {
+          identifier: distribution.npm_package_name,
+          registryType: 'npm',
+          transport: { type: 'stdio' },
+          version: '1.0.0',
+          environmentVariables: envVars,
+        },
+      ],
+    };
+    await fs.writeFile(path.join(packageDir, 'server.json'), JSON.stringify(serverJson, null, 2));
+  }
+
+  return {
+    repoRoot,
+    packageDir,
+    cleanup: async () => fs.rm(repoRoot, { recursive: true, force: true }),
+  };
+}
+
+describe('buildN8nNodeSpec (integration with stub MCP)', () => {
+  it('builds a spec with one operation per tool from the multi-tool stub', async () => {
+    const { repoRoot, packageDir, cleanup } = await setupFixture({ mcpName: 'multi-tool' });
+    try {
+      const { spec, unsupportedNotes } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+
+      // High-level shape.
+      expect(spec.packageName).toBe('@g-digital/n8n-node-multi-tool');
+      expect(spec.version).toBe('1.0.0');
+      expect(spec.className).toBe('MultiTool');
+      expect(spec.displayName).toBe('Multi Tool');
+      expect(spec.nodeName).toBe('multi-tool');
+
+      // One operation per stubbed tool.
+      const opNames = spec.operations.map((o) => o.name).sort();
+      expect(opNames).toEqual(['get_widget', 'list_widgets', 'submit_widget']);
+
+      // get_widget operation has the required widget_id property tagged for its scope.
+      const getWidget = spec.operations.find((o) => o.name === 'get_widget')!;
+      expect(getWidget.properties).toHaveLength(1);
+      expect(getWidget.properties[0]).toMatchObject({
+        name: 'widget_id',
+        type: 'string',
+        required: true,
+        showForOperation: 'get_widget',
+      });
+
+      // list_widgets has 3 props with the right types + numberConstraints.
+      const listWidgets = spec.operations.find((o) => o.name === 'list_widgets')!;
+      const pageSize = listWidgets.properties.find((p) => p.name === 'page_size')!;
+      expect(pageSize.type).toBe('number');
+      expect(pageSize.numberConstraints).toEqual({
+        minValue: 1,
+        maxValue: 100,
+        numberPrecision: 0,
+      });
+      const sort = listWidgets.properties.find((p) => p.name === 'sort')!;
+      expect(sort.type).toBe('options');
+      expect(sort.options).toEqual([
+        { name: 'asc', value: 'asc' },
+        { name: 'desc', value: 'desc' },
+      ]);
+
+      // submit_widget has nested object → 'json' + diagnostic note.
+      const submitWidget = spec.operations.find((o) => o.name === 'submit_widget')!;
+      const metadata = submitWidget.properties.find((p) => p.name === 'metadata')!;
+      expect(metadata.type).toBe('json');
+      expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
+
+      // Credentials reflect server.json#environmentVariables.
+      expect(spec.credentials.map((c) => c.envName).sort()).toEqual(['TEST_API_KEY', 'TEST_BASE_URL']);
+      const apiKey = spec.credentials.find((c) => c.envName === 'TEST_API_KEY')!;
+      expect(apiKey.isSecret).toBe(true);
+      expect(apiKey.displayName).toBe('Test Api Key');
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
+  it("throws BuildN8nNodeSpecError(stage='server_json') when server.json is absent", async () => {
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      writeServerJson: false,
+    });
+    try {
+      await expect(
+        buildN8nNodeSpec({
+          repoRoot,
+          packageDir,
+          mcpName: 'multi-tool',
+          version: '1.0.0',
+          inspectorCommand: process.execPath,
+          inspectorArgs: [MULTI_TOOL_STUB],
+          inspectorTimeoutMs: 10_000,
+        }),
+      ).rejects.toMatchObject({ name: 'BuildN8nNodeSpecError', stage: 'server_json' });
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
+  it("throws BuildN8nNodeSpecError(stage='launch') when the MCP command does not exist", async () => {
+    const { repoRoot, packageDir, cleanup } = await setupFixture({ mcpName: 'multi-tool' });
+    try {
+      await expect(
+        buildN8nNodeSpec({
+          repoRoot,
+          packageDir,
+          mcpName: 'multi-tool',
+          version: '1.0.0',
+          inspectorCommand: 'node',
+          inspectorArgs: ['/does/not/exist/server.js'],
+          inspectorTimeoutMs: 10_000,
+        }),
+      ).rejects.toBeInstanceOf(BuildN8nNodeSpecError);
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+});
