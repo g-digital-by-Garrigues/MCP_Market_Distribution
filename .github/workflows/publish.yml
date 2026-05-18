@@ -825,6 +825,19 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Required so verify-npx-install.ts can load .distribution.yaml
+      # to learn the npm package name to probe. Same fix pattern as
+      # PR #78 applied to ledger-read — Phase C moved per-MCP fields
+      # out of this repo into the MCP source repo, so any consumer of
+      # `.distribution.yaml` MUST run checkout-mcp-source first.
+      # Caught in run #26045698347 during the v1.0.5 real publish.
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
