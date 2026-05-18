@@ -125,6 +125,20 @@ describe('.github/workflows/publish.yml scaffold', () => {
     }
   });
 
+  it('ledger-read runs checkout-mcp-source so read-ledger.ts can load .distribution.yaml for skip_targets', () => {
+    // Regression: Phase C moved skip_targets out of mcp-pipeline.yaml
+    // (this repo) into the per-MCP repo's .distribution.yaml. Without
+    // checkout-mcp-source in ledger-read, the loader silently failed
+    // and the skip filter was never applied — publish-smithery ran
+    // despite skip_targets: [smithery]. The MCP source MUST be cloned
+    // before read-ledger.ts runs.
+    const job = parsed.jobs['ledger-read'] as unknown as {
+      steps: Array<{ uses?: string }>;
+    };
+    const usesList = job.steps.map((s) => s.uses).filter((u): u is string => !!u);
+    expect(usesList).toContain('./actions/checkout-mcp-source');
+  });
+
   it('publish-npm and publish-mcp-registry both have id-token: write for OIDC', () => {
     for (const name of ['publish-npm', 'publish-mcp-registry']) {
       const job = parsed.jobs[name] as unknown as { permissions?: Record<string, string> } | undefined;

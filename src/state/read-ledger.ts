@@ -132,17 +132,26 @@ async function main(): Promise<number> {
   // isn't ready in this pipeline version" knob. Currently used for
   // Smithery (v1.0 — see memory/smithery-mcpb-deferred.md), to be
   // unset for that MCP when v1.1 lands MCPB bundle support.
+  //
+  // Hard fail on missing/invalid .distribution.yaml. skip_targets is a
+  // safety mechanism (we MUST NOT publish to a marketplace the pipeline
+  // can't yet satisfy); silently falling back without it lets the wrong
+  // publisher run. The mainline publishers also require this file, so
+  // failing here just surfaces the misconfiguration earlier.
+  let distribution;
   try {
-    const distribution = await loadDistributionConfig(process.cwd(), mcpName);
-    if (distribution.skip_targets) {
-      for (const id of distribution.skip_targets) {
-        runSet.delete(id);
-      }
-    }
+    distribution = await loadDistributionConfig(process.cwd(), mcpName);
   } catch (err) {
     process.stderr.write(
-      `read-ledger: could not load skip_targets from .distribution.yaml (${(err as Error).message}); proceeding without skip filter.\n`,
+      `read-ledger: FATAL — could not load .distribution.yaml for '${mcpName}': ${(err as Error).message}\n` +
+        `Confirm the ledger-read job runs checkout-mcp-source before this step, and the MCP repo has a valid .distribution.yaml at its root.\n`,
     );
+    return 1;
+  }
+  if (distribution.skip_targets) {
+    for (const id of distribution.skip_targets) {
+      runSet.delete(id);
+    }
   }
 
   // Emit per-target run_<id> outputs.

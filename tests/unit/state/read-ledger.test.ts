@@ -102,8 +102,23 @@ const ALL_FLAGS = [
 ];
 
 describe('read-ledger CLI', () => {
-  // Use a fictitious MCP name for cases that don't care about skip_targets,
-  // so the (non-existent) real-repo .distribution.yaml never interferes.
+  // read-ledger now hard-fails when .distribution.yaml is missing
+  // (skip_targets is a safety mechanism — we MUST not silently drop the
+  // filter). Seed a temp cwd with a valid fixture so tests that don't
+  // exercise skip_targets still pass.
+  let neutralCwd: string;
+  beforeAll(async () => {
+    neutralCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'read-ledger-neutral-'));
+    await writeTestConfig({
+      repoRoot: neutralCwd,
+      mcpName: 'fictitious-test-mcp',
+      distributionOverrides: { skip_targets: undefined },
+    });
+  });
+  afterAll(async () => {
+    if (neutralCwd) await fs.rm(neutralCwd, { recursive: true, force: true });
+  });
+
   it('REGRESSION (run #25853475366): step="all" + track="both" → ALL run_*=true', async () => {
     // Before the fix the YAML emitted RETRY_STEP='all' (instead of ''),
     // which the script interpreted as filter=['all'] and produced
@@ -114,7 +129,7 @@ describe('read-ledger CLI', () => {
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: 'all',
       RETRY_TRACK: 'both',
-    });
+    }, neutralCwd);
     expect(r.exitCode).toBe(0);
     for (const flag of ALL_FLAGS) {
       expect(r.outputs[flag], flag).toBe('true');
@@ -128,7 +143,7 @@ describe('read-ledger CLI', () => {
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: '',
       RETRY_TRACK: '',
-    });
+    }, neutralCwd);
     for (const flag of ALL_FLAGS) {
       expect(r.outputs[flag], flag).toBe('true');
     }
@@ -141,7 +156,7 @@ describe('read-ledger CLI', () => {
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: 'gate',
       RETRY_TRACK: 'both',
-    });
+    }, neutralCwd);
     for (const flag of ALL_FLAGS) {
       expect(r.outputs[flag], flag).toBe('false');
     }
@@ -154,7 +169,7 @@ describe('read-ledger CLI', () => {
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: 'cline',
       RETRY_TRACK: 'both',
-    });
+    }, neutralCwd);
     expect(r.outputs.run_cline).toBe('true');
     for (const flag of ALL_FLAGS.filter((f) => f !== 'run_cline')) {
       expect(r.outputs[flag], flag).toBe('false');
@@ -168,11 +183,30 @@ describe('read-ledger CLI', () => {
       PIPELINE_RUN_ID: 'run-1',
       RETRY_STEP: '',
       RETRY_TRACK: 'a',
-    });
+    }, neutralCwd);
     const trackA = ['run_npm', 'run_docker_hub', 'run_mcp_publisher', 'run_smithery', 'run_docker_mcp_catalog', 'run_cline', 'run_mcpso'];
     for (const flag of trackA) expect(r.outputs[flag], flag).toBe('true');
     expect(r.outputs.run_n8n).toBe('false');
     expect(r.outputs.run_make_rom).toBe('false');
+  }, 30_000);
+
+  it('FATAL: missing .distribution.yaml → exit 1 (no silent skip-target bypass)', async () => {
+    const emptyCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'read-ledger-empty-'));
+    try {
+      const r = await runScript(
+        {
+          MCP_NAME: 'fictitious-test-mcp',
+          VERSION: '1.0.0',
+          PIPELINE_RUN_ID: 'run-1',
+          RETRY_STEP: '',
+          RETRY_TRACK: '',
+        },
+        emptyCwd,
+      );
+      expect(r.exitCode).toBe(1);
+    } finally {
+      await fs.rm(emptyCwd, { recursive: true, force: true });
+    }
   }, 30_000);
 
   // skip_targets reads from the per-MCP .distribution.yaml that the
