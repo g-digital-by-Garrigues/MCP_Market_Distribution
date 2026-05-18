@@ -3,7 +3,8 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { writeTestConfig } from '../../helpers/write-test-config.js';
 
 // Integration-style test for read-ledger.ts. We spawn the script with
 // stub env vars and assert the per-target run_<id> outputs match the
@@ -26,17 +27,22 @@ interface Run {
   exitCode: number;
 }
 
-async function runScript(env: Record<string, string>): Promise<Run> {
+async function runScript(env: Record<string, string>, cwd: string = REPO_ROOT): Promise<Run> {
   const outFile = await fs.mkdtemp(path.join(os.tmpdir(), 'read-ledger-out-'));
   const outputPath = path.join(outFile, 'GITHUB_OUTPUT');
   await fs.writeFile(outputPath, '');
   try {
     const exitCode = await new Promise<number>((resolve) => {
+      // Resolve the tsx loader from REPO_ROOT's node_modules so the
+      // child can find it even when cwd points at a temp dir (used by
+      // the skip_targets tests below). Passing the absolute URL avoids
+      // node's name-based --import resolution falling back to cwd.
+      const tsxLoaderUrl = new URL('file:///' + path.join(REPO_ROOT, 'node_modules', 'tsx', 'dist', 'loader.mjs').replace(/\\/g, '/')).toString();
       const child = spawn(
         process.execPath,
-        ['--import', 'tsx', SCRIPT],
+        ['--import', tsxLoaderUrl, SCRIPT],
         {
-          cwd: REPO_ROOT,
+          cwd,
           env: {
             ...process.env,
             ...env,
@@ -49,7 +55,14 @@ async function runScript(env: Record<string, string>): Promise<Run> {
           stdio: ['ignore', 'pipe', 'pipe'],
         },
       );
-      child.on('close', (code) => resolve(code ?? -1));
+      let stderr = '';
+      child.stderr.on('data', (d: Buffer) => (stderr += d.toString()));
+      child.on('close', (code) => {
+        if (code !== 0 && code !== null) {
+          process.stderr.write(`read-ledger spawn failed (exit ${code}): ${stderr.slice(0, 500)}\n`);
+        }
+        resolve(code ?? -1);
+      });
     });
     const raw = await fs.readFile(outputPath, 'utf8');
     const outputs: Record<string, string> = {};
@@ -89,15 +102,13 @@ const ALL_FLAGS = [
 ];
 
 describe('read-ledger CLI', () => {
+  // Use a fictitious MCP name for cases that don't care about skip_targets,
+  // so the (non-existent) real-repo .distribution.yaml never interferes.
   it('REGRESSION (run #25853475366): step="all" + track="both" → ALL run_*=true', async () => {
     // Before the fix the YAML emitted RETRY_STEP='all' (instead of ''),
     // which the script interpreted as filter=['all'] and produced
     // run_*=false for every real target.
     const r = await runScript({
-      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
-      // skip_targets (which excludes smithery for ead-factory) doesn't
-      // interfere with these tests' expectations. The skip_targets
-      // behavior is exercised by its own dedicated test below.
       MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
@@ -112,10 +123,6 @@ describe('read-ledger CLI', () => {
 
   it('empty step + empty track → ALL run_*=true', async () => {
     const r = await runScript({
-      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
-      // skip_targets (which excludes smithery for ead-factory) doesn't
-      // interfere with these tests' expectations. The skip_targets
-      // behavior is exercised by its own dedicated test below.
       MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
@@ -129,10 +136,6 @@ describe('read-ledger CLI', () => {
 
   it('step="gate" → ALL run_*=false (gate-only run, no publishers)', async () => {
     const r = await runScript({
-      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
-      // skip_targets (which excludes smithery for ead-factory) doesn't
-      // interfere with these tests' expectations. The skip_targets
-      // behavior is exercised by its own dedicated test below.
       MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
@@ -146,10 +149,6 @@ describe('read-ledger CLI', () => {
 
   it('step="cline" (single-target retry) → only run_cline=true', async () => {
     const r = await runScript({
-      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
-      // skip_targets (which excludes smithery for ead-factory) doesn't
-      // interfere with these tests' expectations. The skip_targets
-      // behavior is exercised by its own dedicated test below.
       MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
@@ -164,10 +163,6 @@ describe('read-ledger CLI', () => {
 
   it('track="a" + empty step → only Track A run_*=true', async () => {
     const r = await runScript({
-      // Use a fictitious MCP name so the real mcp-pipeline.yaml's
-      // skip_targets (which excludes smithery for ead-factory) doesn't
-      // interfere with these tests' expectations. The skip_targets
-      // behavior is exercised by its own dedicated test below.
       MCP_NAME: 'fictitious-test-mcp',
       VERSION: '1.0.0',
       PIPELINE_RUN_ID: 'run-1',
@@ -180,41 +175,58 @@ describe('read-ledger CLI', () => {
     expect(r.outputs.run_make_rom).toBe('false');
   }, 30_000);
 
-  it('skip_targets: ead-factory excludes smithery (per mcp-pipeline.yaml) even with no retry filter', async () => {
-    // mcp-pipeline.yaml has skip_targets: [smithery] for ead-factory
-    // because Smithery's 2026 model requires MCPB bundles (deferred to
-    // v1.1). The script must honor that — run_smithery=false even
-    // though all other targets in Track A should run.
-    const r = await runScript({
-      MCP_NAME: 'ead-factory',
-      VERSION: '1.0.0',
-      PIPELINE_RUN_ID: 'run-1',
-      RETRY_STEP: '',
-      RETRY_TRACK: '',
+  // skip_targets reads from the per-MCP .distribution.yaml that the
+  // checkout-mcp-source composite action drops into
+  // pending-to-publish/<mcp_name>/ at workflow time. Seed a temp cwd
+  // that mirrors that layout so the script's skip filter fires.
+  describe('skip_targets enforcement (per-MCP .distribution.yaml)', () => {
+    let tempCwd: string;
+    beforeAll(async () => {
+      tempCwd = await fs.mkdtemp(path.join(os.tmpdir(), 'read-ledger-cwd-'));
+      await writeTestConfig({
+        repoRoot: tempCwd,
+        distributionOverrides: { skip_targets: ['smithery'] },
+      });
     });
-    expect(r.exitCode).toBe(0);
-    expect(r.outputs.run_smithery).toBe('false');
-    // The other 6 Track A targets are unaffected.
-    expect(r.outputs.run_npm).toBe('true');
-    expect(r.outputs.run_docker_hub).toBe('true');
-    expect(r.outputs.run_mcp_publisher).toBe('true');
-    expect(r.outputs.run_docker_mcp_catalog).toBe('true');
-    expect(r.outputs.run_cline).toBe('true');
-    expect(r.outputs.run_mcpso).toBe('true');
-  }, 30_000);
+    afterAll(async () => {
+      await fs.rm(tempCwd, { recursive: true, force: true });
+    });
 
-  it('skip_targets overrides an explicit retry step (engineer cannot bypass)', async () => {
-    // Even if someone dispatches /retry-publish?step=smithery, the
-    // skip_targets entry must win — the pipeline currently has no
-    // working publisher for smithery in this MCP. run_smithery=false.
-    const r = await runScript({
-      MCP_NAME: 'ead-factory',
-      VERSION: '1.0.0',
-      PIPELINE_RUN_ID: 'run-1',
-      RETRY_STEP: 'smithery',
-      RETRY_TRACK: 'both',
-    });
-    expect(r.exitCode).toBe(0);
-    expect(r.outputs.run_smithery).toBe('false');
-  }, 30_000);
+    it('skip_targets: ead-factory excludes smithery (per .distribution.yaml) even with no retry filter', async () => {
+      const r = await runScript(
+        {
+          MCP_NAME: 'ead-factory',
+          VERSION: '1.0.0',
+          PIPELINE_RUN_ID: 'run-1',
+          RETRY_STEP: '',
+          RETRY_TRACK: '',
+        },
+        tempCwd,
+      );
+      expect(r.exitCode).toBe(0);
+      expect(r.outputs.run_smithery).toBe('false');
+      // The other 6 Track A targets are unaffected.
+      expect(r.outputs.run_npm).toBe('true');
+      expect(r.outputs.run_docker_hub).toBe('true');
+      expect(r.outputs.run_mcp_publisher).toBe('true');
+      expect(r.outputs.run_docker_mcp_catalog).toBe('true');
+      expect(r.outputs.run_cline).toBe('true');
+      expect(r.outputs.run_mcpso).toBe('true');
+    }, 30_000);
+
+    it('skip_targets overrides an explicit retry step (engineer cannot bypass)', async () => {
+      const r = await runScript(
+        {
+          MCP_NAME: 'ead-factory',
+          VERSION: '1.0.0',
+          PIPELINE_RUN_ID: 'run-1',
+          RETRY_STEP: 'smithery',
+          RETRY_TRACK: 'both',
+        },
+        tempCwd,
+      );
+      expect(r.exitCode).toBe(0);
+      expect(r.outputs.run_smithery).toBe('false');
+    }, 30_000);
+  });
 });

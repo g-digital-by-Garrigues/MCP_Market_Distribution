@@ -2,26 +2,11 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import yaml from 'js-yaml';
 import { runPreflight } from '../../../src/setup/run-preflight.js';
+import { writeTestConfig } from '../../helpers/write-test-config.js';
 
-const VALID_ENTRY = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
-  npm_scope: '@g-digital',
-  npm_package_name: '@g-digital/mcp-ead-factory',
-  docker_image_name: 'gdigital/ead-factory',
-  license: 'MIT',
-  n8n_adapter_target_name: 'n8n-node-ead-factory',
-  credential_help_url: 'https://eadtrust.example.com/onboarding',
-  target_overrides: {},
-};
-
-const VALID_CONFIG = {
-  pipeline_version: 1,
-  mcp_schema_version: '2025-12-11',
-  n8n_node_api_version: '1.0',
-  mcps: { 'ead-factory': VALID_ENTRY },
-};
+const MCP_NAME = 'ead-factory';
+const REVERSE_DNS = 'io.github.g-digital-by-Garrigues/ead-factory';
 
 async function seedFixture(opts: {
   withConfig?: boolean;
@@ -31,20 +16,16 @@ async function seedFixture(opts: {
 } = {}): Promise<string> {
   const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'preflight-'));
   if (opts.withConfig !== false) {
-    const config = opts.withEntry === false
-      ? { ...VALID_CONFIG, mcps: {} }
-      : VALID_CONFIG;
-    await fs.writeFile(
-      path.join(repoRoot, 'mcp-pipeline.yaml'),
-      yaml.dump(config),
-      'utf8',
-    );
+    // If withEntry is false, write the config under a different mcp name
+    // so the lookup for `ead-factory` fails.
+    const mcpName = opts.withEntry === false ? 'other-mcp' : MCP_NAME;
+    await writeTestConfig({ repoRoot, mcpName });
   }
   if (opts.withSource !== false) {
-    const mcpFolder = path.join(repoRoot, 'pending-to-publish', 'ead-factory');
+    const mcpFolder = path.join(repoRoot, 'pending-to-publish', MCP_NAME);
     await fs.mkdir(mcpFolder, { recursive: true });
     const filesToWrite: Record<string, string> = {
-      'package.json': JSON.stringify({ mcpName: VALID_ENTRY.reverse_dns_name }, null, 2),
+      'package.json': JSON.stringify({ mcpName: REVERSE_DNS }, null, 2),
       LICENSE: 'MIT\n',
       '.env.example': '# example\nFOO=bar\n',
       'README.md': '# Evidence Manager\n',

@@ -4,30 +4,11 @@ import os from 'node:os';
 import path from 'node:path';
 import yaml from 'js-yaml';
 import { runTrustedPublishers } from '../../../src/setup/run-trusted-publishers.js';
+import { writeTestConfig } from '../../helpers/write-test-config.js';
 
-const BASE_ENTRY = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
-  npm_scope: '@g-digital',
-  npm_package_name: '@g-digital/mcp-ead-factory',
-  docker_image_name: 'gdigital/ead-factory',
-  license: 'MIT',
-  n8n_adapter_target_name: 'n8n-node-ead-factory',
-  credential_help_url: 'https://eadtrust.example.com/onboarding',
-  target_overrides: {},
-};
-
-async function seedRepo(mcps: Record<string, typeof BASE_ENTRY>): Promise<string> {
+async function seedRepo(): Promise<string> {
   const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trusted-publishers-'));
-  await fs.writeFile(
-    path.join(repoRoot, 'mcp-pipeline.yaml'),
-    yaml.dump({
-      pipeline_version: 1,
-      mcp_schema_version: '2025-12-11',
-      n8n_node_api_version: '1.0',
-      mcps,
-    }),
-    'utf8',
-  );
+  await writeTestConfig({ repoRoot });
   return repoRoot;
 }
 
@@ -38,7 +19,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('iterates both the mcp-* and n8n-node-* packages per MCP entry', async () => {
-    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
+    repoRoot = await seedRepo();
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -53,7 +34,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('classifies a 404 from npm as package-not-published with the bootstrap remediation', async () => {
-    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
+    repoRoot = await seedRepo();
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -66,7 +47,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('classifies a successful invocation containing "already" as already-configured (idempotent)', async () => {
-    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
+    repoRoot = await seedRepo();
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -82,7 +63,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('classifies a successful new grant as configured', async () => {
-    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
+    repoRoot = await seedRepo();
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -93,7 +74,7 @@ describe('runTrustedPublishers', () => {
   });
 
   it('classifies an unknown non-zero exit as failed and surfaces stderr in detail', async () => {
-    repoRoot = await seedRepo({ 'ead-factory': BASE_ENTRY });
+    repoRoot = await seedRepo();
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',
@@ -105,13 +86,39 @@ describe('runTrustedPublishers', () => {
   });
 
   it('de-duplicates packages when multiple entries share the same npm_package_name', async () => {
-    repoRoot = await seedRepo({
-      'ead-factory': BASE_ENTRY,
-      'ead-factory-alt': {
-        ...BASE_ENTRY,
-        reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory-alt',
+    repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'trusted-publishers-'));
+    // Register two MCPs in mcp-pipeline.yaml. Then write two
+    // .distribution.yaml files that share the same npm_package_name +
+    // n8n_adapter_target_name so the dedupe logic collapses both into
+    // one pair. (Second writeTestConfig call would overwrite
+    // mcp-pipeline.yaml — so we register both up-front and write the
+    // alt distribution file manually.)
+    await writeTestConfig({
+      repoRoot,
+      extraRegistryEntries: {
+        'ead-factory-alt': {
+          repo_url: 'https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP-Alt',
+        },
       },
     });
+    const altDir = path.join(repoRoot, 'pending-to-publish', 'ead-factory-alt');
+    await fs.mkdir(altDir, { recursive: true });
+    await fs.writeFile(
+      path.join(altDir, '.distribution.yaml'),
+      yaml.dump({
+        distribution_schema_version: 1,
+        // Same npm_package_name + n8n_adapter_target_name as ead-factory,
+        // different reverse_dns_name to keep schema validation happy.
+        reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory-alt',
+        npm_scope: '@g-digital',
+        npm_package_name: '@g-digital/mcp-ead-factory',
+        docker_image_name: 'gdigital/ead-factory',
+        n8n_adapter_target_name: 'n8n-node-ead-factory',
+        license: 'MIT',
+        credential_help_url: 'https://example.com/onboarding',
+        target_overrides: {},
+      }),
+    );
     const result = await runTrustedPublishers({
       repoRoot,
       owner: 'g-digital-by-Garrigues',

@@ -5,15 +5,15 @@ import path from 'node:path';
 import process from 'node:process';
 
 import Handlebars from 'handlebars';
-import yaml from 'js-yaml';
 
 import { dryRunEnabled } from '../ci/dry-run.js';
 import { logger as defaultLogger } from '../utils/logger.js';
 import { retryWithBackoff } from '../utils/retry.js';
 import {
-  mcpPipelineConfigSchema,
-  type McpEntry,
-} from '../schemas/mcp-pipeline-config.schema.js';
+  loadDistributionConfig,
+  DistributionConfigError,
+} from '../distribution/load-distribution-config.js';
+import type { DistributionConfig } from '../schemas/distribution-config.schema.js';
 import {
   dryRunPlaceholderUrl,
   publisherOutputSchema,
@@ -96,19 +96,6 @@ function defaultExec(
   });
 }
 
-async function loadEntry(repoRoot: string, mcpName: string): Promise<McpEntry> {
-  const configPath = path.join(repoRoot, 'mcp-pipeline.yaml');
-  const raw = await fs.readFile(configPath, 'utf8');
-  const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
-  const entry = config.mcps[mcpName];
-  if (!entry) {
-    throw new Error(
-      `mcp-pipeline.yaml has no entry for '${mcpName}'. Available: ${Object.keys(config.mcps).join(', ') || '(none)'}.`,
-    );
-  }
-  return entry;
-}
-
 async function renderTemplate(
   repoRoot: string,
   fileName: string,
@@ -186,13 +173,14 @@ export async function publishDockerMcpCatalog(
   };
   log.info('target.publish_started', baseEvent);
 
-  let entry: McpEntry;
+  let distribution: DistributionConfig;
   try {
-    entry = await loadEntry(input.repo_root, input.mcp_name);
+    distribution = await loadDistributionConfig(input.repo_root, input.mcp_name);
   } catch (err) {
-    return failedOutput(input, isDryRun, now() - started, 1, (err as Error).message,
-      `mcp-pipeline.yaml has no entry for '${input.mcp_name}'.`,
-      `Add mcps.${input.mcp_name} in mcp-pipeline.yaml.`);
+    const msg = err instanceof DistributionConfigError ? err.message : (err as Error).message;
+    return failedOutput(input, isDryRun, now() - started, 1, msg,
+      `.distribution.yaml missing or invalid for '${input.mcp_name}'.`,
+      `Ensure the MCP repo has a valid .distribution.yaml at its root.`);
   }
 
   if (!env.BOT_PAT?.trim()) {
@@ -279,7 +267,7 @@ export async function publishDockerMcpCatalog(
       `Populate pending-to-publish/${input.mcp_name}/server.json with the env vars the MCP requires at runtime.`,
     );
   }
-  const tools = entry.tools ?? [];
+  const tools = distribution.tools ?? [];
   if (tools.length === 0) {
     return failedOutput(
       input,
@@ -288,15 +276,15 @@ export async function publishDockerMcpCatalog(
       1,
       `Docker MCP Catalog metadata gate failed: empty tools[] for ${input.mcp_name}.`,
       'Catalog discovery UI needs the tool list so consumers see what the MCP exposes.',
-      `Add mcps.${input.mcp_name}.tools[] in mcp-pipeline.yaml (static list per MCP — v1.1 will pull this automatically via tools/list).`,
+      `Add tools[] to the MCP repo's .distribution.yaml (static list per MCP — v1.1 will pull this automatically via tools/list).`,
     );
   }
 
   const data = {
     mcp_name: input.mcp_name,
     version: input.version,
-    docker_image_name: entry.docker_image_name,
-    license: entry.license,
+    docker_image_name: distribution.docker_image_name,
+    license: distribution.license,
     description,
     environment_variables: envVars,
     tools,

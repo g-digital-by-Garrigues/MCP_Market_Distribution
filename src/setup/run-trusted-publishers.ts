@@ -5,6 +5,10 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 import { mcpPipelineConfigSchema } from '../schemas/mcp-pipeline-config.schema.js';
+import {
+  loadDistributionConfig,
+  DistributionConfigError,
+} from '../distribution/load-distribution-config.js';
 
 export type GrantClassification =
   | 'configured'
@@ -103,11 +107,28 @@ export async function runTrustedPublishers(
   }
   const workflow = opts.workflow ?? PUBLISH_WORKFLOW_DEFAULT;
 
+  // Per-MCP fields now live in each MCP repo's .distribution.yaml. The
+  // operator must have cloned the MCP repo into pending-to-publish/<id>/
+  // before running /setup-trusted-publishers (mirrors what the publish
+  // workflow does via the checkout-mcp-source composite action). MCPs
+  // without a local .distribution.yaml are skipped with a warning.
   const packages: string[] = [];
-  for (const [, entry] of Object.entries(parsed.mcps)) {
-    packages.push(entry.npm_package_name);
-    const scope = entry.npm_scope.startsWith('@') ? entry.npm_scope : `@${entry.npm_scope}`;
-    packages.push(`${scope}/${entry.n8n_adapter_target_name}`);
+  for (const mcpName of Object.keys(parsed.mcps)) {
+    let distribution;
+    try {
+      distribution = await loadDistributionConfig(opts.repoRoot, mcpName);
+    } catch (err) {
+      const msg = err instanceof DistributionConfigError ? err.message : (err as Error).message;
+      process.stderr.write(
+        `Skipping '${mcpName}': ${msg}\n  Clone the MCP source into pending-to-publish/${mcpName}/ first, then re-run.\n`,
+      );
+      continue;
+    }
+    packages.push(distribution.npm_package_name);
+    const scope = distribution.npm_scope.startsWith('@')
+      ? distribution.npm_scope
+      : `@${distribution.npm_scope}`;
+    packages.push(`${scope}/${distribution.n8n_adapter_target_name}`);
   }
 
   const seen = new Set<string>();

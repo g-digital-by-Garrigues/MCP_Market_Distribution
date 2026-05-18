@@ -2,10 +2,10 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import yaml from 'js-yaml';
 
 import { publishDockerMcpCatalog } from '../../../src/publishers/publish-docker-mcp-catalog.js';
 import type { ExecFn } from '../../../src/publishers/publish-docker-mcp-catalog.js';
+import { writeTestConfig } from '../../helpers/write-test-config.js';
 
 const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
@@ -34,7 +34,7 @@ const TEMPLATES = {
 };
 
 interface RepoRootOverrides {
-  /** Omit `tools` from the mcp-pipeline.yaml entry to test the empty-tools gate. */
+  /** Omit `tools` from the .distribution.yaml to test the empty-tools gate. */
   omitTools?: boolean;
   /** Omit the env vars in server.json to test the empty-envvars gate. */
   omitEnvVars?: boolean;
@@ -47,35 +47,14 @@ async function withRepoRoot(
   overrides: RepoRootOverrides = {},
 ): Promise<void> {
   const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'docker-catalog-test-'));
-  const config = {
-    pipeline_version: 1,
-    mcp_schema_version: '2025-12-11',
-    n8n_node_api_version: '1.0',
-    mcps: {
-      'ead-factory': {
-        reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
-        npm_scope: '@g-digital',
-        npm_package_name: '@g-digital/mcp-ead-factory',
-        docker_image_name: 'gdigital/ead-factory',
-        n8n_adapter_target_name: 'n8n-node-ead-factory',
-        license: 'MIT',
-        credential_help_url: 'https://example.com',
-        target_overrides: {},
-        track_a_targets: 'default',
-        track_b_targets: ['n8n'],
-        logo_path: 'assets/logo.png',
-        ...(overrides.omitTools
-          ? {}
-          : {
-              tools: [
-                { name: 'do_thing', description: 'Does the thing.' },
-                { name: 'undo_thing', description: 'Undoes the thing.' },
-              ],
-            }),
-      },
-    },
-  };
-  await fs.writeFile(path.join(repoRoot, 'mcp-pipeline.yaml'), yaml.dump(config));
+  const distributionOverrides: Record<string, unknown> = {};
+  if (!overrides.omitTools) {
+    distributionOverrides.tools = [
+      { name: 'do_thing', description: 'Does the thing.' },
+      { name: 'undo_thing', description: 'Undoes the thing.' },
+    ];
+  }
+  await writeTestConfig({ repoRoot, distributionOverrides });
   const tplDir = path.join(repoRoot, 'templates', 'store-descriptions', 'docker-mcp-catalog');
   await fs.mkdir(tplDir, { recursive: true });
   for (const [name, content] of Object.entries(TEMPLATES)) {
@@ -238,7 +217,7 @@ describe('publishDockerMcpCatalog', () => {
   // The publisher must refuse to open a catalog PR before fork/clone/push if
   // the submission would look uncurated to a Docker reviewer.
 
-  it('metadata gate: empty tools[] in mcp-pipeline.yaml → status=failed before any fork/clone/push', async () => {
+  it('metadata gate: empty tools[] in .distribution.yaml → status=failed before any fork/clone/push', async () => {
     await withRepoRoot(
       async (repoRoot) => {
         const { exec, calls } = fakeExec(({ args }) => {
@@ -251,7 +230,7 @@ describe('publishDockerMcpCatalog', () => {
         );
         expect(result.status).toBe('failed');
         expect(result.error?.message).toContain('empty tools[]');
-        expect(result.error?.action).toContain('mcp-pipeline.yaml');
+        expect(result.error?.action).toContain('.distribution.yaml');
         // Only the idempotency search call should have happened.
         expect(calls.filter((c) => c.cmd === 'gh' && c.args[1] === 'fork')).toHaveLength(0);
         expect(calls.filter((c) => c.cmd === 'git' && c.args[0] === 'clone')).toHaveLength(0);

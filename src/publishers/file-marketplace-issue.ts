@@ -4,15 +4,15 @@ import path from 'node:path';
 import process from 'node:process';
 
 import Handlebars from 'handlebars';
-import yaml from 'js-yaml';
 
 import { dryRunEnabled } from '../ci/dry-run.js';
 import { logger as defaultLogger } from '../utils/logger.js';
 import { retryWithBackoff } from '../utils/retry.js';
 import {
-  mcpPipelineConfigSchema,
-  type McpEntry,
-} from '../schemas/mcp-pipeline-config.schema.js';
+  loadDistributionConfig,
+  DistributionConfigError,
+} from '../distribution/load-distribution-config.js';
+import type { DistributionConfig } from '../schemas/distribution-config.schema.js';
 import {
   dryRunPlaceholderUrl,
   publisherOutputSchema,
@@ -124,19 +124,6 @@ function defaultExec(
   });
 }
 
-async function loadEntry(repoRoot: string, mcpName: string): Promise<McpEntry> {
-  const configPath = path.join(repoRoot, 'mcp-pipeline.yaml');
-  const raw = await fs.readFile(configPath, 'utf8');
-  const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
-  const entry = config.mcps[mcpName];
-  if (!entry) {
-    throw new Error(
-      `mcp-pipeline.yaml has no entry for '${mcpName}'. Available: ${Object.keys(config.mcps).join(', ') || '(none)'}.`,
-    );
-  }
-  return entry;
-}
-
 async function readPackageDescription(packageDir: string, mcpName: string): Promise<string> {
   try {
     const raw = await fs.readFile(path.join(packageDir, 'package.json'), 'utf8');
@@ -153,7 +140,7 @@ async function readPackageDescription(packageDir: string, mcpName: string): Prom
 async function renderIssueBody(
   config: IssuePublisherConfig,
   input: FileMarketplaceIssueInput,
-  entry: McpEntry,
+  distribution: DistributionConfig,
 ): Promise<string> {
   const tpl = await fs.readFile(
     path.join(input.repo_root, 'templates', 'store-descriptions', config.templateFile),
@@ -167,25 +154,21 @@ async function renderIssueBody(
   // normally happen — Layer 1 enforces its presence).
   const description = await readPackageDescription(packageDir, input.mcp_name);
   const repoUrl = 'https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution';
-  // Logo URL points at the npm-published copy via unpkg.com, NOT at the
-  // private repo's raw.githubusercontent.com path. Reasons:
-  //   - The repo is private. raw.githubusercontent.com URLs return 404
-  //     to anyone without repo access — including Cline / mcp.so / Docker
-  //     MCP Catalog maintainers, who need to see the logo to triage the
-  //     submission.
-  //   - The npm tarball includes assets/ (package.json#files), so unpkg
-  //     serves the file with the right cache headers and no auth.
-  //   - This requires publish-npm to have succeeded first. publish.yml
-  //     chains the marketplace publishers behind publish-npm via the
-  //     `needs.publish-npm` dependency + status-check guard.
-  const logoUrl = `https://unpkg.com/${entry.npm_package_name}@${input.version}/${entry.logo_path}`;
+  // Logo URL points at the npm-published copy via unpkg.com so the
+  // marketplace maintainers can see the asset without needing repo
+  // access. The npm tarball includes assets/ (package.json#files), so
+  // unpkg serves the file with no auth. Requires publish-npm to have
+  // succeeded first (publish.yml chains the marketplace publishers
+  // behind publish-npm).
+  const logoPath = distribution.logo_path ?? 'assets/logo.png';
+  const logoUrl = `https://unpkg.com/${distribution.npm_package_name}@${input.version}/${logoPath}`;
   return Handlebars.compile(tpl, { noEscape: true })({
     mcp_name: input.mcp_name,
     version: input.version,
     description,
-    npm_package_name: entry.npm_package_name,
-    docker_image_name: entry.docker_image_name,
-    license: entry.license,
+    npm_package_name: distribution.npm_package_name,
+    docker_image_name: distribution.docker_image_name,
+    license: distribution.license,
     repo_url: repoUrl,
     logo_url: logoUrl,
     pipeline_run_id: input.pipeline_run_id,
@@ -240,14 +223,14 @@ export async function fileMarketplaceIssue(
   };
   log.info('target.publish_started', baseEvent);
 
-  let entry: McpEntry;
+  let distribution: DistributionConfig;
   try {
-    entry = await loadEntry(input.repo_root, input.mcp_name);
+    distribution = await loadDistributionConfig(input.repo_root, input.mcp_name);
   } catch (err) {
-    return failed(config, input, isDryRun, now() - started, 1,
-      (err as Error).message,
-      `mcp-pipeline.yaml has no entry for '${input.mcp_name}'.`,
-      `Add mcps.${input.mcp_name} in mcp-pipeline.yaml.`);
+    const msg = err instanceof DistributionConfigError ? err.message : (err as Error).message;
+    return failed(config, input, isDryRun, now() - started, 1, msg,
+      `.distribution.yaml missing or invalid for '${input.mcp_name}'.`,
+      `Ensure the MCP repo has a valid .distribution.yaml at its root.`);
   }
 
   if (!env.BOT_PAT?.trim()) {
@@ -258,7 +241,7 @@ export async function fileMarketplaceIssue(
   }
 
   const title = config.titlePattern({
-    reverseDns: entry.reverse_dns_name,
+    reverseDns: distribution.reverse_dns_name,
     mcpName: input.mcp_name,
     version: input.version,
   });
@@ -293,7 +276,7 @@ export async function fileMarketplaceIssue(
           }
           let body: string;
           try {
-            body = await renderIssueBody(config, input, entry);
+            body = await renderIssueBody(config, input, distribution);
           } catch (err) {
             log.error('target.issue_body_update_failed', {
               ...baseEvent,
@@ -341,7 +324,7 @@ export async function fileMarketplaceIssue(
   }
 
   // Render the issue body for the create path.
-  const body = await renderIssueBody(config, input, entry);
+  const body = await renderIssueBody(config, input, distribution);
 
   // Custom transient classifier: treat 403 as transient because for these
   // marketplaces 403 typically means rate-limit, not permission.
@@ -409,7 +392,7 @@ export async function fileMarketplaceIssue(
       baseEvent,
       upstreamRepo: config.upstreamRepo,
       stalePrefix: config.stalePrefix({
-        reverseDns: entry.reverse_dns_name,
+        reverseDns: distribution.reverse_dns_name,
         mcpName: input.mcp_name,
       }),
       newIssueUrl: url,

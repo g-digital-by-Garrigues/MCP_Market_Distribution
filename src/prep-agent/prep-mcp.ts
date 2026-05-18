@@ -9,6 +9,10 @@ import {
   type McpPipelineConfig,
   type McpEntry,
 } from '../schemas/mcp-pipeline-config.schema.js';
+import {
+  loadDistributionConfig,
+  DistributionConfigError,
+} from '../distribution/load-distribution-config.js';
 import { validateSourceFolder } from '../validators/validate-source-folder.js';
 import { generateEnvironmentVariables } from '../generators/generate-environment-variables.js';
 import { generateServerJson } from '../generators/generate-server-json.js';
@@ -134,13 +138,27 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
   const { mcpName, repoRoot, skipCommit = false, skipTag = false } = opts;
 
   const config = await loadConfig(repoRoot);
-  const entry = resolveEntry(config, mcpName);
+  resolveEntry(config, mcpName); // ensure repo_url entry exists; per-MCP fields come from .distribution.yaml
   const mcpFolder = path.join(repoRoot, 'pending-to-publish', mcpName);
+
+  let distribution;
+  try {
+    distribution = await loadDistributionConfig(repoRoot, mcpName);
+  } catch (err) {
+    if (err instanceof DistributionConfigError) {
+      throw new PrepMcpError(
+        'load-config',
+        err.message,
+        `Add a valid .distribution.yaml at the root of the ${mcpName} source repo, re-clone, and re-run /prep-mcp.`,
+      );
+    }
+    throw err;
+  }
 
   // Step 1: source validation (Story 1.3)
   const sourceReport = await validateSourceFolder({
     folder: mcpFolder,
-    expectedMcpName: entry.reverse_dns_name,
+    expectedMcpName: distribution.reverse_dns_name,
   });
   if (sourceReport.hasMissing) {
     const missing = sourceReport.checks
@@ -171,14 +189,14 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
   const envExampleContent = await fs.readFile(envExamplePath, 'utf8');
   const envManifest = generateEnvironmentVariables({
     envExampleContent,
-    credentialHelpUrl: entry.credential_help_url,
+    credentialHelpUrl: distribution.credential_help_url,
   });
 
   // Step 4: server.json (Story 1.6)
   const serverJson = await generateServerJson({
     config: {
-      reverse_dns_name: entry.reverse_dns_name,
-      npm_package_name: entry.npm_package_name,
+      reverse_dns_name: distribution.reverse_dns_name,
+      npm_package_name: distribution.npm_package_name,
       mcp_schema_version: config.mcp_schema_version,
     },
     packageJson: sourcePkgInitial as {
@@ -197,9 +215,9 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
   // Step 6: install blocks (Story 1.8)
   const installBlocks = await generateAllInstallBlocks({
     config: {
-      reverse_dns_name: entry.reverse_dns_name,
-      npm_package_name: entry.npm_package_name,
-      credential_help_url: entry.credential_help_url,
+      reverse_dns_name: distribution.reverse_dns_name,
+      npm_package_name: distribution.npm_package_name,
+      credential_help_url: distribution.credential_help_url,
     },
     environmentVariables: envManifest.environmentVariables,
   });

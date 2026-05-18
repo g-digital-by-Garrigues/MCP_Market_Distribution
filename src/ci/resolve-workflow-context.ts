@@ -59,28 +59,27 @@ export async function resolveWorkflowContext(
     );
   }
 
+  // In the per-MCP-repo model (v1.1+), each MCP has its OWN public repo
+  // where v* tags are pushed. A v* tag on this pipeline repo is vestigial
+  // (the canonical flow is workflow_dispatch). When tag-push DOES fire
+  // here, we assume the default 'v' prefix for every MCP in the registry —
+  // resolving the right MCP requires workflow_dispatch with `mcp_name`.
   const configRaw = await fs.readFile(opts.configPath, 'utf8');
   const config = mcpPipelineConfigSchema.parse(yaml.load(configRaw));
 
-  const candidates: Array<{ name: string; prefix: string }> = [];
-  for (const [name, entry] of Object.entries(config.mcps)) {
-    candidates.push({ name, prefix: entry.git_tag_prefix ?? DEFAULT_GIT_TAG_PREFIX });
-  }
-
-  // Longest prefix wins to handle e.g. ead-factory-v over v.
-  candidates.sort((a, b) => b.prefix.length - a.prefix.length);
-
-  for (const { name, prefix } of candidates) {
-    if (tag.startsWith(prefix)) {
-      const version = tag.slice(prefix.length);
+  const names = Object.keys(config.mcps);
+  for (const name of names) {
+    if (tag.startsWith(DEFAULT_GIT_TAG_PREFIX)) {
+      const version = tag.slice(DEFAULT_GIT_TAG_PREFIX.length);
       if (version.length === 0) continue;
+      // First match wins. Ambiguous when >1 MCP — use workflow_dispatch.
       return { mcp_name: name, version, pipeline_run_id: pipelineRunId, source: 'tag-push' };
     }
   }
 
-  const listed = candidates.map((c) => `${c.name} (prefix '${c.prefix}')`).join(', ');
   throw new Error(
-    `Tag '${tag}' does not match any MCP's git_tag_prefix. Configured: ${listed || '(none)'}.`,
+    `Tag '${tag}' does not start with '${DEFAULT_GIT_TAG_PREFIX}'. Configured MCPs: ${names.join(', ') || '(none)'}. ` +
+      `Use workflow_dispatch with explicit mcp_name + version to disambiguate.`,
   );
 }
 

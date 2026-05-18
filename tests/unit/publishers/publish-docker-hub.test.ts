@@ -2,11 +2,11 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import yaml from 'js-yaml';
 
 import { publishDockerHub } from '../../../src/publishers/publish-docker-hub.js';
 import type { ExecFn } from '../../../src/publishers/publish-docker-hub.js';
 import type { ExecFn as ProbeExecFn } from '../../../src/publishers/check-target-version.js';
+import { writeTestConfig } from '../../helpers/write-test-config.js';
 
 interface FakeExec {
   exec: ExecFn;
@@ -41,29 +41,8 @@ async function withRepoRoot(
 ): Promise<void> {
   const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'publish-docker-test-'));
   const packageDir = path.join(repoRoot, 'pending-to-publish', 'ead-factory');
-  await fs.mkdir(packageDir, { recursive: true });
+  await writeTestConfig({ repoRoot });
   await fs.writeFile(path.join(packageDir, 'Dockerfile'), 'FROM node:22-alpine\nCMD ["node","server.js"]\n');
-  const config = {
-    pipeline_version: 1,
-    mcp_schema_version: '2025-12-11',
-    n8n_node_api_version: '1.0',
-    mcps: {
-      'ead-factory': {
-        reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
-        npm_scope: '@g-digital',
-        npm_package_name: '@g-digital/mcp-ead-factory',
-        docker_image_name: 'gdigital/ead-factory',
-        n8n_adapter_target_name: 'n8n-node-ead-factory',
-        license: 'MIT',
-        credential_help_url: 'https://example.com/onboarding',
-        target_overrides: {},
-        track_a_targets: 'default',
-        track_b_targets: ['n8n', 'make-rom'],
-        logo_path: 'assets/logo.png',
-      },
-    },
-  };
-  await fs.writeFile(path.join(repoRoot, 'mcp-pipeline.yaml'), yaml.dump(config));
   try {
     await body({ repoRoot, packageDir });
   } finally {
@@ -224,7 +203,7 @@ describe('publishDockerHub', () => {
     });
   });
 
-  it('mcp-pipeline.yaml missing the requested mcp_name → status="failed" with config-edit remediation', async () => {
+  it('.distribution.yaml missing for the requested mcp_name → status="failed" with config-edit remediation', async () => {
     await withRepoRoot(async ({ repoRoot, packageDir }) => {
       const probeExec = fakeProbe([]);
       const { exec } = fakeExec([]);
@@ -242,7 +221,7 @@ describe('publishDockerHub', () => {
       );
 
       expect(output.status).toBe('failed');
-      expect(output.error?.action).toContain('mcp-pipeline.yaml');
+      expect(output.error?.action).toContain('.distribution.yaml');
     });
   });
 

@@ -5,10 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import yaml from 'js-yaml';
 import { Ajv2020 } from 'ajv/dist/2020.js';
-import {
-  mcpPipelineConfigSchema,
-  type McpEntry,
-} from '../schemas/mcp-pipeline-config.schema.js';
+import { loadDistributionConfig } from '../distribution/load-distribution-config.js';
+import type { DistributionConfig } from '../schemas/distribution-config.schema.js';
 import { validateSourceFolder } from '../validators/validate-source-folder.js';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
 
@@ -51,23 +49,13 @@ export interface RunTrackALayer1Options {
   pipelineRunId?: string;
 }
 
-async function loadEntry(repoRoot: string, mcpName: string): Promise<McpEntry> {
-  const configPath = path.join(repoRoot, 'mcp-pipeline.yaml');
-  const raw = await fs.readFile(configPath, 'utf8');
-  const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
-  const entry = config.mcps[mcpName];
-  if (!entry) {
-    throw new Error(
-      `mcp-pipeline.yaml has no entry for '${mcpName}'. Available: ${Object.keys(config.mcps).join(', ') || '(none)'}.`,
-    );
-  }
-  return entry;
-}
-
-async function checkSource(mcpFolder: string, entry: McpEntry): Promise<CheckResult> {
+async function checkSource(
+  mcpFolder: string,
+  distribution: DistributionConfig,
+): Promise<CheckResult> {
   const report = await validateSourceFolder({
     folder: mcpFolder,
-    expectedMcpName: entry.reverse_dns_name,
+    expectedMcpName: distribution.reverse_dns_name,
   });
   if (!report.hasMissing) {
     return { name: 'source-folder', passed: true };
@@ -212,7 +200,10 @@ async function findLicenseFile(mcpFolder: string): Promise<string | null> {
   return null;
 }
 
-async function checkLicense(mcpFolder: string, entry: McpEntry): Promise<CheckResult> {
+async function checkLicense(
+  mcpFolder: string,
+  distribution: DistributionConfig,
+): Promise<CheckResult> {
   const filePath = await findLicenseFile(mcpFolder);
   if (!filePath) {
     return {
@@ -241,15 +232,15 @@ async function checkLicense(mcpFolder: string, entry: McpEntry): Promise<CheckRe
       }),
     };
   }
-  const expected = entry.license;
+  const expected = distribution.license;
   if (expected === 'MIT' && !isMit) {
     return {
       name: 'license',
       passed: false,
       error: gateError('license', {
-        observation: `mcp-pipeline.yaml declares license: MIT but ${path.basename(filePath)} matches Apache-2.0.`,
-        cause: 'The committed LICENSE file disagrees with the per-MCP config.',
-        action: 'Align mcp-pipeline.yaml#license with the LICENSE file content, then re-tag.',
+        observation: `.distribution.yaml declares license: MIT but ${path.basename(filePath)} matches Apache-2.0.`,
+        cause: 'The committed LICENSE file disagrees with the MCP repo .distribution.yaml.',
+        action: "Align the MCP repo's .distribution.yaml#license with the LICENSE file content, then re-tag.",
         source_path: path.basename(filePath),
       }),
     };
@@ -259,9 +250,9 @@ async function checkLicense(mcpFolder: string, entry: McpEntry): Promise<CheckRe
       name: 'license',
       passed: false,
       error: gateError('license', {
-        observation: `mcp-pipeline.yaml declares license: Apache-2.0 but ${path.basename(filePath)} matches MIT.`,
-        cause: 'The committed LICENSE file disagrees with the per-MCP config.',
-        action: 'Align mcp-pipeline.yaml#license with the LICENSE file content, then re-tag.',
+        observation: `.distribution.yaml declares license: Apache-2.0 but ${path.basename(filePath)} matches MIT.`,
+        cause: 'The committed LICENSE file disagrees with the MCP repo .distribution.yaml.',
+        action: "Align the MCP repo's .distribution.yaml#license with the LICENSE file content, then re-tag.",
         source_path: path.basename(filePath),
       }),
     };
@@ -272,14 +263,14 @@ async function checkLicense(mcpFolder: string, entry: McpEntry): Promise<CheckRe
 export async function runTrackALayer1(
   opts: RunTrackALayer1Options,
 ): Promise<TrackALayer1Result> {
-  const entry = await loadEntry(opts.repoRoot, opts.mcpName);
+  const distribution = await loadDistributionConfig(opts.repoRoot, opts.mcpName);
   const mcpFolder = path.join(opts.repoRoot, 'pending-to-publish', opts.mcpName);
 
   const checks: CheckResult[] = [];
-  checks.push(await checkSource(mcpFolder, entry));
+  checks.push(await checkSource(mcpFolder, distribution));
   checks.push(await checkServerJson(mcpFolder));
   checks.push(await checkSmitheryYaml(mcpFolder));
-  checks.push(await checkLicense(mcpFolder, entry));
+  checks.push(await checkLicense(mcpFolder, distribution));
 
   const errors = checks.filter((c) => !c.passed).map((c) => c.error!);
   const passed = errors.length === 0;

@@ -2,34 +2,17 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import yaml from 'js-yaml';
 import { runTrackALayer1 } from '../../src/gates/run-track-a-layer-1.js';
 import { errorReportSchema } from '../../src/schemas/error-report.schema.js';
+import { writeTestConfig } from '../helpers/write-test-config.js';
 
 const MCP_NAME = 'ead-factory';
-
-const CONFIG = {
-  pipeline_version: 1,
-  mcp_schema_version: '2025-12-11',
-  n8n_node_api_version: '1.0',
-  mcps: {
-    [MCP_NAME]: {
-      reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
-      npm_scope: '@g-digital',
-      npm_package_name: '@g-digital/mcp-ead-factory',
-      docker_image_name: 'gdigital/ead-factory',
-      license: 'MIT',
-      n8n_adapter_target_name: 'n8n-node-ead-factory',
-      credential_help_url: 'https://eadtrust.example.com/onboarding',
-      target_overrides: {},
-    },
-  },
-};
+const REVERSE_DNS = 'io.github.g-digital-by-Garrigues/ead-factory';
 
 const VALID_SERVER_JSON = {
   $schema: 'https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json',
   description: 'EAD Factory MCP',
-  name: 'io.github.g-digital-by-Garrigues/ead-factory',
+  name: REVERSE_DNS,
   packages: [
     {
       environmentVariables: [
@@ -96,20 +79,16 @@ async function seedFixture(overrides: FixtureOverrides = {}): Promise<string> {
   const mcpFolder = path.join(repoRoot, 'pending-to-publish', MCP_NAME);
   await fs.mkdir(mcpFolder, { recursive: true });
 
-  const config = { ...CONFIG };
+  const distributionOverrides: Record<string, unknown> = {};
   if (overrides.configLicense) {
-    config.mcps[MCP_NAME] = { ...config.mcps[MCP_NAME], license: overrides.configLicense };
+    distributionOverrides.license = overrides.configLicense;
   }
-  await fs.writeFile(
-    path.join(repoRoot, 'mcp-pipeline.yaml'),
-    yaml.dump(config),
-    'utf8',
-  );
+  await writeTestConfig({ repoRoot, distributionOverrides });
 
   // Source files (Story 1.3 validator inputs)
   const sourceFiles: Record<string, string> = {
     'package.json': JSON.stringify(
-      { name: '@g-digital/mcp-ead-factory', version: '1.0.0', mcpName: CONFIG.mcps[MCP_NAME].reverse_dns_name },
+      { name: '@g-digital/mcp-ead-factory', version: '1.0.0', mcpName: REVERSE_DNS },
       null,
       2,
     ),
@@ -161,7 +140,7 @@ describe('Track A — Layer 1 static validation gate', () => {
     );
   });
 
-  it('accepts Apache-2.0 license content when mcp-pipeline.yaml declares Apache-2.0', async () => {
+  it('accepts Apache-2.0 license content when .distribution.yaml declares Apache-2.0', async () => {
     repoRoot = await seedFixture({ licenseContent: APACHE_LICENSE, configLicense: 'Apache-2.0' });
     const result = await runTrackALayer1({ repoRoot, mcpName: MCP_NAME });
     expect(result.passed).toBe(true);

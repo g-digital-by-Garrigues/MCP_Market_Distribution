@@ -5,6 +5,10 @@ import { fileURLToPath } from 'node:url';
 import yaml from 'js-yaml';
 import { mcpPipelineConfigSchema } from '../schemas/mcp-pipeline-config.schema.js';
 import {
+  loadDistributionConfig,
+  DistributionConfigError,
+} from '../distribution/load-distribution-config.js';
+import {
   validateSourceFolder,
   type SourceFolderReport,
 } from '../validators/validate-source-folder.js';
@@ -60,10 +64,24 @@ export async function runPreflight(opts: RunPreflightOptions): Promise<Preflight
     };
   }
 
+  let distribution;
+  try {
+    distribution = await loadDistributionConfig(repoRoot, mcpName);
+  } catch (err) {
+    return {
+      mcpName,
+      ready: false,
+      sourceReport: { folder: '', expectedMcpName: '', checks: [], hasMissing: true },
+      configErrors: [
+        err instanceof DistributionConfigError ? err.message : (err as Error).message,
+      ],
+    };
+  }
+
   const folder = path.join(repoRoot, 'pending-to-publish', mcpName);
   const sourceReport = await validateSourceFolder({
     folder,
-    expectedMcpName: entry.reverse_dns_name,
+    expectedMcpName: distribution.reverse_dns_name,
   });
 
   return {
