@@ -39,6 +39,8 @@ interface AdapterBuildSummary {
   };
   dry_run: boolean;
   source_substituted: boolean;
+  /** Set when dry_run=true AND substitution couldn't fire; explains why. */
+  substitution_warning?: string;
 }
 
 // In dry-run mode the source MCP hasn't been published to npmjs yet
@@ -52,7 +54,7 @@ async function substituteSourceMcpForDryRun(opts: {
   outputDir: string;
   packageDir: string;
   sourceMcpPackageName: string;
-}): Promise<{ substituted: boolean; tarballPath?: string }> {
+}): Promise<{ substituted: boolean; tarballPath?: string; warning?: string }> {
   const { outputDir, packageDir, sourceMcpPackageName } = opts;
   const adapterPkgPath = path.join(outputDir, 'package.json');
   const pkgRaw = await fs.readFile(adapterPkgPath, 'utf8');
@@ -60,32 +62,35 @@ async function substituteSourceMcpForDryRun(opts: {
     dependencies?: Record<string, string>;
   };
   if (!pkg.dependencies?.[sourceMcpPackageName]) {
-    return { substituted: false };
+    return {
+      substituted: false,
+      warning: `adapter package.json has no dependency on '${sourceMcpPackageName}' — nothing to substitute.`,
+    };
   }
 
   // npm pack the source MCP into the adapter dir, then rewrite the dep.
-  // Best-effort: if `npm pack` fails (no dist/, missing files entry, etc.),
-  // surface the failure to stderr but DO NOT crash the build — the
-  // downstream Layer 2/3 will fail loudly enough.
+  // outputDir + packageDir MUST be absolute (the caller resolves them);
+  // npm interprets --pack-destination relative to the subprocess cwd
+  // (= packageDir), so passing a relative outputDir would write the
+  // tarball under <packageDir>/<outputDir> — the exact bug that caused
+  // run #26040942667 to fall back silently to the registry version.
   const { spawnSync } = await import('node:child_process');
   const packResult = spawnSync('npm', ['pack', '--pack-destination', outputDir], {
     cwd: packageDir,
     encoding: 'utf8',
   });
   if (packResult.status !== 0) {
-    process.stderr.write(
-      `[run-adapter-build] dry_run substitution failed: npm pack in ${packageDir} exited ${packResult.status}: ${(packResult.stderr ?? '').slice(0, 400)}\n`,
-    );
-    return { substituted: false };
+    const warning = `npm pack in ${packageDir} exited ${packResult.status}: ${(packResult.stderr ?? '').slice(0, 400)}`;
+    process.stderr.write(`[run-adapter-build] dry_run substitution failed: ${warning}\n`);
+    return { substituted: false, warning };
   }
 
   // `npm pack` prints the produced .tgz filename on its last stdout line.
   const tarballName = packResult.stdout.trim().split(/\r?\n/).pop() ?? '';
   if (!tarballName.endsWith('.tgz')) {
-    process.stderr.write(
-      `[run-adapter-build] dry_run substitution: could not parse tarball name from npm pack stdout: ${packResult.stdout.slice(-200)}\n`,
-    );
-    return { substituted: false };
+    const warning = `could not parse tarball name from npm pack stdout: ${packResult.stdout.slice(-200)}`;
+    process.stderr.write(`[run-adapter-build] dry_run substitution: ${warning}\n`);
+    return { substituted: false, warning };
   }
 
   pkg.dependencies[sourceMcpPackageName] = `file:./${tarballName}`;
@@ -103,12 +108,22 @@ interface RunAdapterBuildOptions {
 }
 
 export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<AdapterBuildSummary> {
+  // Resolve to absolute paths upfront. The substitution step delegates
+  // to `npm pack --pack-destination <outputDir>` from a subprocess whose
+  // cwd is `packageDir`; npm interprets `--pack-destination` relative to
+  // ITS cwd, not ours, so a relative outputDir would resolve to
+  // <packageDir>/<outputDir> — almost never the intended target.
+  // Caught in dry-run #26040942667 where the substitution silently
+  // returned `substituted: false` and Layer 2 then tried to install
+  // the registry version `1.0.5` (which doesn't exist yet).
   const repoRoot = opts.repoRoot ?? process.cwd();
+  const outputDir = path.resolve(opts.outputDir);
+  const packageDir = path.resolve(opts.packageDir);
 
   // 1. Build spec from live tools/list.
   const { spec, unsupportedNotes } = await buildN8nNodeSpec({
     repoRoot,
-    packageDir: opts.packageDir,
+    packageDir,
     mcpName: opts.mcpName,
     version: opts.version,
   });
@@ -117,23 +132,27 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
   const refinement = await refineWithLlm({ spec });
 
   // 3. Render the n8n node tree.
-  await generateN8nNode({ spec: refinement.spec, outputDir: opts.outputDir });
+  await generateN8nNode({ spec: refinement.spec, outputDir });
 
   // Drop the spec next to the generated tree so Layer 1 (lint) has its
   // truth source without re-running buildN8nNodeSpec.
-  const specPath = path.join(opts.outputDir, '.spec.json');
+  const specPath = path.join(outputDir, '.spec.json');
   await fs.writeFile(specPath, JSON.stringify(refinement.spec, null, 2) + '\n');
 
   // 4. Dry-run dep substitution so Layer 2/3/publisher don't require the
   //    source MCP to already be on the npm registry.
   let sourceSubstituted = false;
+  let substitutionWarning: string | undefined;
   if (opts.dryRun) {
     const r = await substituteSourceMcpForDryRun({
-      outputDir: opts.outputDir,
-      packageDir: opts.packageDir,
+      outputDir,
+      packageDir,
       sourceMcpPackageName: refinement.spec.sourceMcpPackageName,
     });
     sourceSubstituted = r.substituted;
+    if (!r.substituted) {
+      substitutionWarning = r.warning ?? 'unknown reason';
+    }
   }
 
   const summary: AdapterBuildSummary = {
@@ -141,7 +160,7 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
     version: opts.version,
     package_name: refinement.spec.packageName,
     source_mcp_package_name: refinement.spec.sourceMcpPackageName,
-    output_dir: opts.outputDir,
+    output_dir: outputDir,
     spec_path: specPath,
     operations: refinement.spec.operations.map((o) => o.name),
     credentials: refinement.spec.credentials.map((c) => c.envName),
@@ -153,6 +172,7 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
     },
     dry_run: opts.dryRun,
     source_substituted: sourceSubstituted,
+    ...(substitutionWarning ? { substitution_warning: substitutionWarning } : {}),
   };
 
   await fs.writeFile(
