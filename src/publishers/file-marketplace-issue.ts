@@ -41,6 +41,20 @@ export interface IssuePublisherConfig {
   readonly templateFile: string;
   /** Issue title pattern; receives { reverseDns, mcpName, version }. */
   readonly titlePattern: (data: { reverseDns: string; mcpName: string; version: string }) => string;
+  /**
+   * Opt-in: after creating the new issue for this version, close any other
+   * open issue whose title starts with `stalePrefix({reverseDns, mcpName})`.
+   * Use this for marketplaces where the title PATTERN encodes the version
+   * (like mcpso's "[Submission] <mcp> v<ver>") so the per-version issues
+   * stack up over time. Cline uses a version-less title so idempotency
+   * suffices — leave this off.
+   */
+  readonly closeStaleIssues?: boolean;
+  /** Required when closeStaleIssues=true. Returns the prefix the publisher
+   * searches for (e.g. "[Submission] ead-factory v" for mcpso). Anything
+   * starting with this prefix and open at publish time gets closed with a
+   * "Superseded by #<new>" comment after the new issue is created. */
+  readonly stalePrefix?: (data: { reverseDns: string; mcpName: string }) => string;
 }
 
 export interface FileMarketplaceIssueInput {
@@ -309,7 +323,144 @@ export async function fileMarketplaceIssue(
   }
 
   log.info('target.publish_succeeded', { ...baseEvent, issue_url: url });
+
+  // Optional: close older open submissions for the same MCP. mcpso uses a
+  // versioned title so each release stacks a new issue on the maintainer's
+  // queue — over four releases we had #2306/2307/2308/2326 all open at
+  // once. With closeStaleIssues=true, we drop a "Superseded by #<new>"
+  // comment on each and close them via gh issue close --reason not_planned.
+  // Best-effort: cleanup failures DON'T flip the publisher's result to
+  // 'failed' because the primary task (open the new issue) already
+  // succeeded. We log warnings so the operator can see it in the workflow
+  // log.
+  if (config.closeStaleIssues && config.stalePrefix) {
+    await closeStaleSubmissions({
+      exec,
+      env,
+      log,
+      baseEvent,
+      upstreamRepo: config.upstreamRepo,
+      stalePrefix: config.stalePrefix({
+        reverseDns: entry.reverse_dns_name,
+        mcpName: input.mcp_name,
+      }),
+      newIssueUrl: url,
+      newVersion: input.version,
+      mcpName: input.mcp_name,
+    });
+  }
+
   return success(config, input, isDryRun, now() - started, attempts, url, 'succeeded');
+}
+
+interface CloseStaleParams {
+  exec: ExecFn;
+  env: NodeJS.ProcessEnv;
+  log: Pick<typeof defaultLogger, 'info' | 'warn' | 'error'>;
+  baseEvent: Record<string, unknown>;
+  upstreamRepo: string;
+  stalePrefix: string;
+  newIssueUrl: string;
+  newVersion: string;
+  mcpName: string;
+}
+
+async function closeStaleSubmissions(p: CloseStaleParams): Promise<void> {
+  const newIssueNumber = parseInt(p.newIssueUrl.match(/\/(\d+)(?:[/?#]|$)/)?.[1] ?? '0', 10);
+  if (!newIssueNumber) {
+    p.log.warn('target.stale_issue_cleanup_failed', {
+      ...p.baseEvent,
+      reason: 'could_not_parse_new_issue_number',
+      new_issue_url: p.newIssueUrl,
+    });
+    return;
+  }
+
+  const search = await p.exec(
+    'gh',
+    [
+      'issue', 'list',
+      '--repo', p.upstreamRepo,
+      '--state', 'open',
+      '--search', p.stalePrefix,
+      '--json', 'number,title',
+      '--limit', '50',
+    ],
+    { env: { GH_TOKEN: p.env.BOT_PAT ?? '' } },
+  );
+  if (search.exitCode !== 0) {
+    p.log.warn('target.stale_issue_cleanup_failed', {
+      ...p.baseEvent,
+      reason: 'search_failed',
+      exit_code: search.exitCode,
+      stderr_excerpt: search.stderr.trim().slice(0, 300),
+    });
+    return;
+  }
+
+  let candidates: Array<{ number: number; title: string }>;
+  try {
+    candidates = JSON.parse(search.stdout.trim() || '[]') as Array<{ number: number; title: string }>;
+  } catch (err) {
+    p.log.warn('target.stale_issue_cleanup_failed', {
+      ...p.baseEvent,
+      reason: 'search_parse_failed',
+      error: (err as Error).message,
+    });
+    return;
+  }
+
+  // gh --search is fuzzy; filter precisely by startsWith and exclude the
+  // issue we just created.
+  const stale = candidates.filter(
+    (i) => i.title.startsWith(p.stalePrefix) && i.number !== newIssueNumber,
+  );
+
+  for (const issue of stale) {
+    const comment = `Superseded by #${newIssueNumber} (${p.mcpName} v${p.newVersion}). This older submission can be closed safely — please review the newer one instead.`;
+    const commentR = await p.exec(
+      'gh',
+      [
+        'issue', 'comment', String(issue.number),
+        '--repo', p.upstreamRepo,
+        '--body', comment,
+      ],
+      { env: { GH_TOKEN: p.env.BOT_PAT ?? '' } },
+    );
+    if (commentR.exitCode !== 0) {
+      p.log.warn('target.stale_issue_cleanup_failed', {
+        ...p.baseEvent,
+        reason: 'comment_failed',
+        issue_number: issue.number,
+        exit_code: commentR.exitCode,
+      });
+      // Continue to close anyway — the comment is courtesy, the close is
+      // the substantive action.
+    }
+    const closeR = await p.exec(
+      'gh',
+      [
+        'issue', 'close', String(issue.number),
+        '--repo', p.upstreamRepo,
+        '--reason', 'not_planned',
+      ],
+      { env: { GH_TOKEN: p.env.BOT_PAT ?? '' } },
+    );
+    if (closeR.exitCode !== 0) {
+      p.log.warn('target.stale_issue_cleanup_failed', {
+        ...p.baseEvent,
+        reason: 'close_failed',
+        issue_number: issue.number,
+        exit_code: closeR.exitCode,
+      });
+    } else {
+      p.log.info('target.stale_issue_closed', {
+        ...p.baseEvent,
+        closed_issue: issue.number,
+        superseded_by: newIssueNumber,
+      });
+    }
+  }
 }
 
 function success(

@@ -22,6 +22,13 @@ export function publishMcpSo(
       upstreamRepo: 'chatmcp/mcp-directory',
       templateFile: 'mcpso-issue.hbs',
       titlePattern: ({ mcpName, version }) => `[Submission] ${mcpName} v${version}`,
+      // mcpso's title carries the version, so each release opens a new
+      // issue. Over four releases (v1.0.0/1/2/3) we accumulated 4 open
+      // submissions for ead-factory alone, all competing for the
+      // maintainer's attention. Enable close-on-supersede so each new
+      // release leaves a single OPEN issue for that MCP.
+      closeStaleIssues: true,
+      stalePrefix: ({ mcpName }) => `[Submission] ${mcpName} v`,
     },
     input,
     deps,

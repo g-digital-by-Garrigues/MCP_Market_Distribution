@@ -24,6 +24,11 @@ export const CANONICAL_EVENTS = [
   'target.publish_succeeded',
   'target.publish_failed',
   'target.publish_skipped',
+  // Marketplace stale-issue cleanup (mcpso opens a new issue per version
+  // and the older ones must be closed so the maintainer's queue doesn't
+  // fill with stale submissions — added in v1.1)
+  'target.stale_issue_closed',
+  'target.stale_issue_cleanup_failed',
   // Track B (Epic 5)
   'adapter.n8n_node_generated',
   'adapter.make_rom_generated',
