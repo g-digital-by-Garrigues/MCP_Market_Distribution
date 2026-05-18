@@ -1,16 +1,13 @@
 import { spawn } from 'node:child_process';
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import process from 'node:process';
-
-import yaml from 'js-yaml';
 
 import { dryRunEnabled } from '../ci/dry-run.js';
 import { logger as defaultLogger } from '../utils/logger.js';
 import {
-  mcpPipelineConfigSchema,
-  type McpEntry,
-} from '../schemas/mcp-pipeline-config.schema.js';
+  loadDistributionConfig,
+  DistributionConfigError,
+} from '../distribution/load-distribution-config.js';
+import type { DistributionConfig } from '../schemas/distribution-config.schema.js';
 import {
   dryRunPlaceholderUrl,
   publisherOutputSchema,
@@ -26,9 +23,10 @@ import {
 //
 // Builds the MCP image from pending-to-publish/<mcp_name>/Dockerfile, tags
 // it as `<docker_image_name>:<version>` and `:latest`, pushes both tags,
-// and returns a PublisherOutputSchema-conforming JSON. The image name comes
-// from mcp-pipeline.yaml#mcps.<mcp_name>.docker_image_name so each MCP
-// controls its own Docker Hub namespace.
+// and returns a PublisherOutputSchema-conforming JSON. The image name
+// comes from the MCP repo's `.distribution.yaml#docker_image_name`
+// (cloned into pending-to-publish/<mcp_name>/) so each MCP controls its
+// own Docker Hub namespace.
 //
 // Auth: stored credentials (DOCKERHUB_USERNAME + DOCKERHUB_TOKEN). The
 // audit guard (Story 2.7 / NFR-S3) already allows-lists those two secret
@@ -106,19 +104,6 @@ function defaultExec(
   });
 }
 
-async function loadEntry(repoRoot: string, mcpName: string): Promise<McpEntry> {
-  const configPath = path.join(repoRoot, 'mcp-pipeline.yaml');
-  const raw = await fs.readFile(configPath, 'utf8');
-  const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
-  const entry = config.mcps[mcpName];
-  if (!entry) {
-    throw new Error(
-      `mcp-pipeline.yaml has no entry for '${mcpName}'. Available: ${Object.keys(config.mcps).join(', ') || '(none)'}.`,
-    );
-  }
-  return entry;
-}
-
 function targetUrl(imageName: string): string {
   return `https://hub.docker.com/r/${imageName}`;
 }
@@ -151,12 +136,13 @@ export async function publishDockerHub(
   };
   log.info('target.publish_started', baseEvent);
 
-  let entry: McpEntry;
+  let distribution: DistributionConfig;
   try {
-    entry = await loadEntry(input.repo_root, input.mcp_name);
+    distribution = await loadDistributionConfig(input.repo_root, input.mcp_name);
   } catch (err) {
     const duration = now() - started;
     log.error('target.publish_failed', { ...baseEvent, reason: 'config_load_failed' });
+    const msg = err instanceof DistributionConfigError ? err.message : (err as Error).message;
     return validate({
       target: 'docker-hub',
       status: 'failed',
@@ -166,14 +152,14 @@ export async function publishDockerHub(
       attempts: 1,
       dry_run: isDryRun,
       error: {
-        message: (err as Error).message,
-        cause: `mcp-pipeline.yaml has no entry for '${input.mcp_name}'.`,
-        action: `Add an entry under mcps.${input.mcp_name} in mcp-pipeline.yaml with docker_image_name.`,
+        message: msg,
+        cause: `.distribution.yaml missing or invalid for '${input.mcp_name}'.`,
+        action: `Ensure the MCP repo has a valid .distribution.yaml with docker_image_name set.`,
       },
     });
   }
 
-  const imageName = entry.docker_image_name;
+  const imageName = distribution.docker_image_name;
   const versionedTag = `${imageName}:${input.version}`;
   const latestTag = `${imageName}:latest`;
   const cacheTag = `${imageName}:cache`;

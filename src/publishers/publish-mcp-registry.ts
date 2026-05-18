@@ -3,14 +3,13 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 
-import yaml from 'js-yaml';
-
 import { dryRunEnabled } from '../ci/dry-run.js';
 import { logger as defaultLogger } from '../utils/logger.js';
 import {
-  mcpPipelineConfigSchema,
-  type McpEntry,
-} from '../schemas/mcp-pipeline-config.schema.js';
+  loadDistributionConfig,
+  DistributionConfigError,
+} from '../distribution/load-distribution-config.js';
+import type { DistributionConfig } from '../schemas/distribution-config.schema.js';
 import {
   dryRunPlaceholderUrl,
   publisherOutputSchema,
@@ -108,19 +107,6 @@ function defaultExec(
   });
 }
 
-async function loadEntry(repoRoot: string, mcpName: string): Promise<McpEntry> {
-  const configPath = path.join(repoRoot, 'mcp-pipeline.yaml');
-  const raw = await fs.readFile(configPath, 'utf8');
-  const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
-  const entry = config.mcps[mcpName];
-  if (!entry) {
-    throw new Error(
-      `mcp-pipeline.yaml has no entry for '${mcpName}'. Available: ${Object.keys(config.mcps).join(', ') || '(none)'}.`,
-    );
-  }
-  return entry;
-}
-
 function registryUrl(reverseDnsName: string): string {
   return `https://registry.modelcontextprotocol.io/v0/servers/${reverseDnsName}`;
 }
@@ -151,12 +137,13 @@ export async function publishMcpRegistry(
   };
   log.info('target.publish_started', baseEvent);
 
-  let entry: McpEntry;
+  let distribution: DistributionConfig;
   try {
-    entry = await loadEntry(input.repo_root, input.mcp_name);
+    distribution = await loadDistributionConfig(input.repo_root, input.mcp_name);
   } catch (err) {
     const duration = now() - started;
     log.error('target.publish_failed', { ...baseEvent, reason: 'config_load_failed' });
+    const msg = err instanceof DistributionConfigError ? err.message : (err as Error).message;
     return validate({
       target: 'mcp-publisher',
       status: 'failed',
@@ -166,14 +153,14 @@ export async function publishMcpRegistry(
       attempts: 1,
       dry_run: isDryRun,
       error: {
-        message: (err as Error).message,
-        cause: `mcp-pipeline.yaml has no entry for '${input.mcp_name}'.`,
-        action: `Add an entry under mcps.${input.mcp_name} with reverse_dns_name in mcp-pipeline.yaml.`,
+        message: msg,
+        cause: `.distribution.yaml missing or invalid for '${input.mcp_name}'.`,
+        action: `Ensure the MCP repo has a valid .distribution.yaml with reverse_dns_name set.`,
       },
     });
   }
 
-  const reverseDnsName = entry.reverse_dns_name;
+  const reverseDnsName = distribution.reverse_dns_name;
 
   try {
     await assertServerJsonExists(input.package_dir);

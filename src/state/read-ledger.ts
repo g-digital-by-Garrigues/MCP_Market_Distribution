@@ -4,8 +4,6 @@ import os from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
 
-import yaml from 'js-yaml';
-
 import {
   emptyLedger,
   parseLedger,
@@ -15,9 +13,7 @@ import {
   TRACK_A_TARGET_IDS,
   TRACK_B_TARGET_IDS,
 } from '../schemas/target-ids.js';
-import {
-  mcpPipelineConfigSchema,
-} from '../schemas/mcp-pipeline-config.schema.js';
+import { loadDistributionConfig } from '../distribution/load-distribution-config.js';
 
 // Story 4.8: ledger-read CLI invoked by publish.yml's `ledger-read` job
 // after setup. Clones the releases/state orphan branch into a temp dir,
@@ -130,24 +126,22 @@ async function main(): Promise<number> {
 
   const runSet = new Set(targetsToRun(ledger, filter));
 
-  // Read the per-MCP skip_targets list from mcp-pipeline.yaml and
-  // remove those targets from runSet. This is the deliberate "this
-  // store isn't ready in this pipeline version" knob. Currently used
-  // for Smithery (v1.0 — see memory/smithery-mcpb-deferred.md), to be
+  // Read the per-MCP skip_targets list from the MCP repo's
+  // .distribution.yaml (cloned by checkout-mcp-source) and remove
+  // those targets from runSet. This is the deliberate "this store
+  // isn't ready in this pipeline version" knob. Currently used for
+  // Smithery (v1.0 — see memory/smithery-mcpb-deferred.md), to be
   // unset for that MCP when v1.1 lands MCPB bundle support.
   try {
-    const configPath = path.join(process.cwd(), 'mcp-pipeline.yaml');
-    const raw = await fs.readFile(configPath, 'utf8');
-    const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
-    const entry = config.mcps[mcpName];
-    if (entry?.skip_targets) {
-      for (const id of entry.skip_targets) {
+    const distribution = await loadDistributionConfig(process.cwd(), mcpName);
+    if (distribution.skip_targets) {
+      for (const id of distribution.skip_targets) {
         runSet.delete(id);
       }
     }
   } catch (err) {
     process.stderr.write(
-      `read-ledger: could not load skip_targets from mcp-pipeline.yaml (${(err as Error).message}); proceeding without skip filter.\n`,
+      `read-ledger: could not load skip_targets from .distribution.yaml (${(err as Error).message}); proceeding without skip filter.\n`,
     );
   }
 

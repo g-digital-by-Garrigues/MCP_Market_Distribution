@@ -1,12 +1,12 @@
-import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-import yaml from 'js-yaml';
-
 import { runInspectorHarness } from '../gates/inspector-harness.js';
-import { mcpPipelineConfigSchema } from '../schemas/mcp-pipeline-config.schema.js';
+import {
+  loadDistributionConfig,
+  DistributionConfigError,
+} from '../distribution/load-distribution-config.js';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
 
 // Story 3.8: post-publication npx install-path verification.
@@ -46,25 +46,25 @@ export interface RunNpxVerificationOptions {
 export async function runNpxVerification(
   opts: RunNpxVerificationOptions,
 ): Promise<VerifyNpxResult> {
-  const configPath = path.join(opts.repoRoot, 'mcp-pipeline.yaml');
-  const raw = await fs.readFile(configPath, 'utf8');
-  const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
-  const entry = config.mcps[opts.mcpName];
-  if (!entry) {
+  let distribution;
+  try {
+    distribution = await loadDistributionConfig(opts.repoRoot, opts.mcpName);
+  } catch (err) {
+    const msg = err instanceof DistributionConfigError ? err.message : (err as Error).message;
     return {
       passed: false,
       errors: [
         publishError('npx_install_path', {
-          observation: `mcp-pipeline.yaml has no entry for '${opts.mcpName}'.`,
-          cause: 'Cannot determine the npm package name to verify.',
-          action: `Add mcps.${opts.mcpName} to mcp-pipeline.yaml.`,
+          observation: msg,
+          cause: 'Cannot determine the npm package name to verify (missing/invalid .distribution.yaml).',
+          action: `Ensure the MCP repo has a valid .distribution.yaml with npm_package_name set.`,
         }),
       ],
       log: { event: 'target.npx_install_path_failed', ...(opts.pipelineRunId ? { pipeline_run_id: opts.pipelineRunId } : {}) },
     };
   }
 
-  const pkg = `${entry.npm_package_name}@${opts.version}`;
+  const pkg = `${distribution.npm_package_name}@${opts.version}`;
 
   const harness = await runInspectorHarness({
     command: 'npx',

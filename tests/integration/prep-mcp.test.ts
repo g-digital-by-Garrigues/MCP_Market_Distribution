@@ -3,12 +3,13 @@ import { spawnSync } from 'node:child_process';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import yaml from 'js-yaml';
 import { prepMcp, PrepMcpError } from '../../src/prep-agent/prep-mcp.js';
 import { README_MARKER_INSTALL, README_MARKER_ENV } from '../../src/generators/generate-readme.js';
+import { writeTestConfig } from '../helpers/write-test-config.js';
 
 const MCP_NAME = 'ead-factory';
 const VERSION = '1.0.0';
+const REVERSE_DNS = 'io.github.g-digital-by-Garrigues/ead-factory';
 
 interface Fixture {
   repoRoot: string;
@@ -36,34 +37,14 @@ async function makeFixture(): Promise<Fixture> {
   run(['config', 'commit.gpgsign', 'false']);
   run(['config', 'tag.gpgsign', 'false']);
 
-  await fs.writeFile(
-    path.join(repoRoot, 'mcp-pipeline.yaml'),
-    yaml.dump({
-      pipeline_version: 1,
-      mcp_schema_version: '2025-12-11',
-      n8n_node_api_version: '1.0',
-      mcps: {
-        [MCP_NAME]: {
-          reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
-          npm_scope: '@g-digital',
-          npm_package_name: '@g-digital/mcp-ead-factory',
-          docker_image_name: 'gdigital/ead-factory',
-          license: 'MIT',
-          n8n_adapter_target_name: 'n8n-node-ead-factory',
-          credential_help_url: 'https://eadtrust.example.com/onboarding',
-          target_overrides: {},
-        },
-      },
-    }),
-    'utf8',
-  );
+  await writeTestConfig({ repoRoot });
 
   const sourcePkg = {
     name: '@g-digital/mcp-ead-factory',
     version: VERSION,
     description: 'Evidence Manager MCP',
     license: 'MIT',
-    mcpName: 'io.github.g-digital-by-Garrigues/ead-factory',
+    mcpName: REVERSE_DNS,
     repository: { type: 'git', url: 'https://github.com/g-digital-by-Garrigues/ead-factory.git' },
     main: 'index.js',
   };

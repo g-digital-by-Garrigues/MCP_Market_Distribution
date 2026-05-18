@@ -2,36 +2,16 @@ import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import yaml from 'js-yaml';
 
 import { publishSmithery } from '../../../src/publishers/publish-smithery.js';
 import type { SmitheryFetch } from '../../../src/publishers/publish-smithery.js';
+import { writeTestConfig } from '../../helpers/write-test-config.js';
 
 const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 
 async function withRepoRoot(body: (repoRoot: string) => Promise<void>): Promise<void> {
   const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'publish-smithery-test-'));
-  const config = {
-    pipeline_version: 1,
-    mcp_schema_version: '2025-12-11',
-    n8n_node_api_version: '1.0',
-    mcps: {
-      'ead-factory': {
-        reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
-        npm_scope: '@g-digital',
-        npm_package_name: '@g-digital/mcp-ead-factory',
-        docker_image_name: 'gdigital/ead-factory',
-        n8n_adapter_target_name: 'n8n-node-ead-factory',
-        license: 'MIT',
-        credential_help_url: 'https://example.com',
-        target_overrides: {},
-        track_a_targets: 'default',
-        track_b_targets: ['n8n'],
-        logo_path: 'assets/logo.png',
-      },
-    },
-  };
-  await fs.writeFile(path.join(repoRoot, 'mcp-pipeline.yaml'), yaml.dump(config));
+  await writeTestConfig({ repoRoot });
   try {
     await body(repoRoot);
   } finally {
@@ -165,7 +145,7 @@ describe('publishSmithery', () => {
         { fetchSmithery, logger: silentLogger, env: {} },
       );
       expect(result.status).toBe('failed');
-      expect(result.error?.action).toContain('mcp-pipeline.yaml');
+      expect(result.error?.action).toContain('.distribution.yaml');
       expect(fetchSmithery).not.toHaveBeenCalled();
     });
   });

@@ -1,19 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
-  ALLOWED_LICENSES,
   mcpEntrySchema,
   mcpPipelineConfigSchema,
 } from '../../../src/schemas/mcp-pipeline-config.schema.js';
 
+// Post v1.1 refactor: mcp-pipeline.yaml entries carry ONLY `repo_url`.
+// Every other per-MCP field (npm scope, license, tools, etc.) moved into
+// the per-MCP `.distribution.yaml` schema — see distribution-config.schema.test.ts
+// for those cases.
+
 const validEntry = {
-  reverse_dns_name: 'io.github.g-digital-by-Garrigues/ead-factory',
-  npm_scope: '@g-digital',
-  npm_package_name: '@g-digital/mcp-ead-factory',
-  docker_image_name: 'gdigital/ead-factory',
-  license: 'MIT',
-  n8n_adapter_target_name: 'n8n-node-ead-factory',
-  credential_help_url: 'https://eadtrust.example.com/onboarding',
-  target_overrides: {},
+  repo_url: 'https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP',
 };
 
 const wrap = (entry: unknown, key = 'ead-factory') => ({
@@ -24,7 +21,7 @@ const wrap = (entry: unknown, key = 'ead-factory') => ({
 });
 
 describe('mcpPipelineConfigSchema — valid fixtures', () => {
-  it('parses minimal config with one MCP and only required fields', () => {
+  it('parses minimal config with one MCP', () => {
     const result = mcpPipelineConfigSchema.safeParse(wrap(validEntry));
     expect(result.success).toBe(true);
   });
@@ -36,99 +33,39 @@ describe('mcpPipelineConfigSchema — valid fixtures', () => {
       n8n_node_api_version: '1.0',
       mcps: {
         'ead-factory': validEntry,
-        'second-mcp': {
-          ...validEntry,
-          reverse_dns_name: 'io.github.g-digital-by-Garrigues/second-mcp',
-          npm_package_name: '@g-digital/mcp-second-mcp',
-          docker_image_name: 'gdigital/second-mcp',
-          n8n_adapter_target_name: 'n8n-node-second-mcp',
-        },
+        'second-mcp': { repo_url: 'https://github.com/example/Second-MCP' },
       },
     };
     const result = mcpPipelineConfigSchema.safeParse(config);
     expect(result.success).toBe(true);
   });
-
-  it('parses an entry with all optional fields populated', () => {
-    const entry = {
-      ...validEntry,
-      track_a_targets: 'default',
-      track_b_targets: ['n8n', 'make-rom'],
-      logo_path: 'assets/logo-400x400.png',
-      bundled_skills: [
-        '.claude/commands/create-internal-evidence.md',
-        '.claude/commands/create-signature-request.md',
-      ],
-    };
-    const result = mcpEntrySchema.safeParse(entry);
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts Apache-2.0 license', () => {
-    const result = mcpEntrySchema.safeParse({ ...validEntry, license: 'Apache-2.0' });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts npm_scope without @ prefix when npm_package_name is scoped', () => {
-    const result = mcpEntrySchema.safeParse({
-      ...validEntry,
-      npm_scope: 'g-digital',
-      npm_package_name: '@g-digital/mcp-ead-factory',
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it('accepts track_a_targets as an explicit list of target names', () => {
-    const result = mcpEntrySchema.safeParse({
-      ...validEntry,
-      track_a_targets: ['smithery', 'docker-mcp-catalog', 'cline'],
-    });
-    expect(result.success).toBe(true);
-  });
 });
 
 describe('mcpPipelineConfigSchema — invalid fixtures', () => {
-  it('rejects an entry missing a required field (license)', () => {
-    const { license: _omit, ...entry } = validEntry;
-    const result = mcpEntrySchema.safeParse(entry);
+  it('rejects an entry missing repo_url', () => {
+    const result = mcpEntrySchema.safeParse({});
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.error.issues.some((i) => i.path.join('.') === 'license')).toBe(true);
+      expect(result.error.issues.some((i) => i.path.join('.') === 'repo_url')).toBe(true);
     }
   });
 
-  it("rejects a non-MIT/Apache-2 license and surfaces the canonical allowed values", () => {
-    const result = mcpEntrySchema.safeParse({ ...validEntry, license: 'BSD-3-Clause' });
+  it('rejects a repo_url that is not a valid URL', () => {
+    const result = mcpEntrySchema.safeParse({ repo_url: 'not-a-url' });
     expect(result.success).toBe(false);
     if (!result.success) {
-      const issue = result.error.issues.find((i) => i.path.join('.') === 'license');
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'repo_url');
       expect(issue).toBeDefined();
-      expect(issue?.message).toContain(ALLOWED_LICENSES.join(', '));
+      expect(issue?.message).toContain('HTTPS URL');
     }
   });
 
-  it('rejects a malformed reverse_dns_name (missing /name segment)', () => {
+  it('rejects extra unknown fields in an entry (strict schema)', () => {
     const result = mcpEntrySchema.safeParse({
-      ...validEntry,
-      reverse_dns_name: 'io.github.g-digital-by-Garrigues',
+      repo_url: 'https://github.com/x/y',
+      npm_scope: '@g-digital', // moved to .distribution.yaml
     });
     expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(result.error.issues.some((i) => i.path.join('.') === 'reverse_dns_name')).toBe(true);
-    }
-  });
-
-  it('rejects a credential_help_url that is not a valid URL', () => {
-    const result = mcpEntrySchema.safeParse({
-      ...validEntry,
-      credential_help_url: 'not-a-url',
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      expect(
-        result.error.issues.some((i) => i.path.join('.') === 'credential_help_url'),
-      ).toBe(true);
-    }
   });
 
   it('rejects a non-kebab-case MCP key in the mcps record', () => {
@@ -140,19 +77,5 @@ describe('mcpPipelineConfigSchema — invalid fixtures', () => {
     };
     const result = mcpPipelineConfigSchema.safeParse(config);
     expect(result.success).toBe(false);
-  });
-
-  it('rejects an npm_package_name whose scope does not match npm_scope', () => {
-    const result = mcpEntrySchema.safeParse({
-      ...validEntry,
-      npm_scope: '@g-digital',
-      npm_package_name: '@other-scope/mcp-ead-factory',
-    });
-    expect(result.success).toBe(false);
-    if (!result.success) {
-      const issue = result.error.issues.find((i) => i.path.join('.') === 'npm_package_name');
-      expect(issue).toBeDefined();
-      expect(issue?.message).toContain('npm_scope');
-    }
   });
 });

@@ -1,103 +1,30 @@
-# Per-MCP configuration registry — the pipeline's "API for engineers" (FR2)
-# Schema validated by src/schemas/mcp-pipeline-config.schema.ts (Story 1.2)
-# pipeline_version: tracks pipeline schema evolution; bumped when fields are added/removed
+# MCP registry — the pipeline's "API for engineers" (FR2).
+#
+# In the v1.1 per-MCP-repo model, each entry's only required field is
+# `repo_url` (the HTTPS URL of the MCP's own public source repo). All
+# other per-MCP fields — npm scope, docker image name, license, tools
+# list, etc. — live in that repo's `.distribution.yaml` (schema:
+# src/schemas/distribution-config.schema.ts). The pipeline clones the
+# MCP source into pending-to-publish/<id>/ at workflow time via
+# actions/checkout-mcp-source/action.yml.
+#
+# Root schema: src/schemas/mcp-pipeline-config.schema.ts.
+#
+# pipeline_version: tracks pipeline schema evolution; bumped when fields
+# are added/removed at the registry level.
 pipeline_version: 1
 
 # Pinned ecosystem schema versions (NFR-I4)
 mcp_schema_version: "2025-12-11"
 n8n_node_api_version: "1.0"  # to be confirmed against n8n's current schema during Story 5.1
 
-# One entry per MCP processed by the pipeline.
-# Each entry under `mcps:` is keyed by the MCP's kebab-case folder name
-# (which must match the folder under pending-to-publish/<key>/).
+# One entry per MCP processed by the pipeline. Each key is the MCP's
+# kebab-case id, which also names the folder under pending-to-publish/<key>/
+# where the source repo is cloned.
 mcps:
   # EAD Factory MCP — the first MCP through the pipeline.
-  # The MCP server itself is "EAD Factory"; it bundles two Claude Code skills
-  # (create-internal-evidence and create-signature-request) that consume the
-  # Evidence Manager and Signature Manager APIs respectively.
+  # Source: https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP
+  # Per-MCP publish config (npm scope, docker image, tools list, etc.)
+  # lives in that repo's .distribution.yaml.
   ead-factory:
-    # Source repo (v1.1 per-MCP-repo refactor — Phase B). When set, the
-    # publish workflow clones the MCP from here at workflow time:
-    #   - real publish (dry_run=false) → tag v<version> (MUST exist, see
-    #                                     the "Release flow" section in
-    #                                     this repo's README.md)
-    #   - dry-run dispatch              → main (HEAD)
-    # The clone overwrites whatever is checked into pending-to-publish/<id>/
-    # in THIS repo so the pipeline always operates on the authoritative
-    # source. Phase C will delete the committed copy under pending-to-publish/.
     repo_url: "https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP"
-
-    # Identity
-    reverse_dns_name: "io.github.g-digital-by-Garrigues/ead-factory"
-    npm_scope: "@g-digital"
-    npm_package_name: "@g-digital/mcp-ead-factory"
-    docker_image_name: "gdigital/ead-factory"
-
-    # Track B
-    n8n_adapter_target_name: "n8n-node-ead-factory"  # → @g-digital/n8n-node-ead-factory
-
-    # License (FR14 Layer 1 validates this)
-    license: "MIT"
-
-    # Consumer-facing
-    credential_help_url: "https://eadtrust.example.com/onboarding"  # PLACEHOLDER — update once EADTrust team confirms (task #16 in human-setup-runbook)
-
-    # Per-target overrides (optional — empty = use pipeline defaults)
-    target_overrides: {}
-
-    # Track A targets — must include all 7 v1 stores or use 'default' for full coverage
-    track_a_targets: default
-
-    # Targets the pipeline must SKIP for this MCP. Smithery is deferred
-    # to v1.1 — Smithery's 2026 model (MCPB bundles or self-hosted URL)
-    # requires pipeline work not yet implemented (see
-    # memory/smithery-mcpb-deferred.md for the plan). Remove 'smithery'
-    # from this list once the MCPB generator/publisher lands.
-    skip_targets:
-      - smithery
-
-    # Track B targets
-    track_b_targets:
-      - n8n
-      - make-rom
-
-    # Git tag prefix the CI publish workflow matches against pushed v* tags
-    # (Story 2.1). Default 'v' is fine for single-MCP repos; when this repo
-    # later hosts more than one MCP, switch each entry to a per-MCP prefix
-    # like 'ead-factory-v' so the workflow can disambiguate which MCP a
-    # pushed tag belongs to.
-    git_tag_prefix: "v"
-
-    # Logo asset path (FR45) — relative to pending-to-publish/<key>/
-    logo_path: "assets/logo-400x400.png"
-
-    # Bundled Claude Code skills (FR45) — paths relative to pending-to-publish/<key>/.
-    # These two skills are NOT separate MCPs; they're consumer-facing shortcuts the
-    # EAD Factory MCP ships so installers get usable workflows out of the box.
-    bundled_skills:
-      - .claude/commands/create-internal-evidence.md  # consumes Evidence Manager API
-      - .claude/commands/create-signature-request.md  # consumes Signature Manager API
-
-    # Static tool inventory shipped to the Docker MCP Catalog (servers/<name>/tools.json).
-    # MAINTAIN BY HAND when tools are added/removed from src/server.ts — there's no
-    # CI cross-check yet. v1.1 backlog item: introspect via tools/list during Layer 2
-    # gate and fail if this list drifts. Empty list = catalog publisher refuses to ship.
-    tools:
-      - name: generate_evidence
-        description: "Full workflow: authenticate with Okta, SHA-256 hash the file, register the evidence, upload to S3, and poll until COMPLETED or ERROR."
-      - name: get_evidence
-        description: "Retrieve full evidence details by ID (status, timestamps, custody, metadata)."
-      - name: create_signature_request
-        description: "Create a new signature request in DRAFT state. Supports fullFlow=true to complete the entire flow with preconfigured participants in a single call."
-      - name: add_document_to_signature_request
-        description: "Add a document to a DRAFT signature request and upload the file to S3."
-      - name: add_signatory_to_document
-        description: "Add a signatory to a document within a signature request."
-      - name: add_validator_to_signatory
-        description: "Add a validator to a signatory; the validator must approve before the signatory can sign."
-      - name: add_observer_to_document
-        description: "Add an observer to a document; observers receive notifications but do not sign."
-      - name: activate_signature_request
-        description: "Activate a signature request (DRAFT → ACTIVE), triggering notifications to signatories."
-      - name: get_signature_request
-        description: "Retrieve full details of a signature request by ID (status, documents, participants, history)."

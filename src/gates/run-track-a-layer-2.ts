@@ -2,14 +2,13 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import yaml from 'js-yaml';
 import {
   runInspectorHarness,
   type InspectorSampleCallInput,
   type InspectorToolEntry,
 } from './inspector-harness.js';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
-import { mcpPipelineConfigSchema } from '../schemas/mcp-pipeline-config.schema.js';
+import { loadDistributionConfig } from '../distribution/load-distribution-config.js';
 
 const PLACEHOLDER_STRING = 'placeholder';
 const METHOD_NOT_FOUND = -32601;
@@ -84,20 +83,20 @@ async function loadFixture(
   }
 }
 
-// Returns the static tool names declared in mcp-pipeline.yaml#mcps.<id>.tools,
-// or null if the file is missing / the entry has no tools field. Returning
-// null lets Layer 2 skip the drift check for MCPs that don't opt into the
-// static list (e.g., Track-B-only MCPs whose tools array isn't consumed by
-// the Docker MCP Catalog publisher).
+// Returns the static tool names declared in the MCP's .distribution.yaml
+// (cloned into pending-to-publish/<mcp_name>/ by the checkout-mcp-source
+// composite action), or null if the file is missing / the entry has no
+// tools field. Returning null lets Layer 2 skip the drift check for MCPs
+// that don't opt into the static list (e.g., Track-B-only MCPs whose tools
+// array isn't consumed by the Docker MCP Catalog publisher).
 async function tryLoadYamlTools(repoRoot: string, mcpName: string): Promise<string[] | null> {
   try {
-    const raw = await fs.readFile(path.join(repoRoot, 'mcp-pipeline.yaml'), 'utf8');
-    const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
-    const tools = config.mcps[mcpName]?.tools;
+    const distribution = await loadDistributionConfig(repoRoot, mcpName);
+    const tools = distribution.tools;
     if (!tools) return null;
     return tools.map((t) => t.name);
   } catch {
-    // No yaml, no entry, or schema mismatch — Layer 1 catches structural
+    // No .distribution.yaml or schema mismatch — Layer 1 catches structural
     // problems; we just skip the drift check here.
     return null;
   }

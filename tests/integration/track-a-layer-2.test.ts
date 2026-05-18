@@ -3,9 +3,9 @@ import path from 'node:path';
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import yaml from 'js-yaml';
 import { runTrackALayer2 } from '../../src/gates/run-track-a-layer-2.js';
 import { errorReportSchema } from '../../src/schemas/error-report.schema.js';
+import { writeTestConfig } from '../helpers/write-test-config.js';
 
 const FIXTURES_DIR = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -23,35 +23,30 @@ async function tempRepoRoot(): Promise<string> {
   return fs.mkdtemp(path.join(os.tmpdir(), 'layer-2-'));
 }
 
-// Builds a minimal valid mcp-pipeline.yaml inside repoRoot. `tools` is the
-// list the test wants to compare against the server's advertised tools/list.
-// Pass null to omit the field entirely (which makes the drift check a no-op).
-async function writePipelineYaml(
+// Writes the minimal mcp-pipeline.yaml + per-MCP .distribution.yaml that
+// Layer 2 expects. `tools` is the list the test wants to compare against
+// the server's advertised tools/list. Pass null to omit the field
+// entirely (which makes the drift check a no-op).
+async function writeConfig(
   repoRoot: string,
   mcpName: string,
   tools: Array<{ name: string; description: string }> | null,
 ): Promise<void> {
-  const entry: Record<string, unknown> = {
+  const distributionOverrides: Record<string, unknown> = {
     reverse_dns_name: `io.github.example/${mcpName}`,
     npm_scope: '@example',
     npm_package_name: `@example/${mcpName}`,
     docker_image_name: `example/${mcpName}`,
-    license: 'MIT',
     n8n_adapter_target_name: `n8n-node-${mcpName}`,
     credential_help_url: 'https://example.com',
-    target_overrides: {},
-    track_a_targets: 'default',
     track_b_targets: [],
-    logo_path: 'assets/logo.png',
   };
-  if (tools !== null) entry.tools = tools;
-  const config = {
-    pipeline_version: 1,
-    mcp_schema_version: '2025-12-11',
-    n8n_node_api_version: '1.0',
-    mcps: { [mcpName]: entry },
-  };
-  await fs.writeFile(path.join(repoRoot, 'mcp-pipeline.yaml'), yaml.dump(config));
+  if (tools !== null) distributionOverrides.tools = tools;
+  await writeTestConfig({
+    repoRoot,
+    mcpName,
+    distributionOverrides,
+  });
 }
 
 describe('Track A — Layer 2 protocol smoke test gate', () => {
@@ -172,14 +167,14 @@ describe('Track A — Layer 2 protocol smoke test gate', () => {
   }, 60_000);
 
   // tools_yaml_drift cross-check (v1.1 item 5): the Docker MCP Catalog
-  // publisher feeds `mcp-pipeline.yaml#mcps.<id>.tools` to servers/<mcp>/
+  // publisher feeds `.distribution.yaml#tools` to servers/<mcp>/
   // tools.json. If it drifts from what the server actually advertises via
   // tools/list, consumers see a wrong tool list. Layer 2 owns the protocol
   // contract — drift fails the gate.
 
   it('tools_yaml_drift: yaml tools list matches server → no drift error', async () => {
     repoRoot = await tempRepoRoot();
-    await writePipelineYaml(repoRoot, 'test-mcp', [
+    await writeConfig(repoRoot, 'test-mcp', [
       { name: 'echo', description: 'Echoes the input back.' },
     ]);
     const result = await runTrackALayer2({
@@ -197,7 +192,7 @@ describe('Track A — Layer 2 protocol smoke test gate', () => {
 
   it('tools_yaml_drift: yaml has tool the server does NOT advertise → fails with onlyInYaml drift', async () => {
     repoRoot = await tempRepoRoot();
-    await writePipelineYaml(repoRoot, 'test-mcp', [
+    await writeConfig(repoRoot, 'test-mcp', [
       { name: 'echo', description: 'Echoes the input back.' },
       { name: 'phantom_tool', description: 'Listed but not implemented.' },
     ]);
@@ -222,7 +217,7 @@ describe('Track A — Layer 2 protocol smoke test gate', () => {
   it('tools_yaml_drift: server advertises a tool MISSING from yaml → fails with onlyInServer drift', async () => {
     repoRoot = await tempRepoRoot();
     // Empty tools list — server's 'echo' is not in yaml.
-    await writePipelineYaml(repoRoot, 'test-mcp', []);
+    await writeConfig(repoRoot, 'test-mcp', []);
     const result = await runTrackALayer2({
       repoRoot,
       mcpName: 'test-mcp',
@@ -243,7 +238,7 @@ describe('Track A — Layer 2 protocol smoke test gate', () => {
   it('tools_yaml_drift: yaml has no `tools` field → drift check is SKIPPED (backward compat)', async () => {
     repoRoot = await tempRepoRoot();
     // tools=null → omit the field entirely from the yaml entry.
-    await writePipelineYaml(repoRoot, 'test-mcp', null);
+    await writeConfig(repoRoot, 'test-mcp', null);
     const result = await runTrackALayer2({
       repoRoot,
       mcpName: 'test-mcp',
