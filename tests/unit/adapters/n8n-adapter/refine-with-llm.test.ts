@@ -4,7 +4,7 @@ import type { N8nNodeSpec } from '../../../../src/adapters/n8n-adapter/types.js'
 
 function baseSpec(): N8nNodeSpec {
   return {
-    packageName: '@g-digital/n8n-node-ead-factory',
+    packageName: '@g-digital/n8n-nodes-ead-factory',
     sourceMcpPackageName: '@g-digital/mcp-ead-factory',
     version: '1.0.0',
     className: 'EadFactory',

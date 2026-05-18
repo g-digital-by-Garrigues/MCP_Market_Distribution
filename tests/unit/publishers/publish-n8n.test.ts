@@ -38,7 +38,7 @@ const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 async function withGeneratedAdapterDir(
   body: (packageDir: string) => Promise<void>,
   pkg: Record<string, unknown> = {
-    name: '@g-digital/n8n-node-ead-factory',
+    name: '@g-digital/n8n-nodes-ead-factory',
     version: '1.0.0',
     scripts: { build: 'tsc' },
   },
@@ -70,7 +70,7 @@ describe('publishN8n', () => {
       const { exec, calls } = fakeExec([
         { exitCode: 0, stdout: 'added 35 packages\n' },       // npm install
         { exitCode: 0, stdout: '> tsc\n' },                    // npm run build
-        { exitCode: 0, stdout: '+ @g-digital/n8n-node-ead-factory@1.0.0' }, // npm publish
+        { exitCode: 0, stdout: '+ @g-digital/n8n-nodes-ead-factory@1.0.0' }, // npm publish
       ]);
       const writeNpmrc = vi.fn(async (_p: string, _c: string): Promise<void> => {});
       const removeNpmrc = vi.fn(async (_p: string): Promise<void> => {});
@@ -96,11 +96,11 @@ describe('publishN8n', () => {
       expect(output.status).toBe('succeeded');
       expect(output.target).toBe('n8n');
       expect(output.target_url).toBe(
-        'https://www.npmjs.com/package/@g-digital/n8n-node-ead-factory/v/1.0.0',
+        'https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.0',
       );
       expect(output.version_published).toBe('1.0.0');
       expect(output.metadata?.auth_mode).toBe('npm_token');
-      expect(output.metadata?.package_name).toBe('@g-digital/n8n-node-ead-factory');
+      expect(output.metadata?.package_name).toBe('@g-digital/n8n-nodes-ead-factory');
 
       // Call order: install → build → publish.
       expect(calls.map((c) => c.args.join(' '))).toEqual([
@@ -120,7 +120,7 @@ describe('publishN8n', () => {
       const { exec, calls } = fakeExec([
         { exitCode: 0 }, // install
         { exitCode: 0 }, // build
-        { exitCode: 0, stdout: '+ @g-digital/n8n-node-ead-factory@1.0.0' }, // publish --dry-run
+        { exitCode: 0, stdout: '+ @g-digital/n8n-nodes-ead-factory@1.0.0' }, // publish --dry-run
       ]);
       const output = await publishN8n(
         {
@@ -180,7 +180,7 @@ describe('publishN8n', () => {
         expect(output.error?.message).toContain('package.json version (0.0.9)');
         expect(calls).toEqual([]);
       },
-      { name: '@g-digital/n8n-node-ead-factory', version: '0.0.9' },
+      { name: '@g-digital/n8n-nodes-ead-factory', version: '0.0.9' },
     );
   });
 

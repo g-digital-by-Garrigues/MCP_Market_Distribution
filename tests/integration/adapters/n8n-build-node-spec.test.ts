@@ -43,7 +43,7 @@ async function setupFixture(opts: SetupOpts): Promise<{
     npm_scope: '@g-digital',
     npm_package_name: `@g-digital/mcp-${opts.mcpName}`,
     docker_image_name: `gdigital/${opts.mcpName}`,
-    n8n_adapter_target_name: `n8n-node-${opts.mcpName}`,
+    n8n_adapter_target_name: `n8n-nodes-${opts.mcpName}`,
     license: 'MIT',
     credential_help_url: 'https://example.com',
     target_overrides: {},
@@ -105,7 +105,7 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       });
 
       // High-level shape.
-      expect(spec.packageName).toBe('@g-digital/n8n-node-multi-tool');
+      expect(spec.packageName).toBe('@g-digital/n8n-nodes-multi-tool');
       expect(spec.version).toBe('1.0.0');
       expect(spec.className).toBe('MultiTool');
       expect(spec.displayName).toBe('Multi Tool');

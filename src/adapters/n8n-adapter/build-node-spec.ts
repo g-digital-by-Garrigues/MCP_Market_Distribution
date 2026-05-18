@@ -234,7 +234,7 @@ export async function buildN8nNodeSpec(
   }
 
   const credentials = buildCredentials(server);
-  const bareTargetName = distribution.n8n_adapter_target_name.replace(/^n8n-node-/, '');
+  const bareTargetName = distribution.n8n_adapter_target_name.replace(/^n8n-nodes-/, '');
   const className = toPascalCase(bareTargetName);
   const resourceLabel = toTitleCase(bareTargetName);
   const paramName = className.charAt(0).toLowerCase() + className.slice(1);

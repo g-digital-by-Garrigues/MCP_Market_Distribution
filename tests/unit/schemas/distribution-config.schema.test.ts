@@ -16,7 +16,7 @@ const validConfig = {
   npm_package_name: '@g-digital/mcp-ead-factory',
   docker_image_name: 'gdigital/ead-factory',
   license: 'MIT' as const,
-  n8n_adapter_target_name: 'n8n-node-ead-factory',
+  n8n_adapter_target_name: 'n8n-nodes-ead-factory',
   credential_help_url: 'https://eadtrust.example.com/onboarding',
   target_overrides: {},
 };

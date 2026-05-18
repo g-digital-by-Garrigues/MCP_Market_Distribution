@@ -37,7 +37,7 @@ async function writeConfig(
     npm_scope: '@example',
     npm_package_name: `@example/${mcpName}`,
     docker_image_name: `example/${mcpName}`,
-    n8n_adapter_target_name: `n8n-node-${mcpName}`,
+    n8n_adapter_target_name: `n8n-nodes-${mcpName}`,
     credential_help_url: 'https://example.com',
     track_b_targets: [],
   };

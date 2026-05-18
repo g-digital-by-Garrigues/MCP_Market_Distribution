@@ -36,7 +36,7 @@ async function setupFixture(opts: { mcpName: string; writeServerJson?: boolean }
       npm_scope: '@g-digital',
       npm_package_name: `@g-digital/mcp-${opts.mcpName}`,
       docker_image_name: `gdigital/${opts.mcpName}`,
-      n8n_adapter_target_name: `n8n-node-${opts.mcpName}`,
+      n8n_adapter_target_name: `n8n-nodes-${opts.mcpName}`,
       license: 'MIT',
       credential_help_url: 'https://example.com',
       target_overrides: {},

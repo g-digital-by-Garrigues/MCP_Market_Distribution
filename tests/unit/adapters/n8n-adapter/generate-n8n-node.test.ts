@@ -8,7 +8,7 @@ import type { N8nNodeSpec } from '../../../../src/adapters/n8n-adapter/types.js'
 
 function sampleSpec(): N8nNodeSpec {
   return {
-    packageName: '@g-digital/n8n-node-multi-tool',
+    packageName: '@g-digital/n8n-nodes-multi-tool',
     sourceMcpPackageName: '@g-digital/mcp-multi-tool',
     version: '1.0.0',
     className: 'MultiTool',
@@ -119,7 +119,7 @@ describe('generateN8nNode', () => {
       dependencies: Record<string, string>;
       n8n: { credentials: string[]; nodes: string[] };
     };
-    expect(pkg.name).toBe('@g-digital/n8n-node-multi-tool');
+    expect(pkg.name).toBe('@g-digital/n8n-nodes-multi-tool');
     expect(pkg.version).toBe('1.0.0');
     expect(pkg.dependencies['@g-digital/mcp-multi-tool']).toBe('1.0.0');
     expect(pkg.dependencies['@modelcontextprotocol/sdk']).toBeDefined();
@@ -185,7 +185,7 @@ describe('generateN8nNode', () => {
     expect(readme).toContain('| `get_widget` |');
     expect(readme).toContain('| `list_widgets` |');
     expect(readme).toContain('| `TEST_API_KEY` |');
-    expect(readme).toContain('npm install @g-digital/n8n-node-multi-tool');
+    expect(readme).toContain('npm install @g-digital/n8n-nodes-multi-tool');
   });
 
   it('index.ts re-exports both classes', async () => {
