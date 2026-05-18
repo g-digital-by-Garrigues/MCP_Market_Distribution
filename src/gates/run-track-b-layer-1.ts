@@ -115,6 +115,20 @@ interface PackageJsonShape {
   };
 }
 
+// Reads the adapter-build summary `run-adapter-build.ts` drops next to
+// the tree. Returns null when absent (older builds, tests) so the
+// caller falls back to "expect the registry-pinned form".
+async function readAdapterBuildSummary(
+  nodeDir: string,
+): Promise<{ dry_run?: boolean; source_substituted?: boolean } | null> {
+  const summaryPath = path.join(nodeDir, '.adapter-build.json');
+  try {
+    return await readJson<{ dry_run?: boolean; source_substituted?: boolean }>(summaryPath);
+  } catch {
+    return null;
+  }
+}
+
 async function checkPackageJson(opts: RunTrackBLayer1Options): Promise<TrackBLayer1CheckResult> {
   const { nodeDir, spec } = opts;
   const pkgPath = path.join(nodeDir, 'package.json');
@@ -134,6 +148,16 @@ async function checkPackageJson(opts: RunTrackBLayer1Options): Promise<TrackBLay
     };
   }
 
+  // `run-adapter-build.ts` rewrites the source-MCP dep to a local
+  // `file:./<tarball>.tgz` URL whenever it runs in dry_run mode (so
+  // Layer 2/3/publish-n8n can install without the source MCP being
+  // live on the registry). Layer 1 has to recognise that legitimate
+  // form; otherwise it would flag the dry-run path as drift. Source
+  // of truth: .adapter-build.json#source_substituted, written by
+  // run-adapter-build.ts.
+  const buildSummary = await readAdapterBuildSummary(nodeDir);
+  const substitutedSourceDepExpected = buildSummary?.dry_run === true && buildSummary?.source_substituted === true;
+
   const issues: string[] = [];
   if (pkg.name !== spec.packageName) {
     issues.push(`name='${pkg.name}' expected '${spec.packageName}'`);
@@ -152,11 +176,25 @@ async function checkPackageJson(opts: RunTrackBLayer1Options): Promise<TrackBLay
   if (!pkg.n8n?.credentials?.includes(expectedCredPath)) {
     issues.push(`n8n.credentials must include '${expectedCredPath}'`);
   }
-  if (!pkg.dependencies?.[spec.sourceMcpPackageName]) {
+  const sourceDep = pkg.dependencies?.[spec.sourceMcpPackageName];
+  if (!sourceDep) {
     issues.push(`dependencies must include '${spec.sourceMcpPackageName}'`);
-  } else if (pkg.dependencies[spec.sourceMcpPackageName] !== spec.version) {
+  } else if (substitutedSourceDepExpected) {
+    // Dry-run with substitution applied — accept a `file:./<...>.tgz`
+    // form. Sanity-check that the filename references spec.version so
+    // we still catch a stale-tarball drift.
+    if (!sourceDep.startsWith('file:')) {
+      issues.push(
+        `dry-run substitution active but dependencies['${spec.sourceMcpPackageName}'] is '${sourceDep}' — expected a 'file:./<...>.tgz' link`,
+      );
+    } else if (!sourceDep.includes(spec.version)) {
+      issues.push(
+        `dry-run substituted dependencies['${spec.sourceMcpPackageName}']='${sourceDep}' does not reference spec.version='${spec.version}'`,
+      );
+    }
+  } else if (sourceDep !== spec.version) {
     issues.push(
-      `dependencies['${spec.sourceMcpPackageName}'] must pin version '${spec.version}', got '${pkg.dependencies[spec.sourceMcpPackageName]}'`,
+      `dependencies['${spec.sourceMcpPackageName}'] must pin version '${spec.version}', got '${sourceDep}'`,
     );
   }
   if (!pkg.dependencies?.['@modelcontextprotocol/sdk']) {
