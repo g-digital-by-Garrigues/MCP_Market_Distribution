@@ -1,0 +1,204 @@
+import { promises as fs } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import { generateN8nNode } from '../../../../src/adapters/n8n-adapter/generate-n8n-node.js';
+import type { N8nNodeSpec } from '../../../../src/adapters/n8n-adapter/types.js';
+
+function sampleSpec(): N8nNodeSpec {
+  return {
+    packageName: '@g-digital/n8n-node-multi-tool',
+    sourceMcpPackageName: '@g-digital/mcp-multi-tool',
+    version: '1.0.0',
+    className: 'MultiTool',
+    displayName: 'Multi Tool',
+    description: 'A test multi-tool MCP node.',
+    nodeName: 'multi-tool',
+    paramName: 'multiTool',
+    resourceDisplayName: 'Multi Tool',
+    credentialClassName: 'MultiToolApi',
+    credentialParamName: 'multiToolApi',
+    sourceRepoUrl: 'https://github.com/test/test-mcp',
+    author: 'g-digital by Garrigues',
+    operations: [
+      {
+        name: 'get_widget',
+        displayName: 'Get Widget',
+        description: 'Fetch a widget by id.',
+        properties: [
+          {
+            name: 'widget_id',
+            displayName: 'Widget Id',
+            type: 'string',
+            default: '',
+            description: 'Widget identifier.',
+            required: true,
+            showForOperation: 'get_widget',
+          },
+        ],
+      },
+      {
+        name: 'list_widgets',
+        displayName: 'List Widgets',
+        description: 'List widgets.',
+        properties: [
+          {
+            name: 'page_size',
+            displayName: 'Page Size',
+            type: 'number',
+            default: 25,
+            numberConstraints: { minValue: 1, maxValue: 100, numberPrecision: 0 },
+            showForOperation: 'list_widgets',
+          },
+          {
+            name: 'sort',
+            displayName: 'Sort',
+            type: 'options',
+            default: 'desc',
+            options: [
+              { name: 'asc', value: 'asc' },
+              { name: 'desc', value: 'desc' },
+            ],
+            showForOperation: 'list_widgets',
+          },
+        ],
+      },
+    ],
+    credentials: [
+      {
+        envName: 'TEST_API_KEY',
+        displayName: 'Test Api Key',
+        isSecret: true,
+        description: 'API key for the test backend.',
+      },
+      {
+        envName: 'TEST_BASE_URL',
+        displayName: 'Test Base Url',
+        isSecret: false,
+        description: 'Base URL of the test backend.',
+      },
+    ],
+  };
+}
+
+describe('generateN8nNode', () => {
+  let outputDir: string;
+  beforeEach(async () => {
+    outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-gen-'));
+  });
+  afterEach(async () => {
+    await fs.rm(outputDir, { recursive: true, force: true });
+  });
+
+  it('writes the canonical n8n community-node file tree', async () => {
+    const result = await generateN8nNode({ spec: sampleSpec(), outputDir });
+    // The list is locale-sorted so uppercase 'README.md' lands between
+    // 'package.json' and 'tsconfig.json' (not first as ASCII would have
+    // it). Test assertion follows the actual locale-aware ordering.
+    expect(result.filesWritten.sort((a, b) => a.localeCompare(b))).toEqual([
+      'credentials/MultiToolApi.credentials.ts',
+      'index.ts',
+      'nodes/MultiTool/MultiTool.node.ts',
+      'package.json',
+      'README.md',
+      'tsconfig.json',
+    ]);
+    // Every file actually exists on disk.
+    for (const rel of result.filesWritten) {
+      const stat = await fs.stat(path.join(outputDir, rel));
+      expect(stat.isFile()).toBe(true);
+    }
+  });
+
+  it('package.json declares the source MCP as a dependency with matching version + n8n loader hints', async () => {
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const pkg = JSON.parse(await fs.readFile(path.join(outputDir, 'package.json'), 'utf8')) as {
+      name: string;
+      version: string;
+      dependencies: Record<string, string>;
+      n8n: { credentials: string[]; nodes: string[] };
+    };
+    expect(pkg.name).toBe('@g-digital/n8n-node-multi-tool');
+    expect(pkg.version).toBe('1.0.0');
+    expect(pkg.dependencies['@g-digital/mcp-multi-tool']).toBe('1.0.0');
+    expect(pkg.dependencies['@modelcontextprotocol/sdk']).toBeDefined();
+    expect(pkg.n8n.nodes).toEqual(['dist/nodes/MultiTool/MultiTool.node.js']);
+    expect(pkg.n8n.credentials).toEqual(['dist/credentials/MultiToolApi.credentials.js']);
+  });
+
+  it('node.ts declares the right description.name + lists every operation in the Operation dropdown', async () => {
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).toContain('export class MultiTool implements INodeType');
+    expect(node).toContain("name: 'multiTool'");
+    expect(node).toContain("credentials: [{ name: 'multiToolApi', required: true }]");
+    // Operation dropdown contains both tools.
+    expect(node).toContain("value: 'get_widget'");
+    expect(node).toContain("value: 'list_widgets'");
+    // Operation-scoped property defines the right displayOptions show.
+    expect(node).toContain("displayOptions: { show: { operation: ['get_widget'] } }");
+    expect(node).toContain("displayOptions: { show: { operation: ['list_widgets'] } }");
+    // numberConstraints surfaces typeOptions.
+    expect(node).toContain('"minValue":1');
+    expect(node).toContain('"maxValue":100');
+    // OPERATION_PROPERTY_NAMES table is emitted at the bottom.
+    expect(node).toContain("'get_widget': ['widget_id']");
+    expect(node).toContain("'list_widgets': ['page_size', 'sort']");
+  });
+
+  it("node.ts JSON.stringify-encodes strings with quotes so they don't break TS", async () => {
+    const spec = sampleSpec();
+    spec.description = `A "tricky" description's edge case`;
+    await generateN8nNode({ spec, outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    // JSON.stringify wraps with double quotes + escapes internal ones.
+    expect(node).toContain('"A \\"tricky\\" description\'s edge case"');
+  });
+
+  it('credentials.ts marks the secret field with typeOptions.password and lists every env var', async () => {
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const creds = await fs.readFile(
+      path.join(outputDir, 'credentials', 'MultiToolApi.credentials.ts'),
+      'utf8',
+    );
+    expect(creds).toContain('export class MultiToolApi implements ICredentialType');
+    expect(creds).toContain("name = 'multiToolApi'");
+    // Secret field carries typeOptions password.
+    expect(creds).toMatch(/name: 'TEST_API_KEY'[\s\S]+typeOptions: { password: true }/);
+    // Non-secret one does not get typeOptions.
+    expect(creds).toContain("name: 'TEST_BASE_URL'");
+    const tbu = creds.indexOf("name: 'TEST_BASE_URL'");
+    const slice = creds.slice(tbu, tbu + 250);
+    expect(slice).not.toContain('typeOptions');
+  });
+
+  it('README.md lists every operation and credential field', async () => {
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const readme = await fs.readFile(path.join(outputDir, 'README.md'), 'utf8');
+    expect(readme).toContain('| `get_widget` |');
+    expect(readme).toContain('| `list_widgets` |');
+    expect(readme).toContain('| `TEST_API_KEY` |');
+    expect(readme).toContain('npm install @g-digital/n8n-node-multi-tool');
+  });
+
+  it('index.ts re-exports both classes', async () => {
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const idx = await fs.readFile(path.join(outputDir, 'index.ts'), 'utf8');
+    expect(idx).toContain("export { MultiTool } from './nodes/MultiTool/MultiTool.node'");
+    expect(idx).toContain("export { MultiToolApi } from './credentials/MultiToolApi.credentials'");
+  });
+
+  it('clean=true wipes leftover files in the output dir before re-rendering', async () => {
+    const stale = path.join(outputDir, 'stale.txt');
+    await fs.writeFile(stale, 'leftover');
+    await generateN8nNode({ spec: sampleSpec(), outputDir, clean: true });
+    await expect(fs.stat(stale)).rejects.toThrow();
+  });
+});

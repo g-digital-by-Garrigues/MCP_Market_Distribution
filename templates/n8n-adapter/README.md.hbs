@@ -1,0 +1,35 @@
+# {{displayName}} (n8n community node)
+
+> Auto-generated from [{{sourceMcpPackageName}}]({{sourceRepoUrl}}) by the g-digital MCP distribution pipeline. Do not edit by hand — re-generate the next time the MCP is published.
+
+This n8n community node wraps the `{{sourceMcpPackageName}}` MCP so its tools are usable as steps inside an n8n workflow. Each MCP tool maps to one **operation** on this node.
+
+## Install (self-hosted n8n)
+
+```bash
+npm install {{packageName}}
+```
+
+Then restart n8n. The node will appear in the Nodes panel under "{{displayName}}".
+
+## Operations
+
+| Operation | Description |
+|---|---|
+{{#each operations}}| `{{this.name}}` | {{this.description}} |
+{{/each}}
+
+## Credentials
+
+This node requires a "{{displayName}} API" credential with the following fields:
+
+| Field | Description | Secret? |
+|---|---|---|
+{{#each credentials}}| `{{this.envName}}` | {{#if this.description}}{{this.description}}{{else}}—{{/if}} | {{#if this.isSecret}}yes{{else}}no{{/if}} |
+{{/each}}
+
+The credential values are passed as environment variables to the spawned `{{sourceMcpPackageName}}` process at execute() time.
+
+## License
+
+MIT. See [LICENSE](./LICENSE).

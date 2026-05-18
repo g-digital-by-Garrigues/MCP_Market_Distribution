@@ -92,6 +92,13 @@ export interface N8nNodeSpec {
    * `.distribution.yaml#npm_scope + n8n_adapter_target_name`.
    */
   packageName: string;
+  /**
+   * npm package name of the SOURCE MCP (e.g. `@g-digital/mcp-ead-factory`).
+   * The generated n8n node declares this as a runtime dependency and
+   * spawns it from node_modules at execute() time — keeps the n8n node
+   * working in environments without npx + network at workflow time.
+   */
+  sourceMcpPackageName: string;
   /** Version aligned with the source MCP's version (FR32). */
   version: string;
   /** TitleCase class name used for the node + credential classes. */
@@ -102,12 +109,18 @@ export interface N8nNodeSpec {
   description: string;
   /** kebab-case id for `.node.json#group` and search; reused as the resource value. */
   nodeName: string;
+  /** camelCase n8n parameter id (`description.name`) — required by n8n. */
+  paramName: string;
   /** Display label for the (single) resource. */
   resourceDisplayName: string;
   /** Operations the node exposes (one per MCP tool). */
   operations: N8nOperationSpec[];
   /** Credential-class fields derived from server.json#environmentVariables. */
   credentials: N8nCredentialField[];
+  /** Credential class name (always `<className>Api`). */
+  credentialClassName: string;
+  /** camelCase credential id used by n8n, e.g. `eadFactoryApi`. */
+  credentialParamName: string;
   /**
    * Repo URL of the MCP source — surfaced in the generated package.json's
    * homepage + repository.url so n8n consumers can find docs.
