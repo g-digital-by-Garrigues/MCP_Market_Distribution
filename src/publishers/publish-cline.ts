@@ -24,6 +24,15 @@ export function publishCline(
       upstreamRepo: 'cline/mcp-marketplace',
       templateFile: 'cline-issue.hbs',
       titlePattern: ({ reverseDns, mcpName }) => `[${reverseDns}] ${mcpName}`,
+      // Cline uses a version-less title — every release of the same MCP
+      // resolves to the same issue. Without this opt-in, the publisher
+      // would return 'skipped' on every release after the first, and
+      // the issue's body would forever advertise v1.0.0 even when we're
+      // shipping v1.0.4. With it on, every release refreshes the body
+      // so reviewers always see the latest install command, env vars,
+      // and logo URL. Caught with issue cline/mcp-marketplace#1566 in
+      // v1.0.3 — it still said v1.0.0 four releases later.
+      updateBodyOnIdempotencyHit: true,
     },
     input,
     deps,

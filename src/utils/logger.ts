@@ -29,6 +29,11 @@ export const CANONICAL_EVENTS = [
   // fill with stale submissions — added in v1.1)
   'target.stale_issue_closed',
   'target.stale_issue_cleanup_failed',
+  // Cline body refresh on idempotency hit (cline uses a version-less
+  // title so we want a single open issue per MCP with the body always
+  // showing the latest version — added in v1.1)
+  'target.issue_body_updated',
+  'target.issue_body_update_failed',
   // Track B (Epic 5)
   'adapter.n8n_node_generated',
   'adapter.make_rom_generated',

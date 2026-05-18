@@ -55,6 +55,16 @@ export interface IssuePublisherConfig {
    * starting with this prefix and open at publish time gets closed with a
    * "Superseded by #<new>" comment after the new issue is created. */
   readonly stalePrefix?: (data: { reverseDns: string; mcpName: string }) => string;
+  /**
+   * Opt-in: when the idempotency search finds an existing open issue with
+   * the same (version-less) title, update its body with the new version's
+   * content instead of returning 'skipped'. Use for marketplaces whose
+   * title doesn't carry a version (Cline) so consumers viewing the single
+   * open submission always see the latest version's body. Mutually
+   * exclusive with closeStaleIssues — those are different lifecycle
+   * models (one-issue-per-MCP vs one-issue-per-version).
+   */
+  readonly updateBodyOnIdempotencyHit?: boolean;
 }
 
 export interface FileMarketplaceIssueInput {
@@ -138,6 +148,49 @@ async function readPackageDescription(packageDir: string, mcpName: string): Prom
     // Fall through to the generic fallback.
   }
   return `${mcpName} MCP server — published from g-digital by Garrigues`;
+}
+
+async function renderIssueBody(
+  config: IssuePublisherConfig,
+  input: FileMarketplaceIssueInput,
+  entry: McpEntry,
+): Promise<string> {
+  const tpl = await fs.readFile(
+    path.join(input.repo_root, 'templates', 'store-descriptions', config.templateFile),
+    'utf8',
+  );
+  const packageDir = path.join(input.repo_root, 'pending-to-publish', input.mcp_name);
+  const envVars = await readEnvVars(packageDir);
+  // Read the canonical description from package.json#description so the
+  // marketplace body matches what npm and the MCP Registry show. Falls
+  // back to a generic line if package.json isn't readable (shouldn't
+  // normally happen — Layer 1 enforces its presence).
+  const description = await readPackageDescription(packageDir, input.mcp_name);
+  const repoUrl = 'https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution';
+  // Logo URL points at the npm-published copy via unpkg.com, NOT at the
+  // private repo's raw.githubusercontent.com path. Reasons:
+  //   - The repo is private. raw.githubusercontent.com URLs return 404
+  //     to anyone without repo access — including Cline / mcp.so / Docker
+  //     MCP Catalog maintainers, who need to see the logo to triage the
+  //     submission.
+  //   - The npm tarball includes assets/ (package.json#files), so unpkg
+  //     serves the file with the right cache headers and no auth.
+  //   - This requires publish-npm to have succeeded first. publish.yml
+  //     chains the marketplace publishers behind publish-npm via the
+  //     `needs.publish-npm` dependency + status-check guard.
+  const logoUrl = `https://unpkg.com/${entry.npm_package_name}@${input.version}/${entry.logo_path}`;
+  return Handlebars.compile(tpl, { noEscape: true })({
+    mcp_name: input.mcp_name,
+    version: input.version,
+    description,
+    npm_package_name: entry.npm_package_name,
+    docker_image_name: entry.docker_image_name,
+    license: entry.license,
+    repo_url: repoUrl,
+    logo_url: logoUrl,
+    pipeline_run_id: input.pipeline_run_id,
+    environment_variables: envVars,
+  });
 }
 
 async function readEnvVars(packageDir: string): Promise<Array<{ name: string; description: string }>> {
@@ -224,6 +277,56 @@ export async function fileMarketplaceIssue(
       const issues = JSON.parse(search.stdout.trim() || '[]') as Array<{ number: number; title: string; url: string }>;
       const exact = issues.find((i) => i.title === title);
       if (exact) {
+        // updateBodyOnIdempotencyHit (opt-in): refresh the existing
+        // issue's body so consumers viewing this single open submission
+        // always see the latest version. Cline opts in; mcpso does
+        // not (mcpso opens a new issue per version and uses
+        // closeStaleIssues to clean up the previous ones instead).
+        if (config.updateBodyOnIdempotencyHit) {
+          if (isDryRun) {
+            log.info('target.issue_body_updated', {
+              ...baseEvent,
+              issue_number: exact.number,
+              dry_run_no_op: true,
+            });
+            return success(config, input, isDryRun, now() - started, 1, exact.url, 'succeeded');
+          }
+          let body: string;
+          try {
+            body = await renderIssueBody(config, input, entry);
+          } catch (err) {
+            log.error('target.issue_body_update_failed', {
+              ...baseEvent,
+              issue_number: exact.number,
+              reason: 'render_failed',
+              error: (err as Error).message,
+            });
+            return failed(config, input, isDryRun, now() - started, 1,
+              `Could not render issue body for update: ${(err as Error).message}`,
+              'Handlebars template rendering failed during body refresh.',
+              `Check pending-to-publish/${input.mcp_name}/ and templates/store-descriptions/${config.templateFile} for syntax errors.`);
+          }
+          const editR = await exec('gh', [
+            'issue', 'edit', String(exact.number),
+            '--repo', config.upstreamRepo,
+            '--body', body,
+          ], { env: { GH_TOKEN: env.BOT_PAT } });
+          if (editR.exitCode !== 0) {
+            log.error('target.issue_body_update_failed', {
+              ...baseEvent,
+              issue_number: exact.number,
+              reason: 'gh_edit_failed',
+              exit_code: editR.exitCode,
+              stderr_excerpt: editR.stderr.trim().slice(0, 300),
+            });
+            return failed(config, input, isDryRun, now() - started, 1,
+              `gh issue edit returned ${editR.exitCode}: ${editR.stderr.trim().slice(0, 300)}`,
+              `Could not update the body of #${exact.number} on ${config.upstreamRepo}.`,
+              `Verify BOT_PAT has issues:write scope; or close #${exact.number} so the next run files a fresh issue.`);
+          }
+          log.info('target.issue_body_updated', { ...baseEvent, issue_number: exact.number });
+          return success(config, input, isDryRun, now() - started, 1, exact.url, 'succeeded');
+        }
         log.info('target.publish_skipped', { ...baseEvent, reason: 'open_issue_exists' });
         return success(config, input, isDryRun, now() - started, 1, exact.url, 'skipped');
       }
@@ -237,43 +340,8 @@ export async function fileMarketplaceIssue(
       dryRunPlaceholderUrl(config.target, input.mcp_name, input.version), 'succeeded');
   }
 
-  // Render the issue body.
-  const tpl = await fs.readFile(
-    path.join(input.repo_root, 'templates', 'store-descriptions', config.templateFile),
-    'utf8',
-  );
-  const packageDir = path.join(input.repo_root, 'pending-to-publish', input.mcp_name);
-  const envVars = await readEnvVars(packageDir);
-  // Read the canonical description from package.json#description so the
-  // marketplace body matches what npm and the MCP Registry show. Falls
-  // back to a generic line if package.json isn't readable (shouldn't
-  // normally happen — Layer 1 enforces its presence).
-  const description = await readPackageDescription(packageDir, input.mcp_name);
-  const repoUrl = 'https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution';
-  // Logo URL points at the npm-published copy via unpkg.com, NOT at the
-  // private repo's raw.githubusercontent.com path. Reasons:
-  //   - The repo is private. raw.githubusercontent.com URLs return 404
-  //     to anyone without repo access — including Cline / mcp.so / Docker
-  //     MCP Catalog maintainers, who need to see the logo to triage the
-  //     submission.
-  //   - The npm tarball includes assets/ (package.json#files), so unpkg
-  //     serves the file with the right cache headers and no auth.
-  //   - This requires publish-npm to have succeeded first. publish.yml
-  //     chains the marketplace publishers behind publish-npm via the
-  //     `needs.publish-npm` dependency + status-check guard.
-  const logoUrl = `https://unpkg.com/${entry.npm_package_name}@${input.version}/${entry.logo_path}`;
-  const body = Handlebars.compile(tpl, { noEscape: true })({
-    mcp_name: input.mcp_name,
-    version: input.version,
-    description,
-    npm_package_name: entry.npm_package_name,
-    docker_image_name: entry.docker_image_name,
-    license: entry.license,
-    repo_url: repoUrl,
-    logo_url: logoUrl,
-    pipeline_run_id: input.pipeline_run_id,
-    environment_variables: envVars,
-  });
+  // Render the issue body for the create path.
+  const body = await renderIssueBody(config, input, entry);
 
   // Custom transient classifier: treat 403 as transient because for these
   // marketplaces 403 typically means rate-limit, not permission.
