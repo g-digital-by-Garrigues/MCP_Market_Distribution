@@ -40,7 +40,7 @@ async function seedFixture(): Promise<{
     npm_scope: '@g-digital',
     npm_package_name: '@g-digital/mcp-multi-tool',
     docker_image_name: 'gdigital/multi-tool',
-    n8n_adapter_target_name: 'n8n-node-multi-tool',
+    n8n_adapter_target_name: 'n8n-nodes-multi-tool',
     license: 'MIT',
     credential_help_url: 'https://example.com',
     target_overrides: {},
@@ -128,7 +128,7 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
         dependencies: Record<string, string>;
         n8n: { credentials: string[]; nodes: string[] };
       };
-      expect(pkg.name).toBe('@g-digital/n8n-node-multi-tool');
+      expect(pkg.name).toBe('@g-digital/n8n-nodes-multi-tool');
       expect(pkg.version).toBe('1.0.0');
       // Source MCP is pinned exactly to the same version so the n8n
       // node always travels with a matching MCP.

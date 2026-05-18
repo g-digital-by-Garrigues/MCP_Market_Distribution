@@ -17,7 +17,7 @@ import {
 } from './check-target-version.js';
 
 // Story 5.6: Track B publisher — pushes the generated n8n community
-// node to npm under `<scope>/n8n-node-<target>`. Mirrors publish-npm.ts
+// node to npm under `<scope>/n8n-nodes-<target>`. Mirrors publish-npm.ts
 // for the source MCP, with two differences:
 //
 //   1. package_dir points at the GENERATED adapter tree (not the source

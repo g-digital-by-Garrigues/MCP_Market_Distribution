@@ -9,7 +9,7 @@ import type { N8nNodeSpec } from '../../src/adapters/n8n-adapter/types.js';
 
 function sampleSpec(): N8nNodeSpec {
   return {
-    packageName: '@g-digital/n8n-node-multi-tool',
+    packageName: '@g-digital/n8n-nodes-multi-tool',
     sourceMcpPackageName: '@g-digital/mcp-multi-tool',
     version: '1.0.0',
     className: 'MultiTool',

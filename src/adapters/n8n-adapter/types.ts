@@ -88,7 +88,7 @@ export interface N8nCredentialField {
 export interface N8nNodeSpec {
   /**
    * npm package name for the generated n8n node, e.g.
-   * `@g-digital/n8n-node-ead-factory`. Derived from
+   * `@g-digital/n8n-nodes-ead-factory`. Derived from
    * `.distribution.yaml#npm_scope + n8n_adapter_target_name`.
    */
   packageName: string;

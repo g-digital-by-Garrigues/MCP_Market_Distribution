@@ -14,7 +14,7 @@ const DEFAULT_DISTRIBUTION: Record<string, unknown> = {
   npm_scope: '@g-digital',
   npm_package_name: '@g-digital/mcp-ead-factory',
   docker_image_name: 'gdigital/ead-factory',
-  n8n_adapter_target_name: 'n8n-node-ead-factory',
+  n8n_adapter_target_name: 'n8n-nodes-ead-factory',
   license: 'MIT',
   credential_help_url: 'https://example.com/onboarding',
   target_overrides: {},
