@@ -3,6 +3,7 @@
 // Operations: {{#each operations}}{{this.name}}{{#unless @last}}, {{/unless}}{{/each}}
 
 import {
+  IDataObject,
   IExecuteFunctions,
   INodeExecutionData,
   INodeType,
@@ -122,7 +123,12 @@ export class {{className}} implements INodeType {
         }
         try {
           const response = await client.callTool({ name: operation, arguments: args });
-          out.push({ json: response as Record<string, unknown> });
+          // n8n's INodeExecutionData.json is typed as IDataObject (a
+          // recursive JSON-shaped record). The SDK's callTool returns
+          // `{ content: [...] }` — castable as IDataObject for n8n's
+          // downstream nodes to read via expressions ($json.content,
+          // $json.isError, etc.).
+          out.push({ json: response as unknown as IDataObject });
         } catch (err) {
           throw new NodeOperationError(
             this.getNode(),

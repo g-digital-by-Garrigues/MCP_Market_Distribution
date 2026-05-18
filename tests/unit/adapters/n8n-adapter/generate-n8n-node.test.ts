@@ -150,6 +150,24 @@ describe('generateN8nNode', () => {
     expect(node).toContain("'list_widgets': ['page_size', 'sort']");
   });
 
+  it('node.ts imports IDataObject from n8n-workflow and casts the MCP response to it (TS2322 regression #26043958622)', async () => {
+    // Layer 2 compile gate caught a TS2322 in dry-run #26043958622:
+    // `Record<string, unknown>` is not assignable to n8n-workflow's
+    // IDataObject. The generator now imports IDataObject and casts the
+    // callTool response through `as unknown as IDataObject` so n8n
+    // accepts the data into INodeExecutionData.json.
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    // Import added to the n8n-workflow line.
+    expect(node).toMatch(/import\s*\{[\s\S]*?IDataObject[\s\S]*?\}\s*from\s*'n8n-workflow'/);
+    // Cast lands on the callTool response, NOT the old Record form.
+    expect(node).toContain('as unknown as IDataObject');
+    expect(node).not.toContain('as Record<string, unknown>');
+  });
+
   it("node.ts JSON.stringify-encodes strings with quotes so they don't break TS", async () => {
     const spec = sampleSpec();
     spec.description = `A "tricky" description's edge case`;
