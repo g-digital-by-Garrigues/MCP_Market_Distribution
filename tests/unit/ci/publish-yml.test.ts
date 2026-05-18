@@ -203,6 +203,19 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(job!.permissions?.['pull-requests']).toBe('write');
   });
 
+  it('npx-verification job runs checkout-mcp-source so verify-npx-install.ts can read .distribution.yaml', () => {
+    // Regression for run #26045698347: any job that calls into code
+    // which loads .distribution.yaml MUST run checkout-mcp-source
+    // first, because Phase C moved per-MCP fields out of this repo
+    // into the MCP source repo. Same fix pattern as PR #78 for
+    // ledger-read.
+    const job = parsed.jobs['npx-verification'] as unknown as {
+      steps: Array<{ uses?: string }>;
+    };
+    const usesList = job.steps.map((s) => s.uses).filter((u): u is string => !!u);
+    expect(usesList).toContain('./actions/checkout-mcp-source');
+  });
+
   it('Track B — generate-n8n-adapter job gates on track-a-layer-3 success + ledger-read.run_n8n, uploads an artifact', () => {
     const job = parsed.jobs['generate-n8n-adapter'] as unknown as {
       needs?: string[];
