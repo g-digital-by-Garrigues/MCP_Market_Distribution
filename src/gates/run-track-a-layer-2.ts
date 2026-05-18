@@ -2,12 +2,14 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
+import yaml from 'js-yaml';
 import {
   runInspectorHarness,
   type InspectorSampleCallInput,
   type InspectorToolEntry,
 } from './inspector-harness.js';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
+import { mcpPipelineConfigSchema } from '../schemas/mcp-pipeline-config.schema.js';
 
 const PLACEHOLDER_STRING = 'placeholder';
 const METHOD_NOT_FOUND = -32601;
@@ -78,6 +80,25 @@ async function loadFixture(
     if (parsed && typeof parsed === 'object') return parsed;
     return null;
   } catch {
+    return null;
+  }
+}
+
+// Returns the static tool names declared in mcp-pipeline.yaml#mcps.<id>.tools,
+// or null if the file is missing / the entry has no tools field. Returning
+// null lets Layer 2 skip the drift check for MCPs that don't opt into the
+// static list (e.g., Track-B-only MCPs whose tools array isn't consumed by
+// the Docker MCP Catalog publisher).
+async function tryLoadYamlTools(repoRoot: string, mcpName: string): Promise<string[] | null> {
+  try {
+    const raw = await fs.readFile(path.join(repoRoot, 'mcp-pipeline.yaml'), 'utf8');
+    const config = mcpPipelineConfigSchema.parse(yaml.load(raw));
+    const tools = config.mcps[mcpName]?.tools;
+    if (!tools) return null;
+    return tools.map((t) => t.name);
+  } catch {
+    // No yaml, no entry, or schema mismatch — Layer 1 catches structural
+    // problems; we just skip the drift check here.
     return null;
   }
 }
@@ -163,6 +184,43 @@ export async function runTrackALayer2(
           observation: `Tool '${tool.name}' has no valid inputSchema (got: ${JSON.stringify(tool.inputSchema)}).`,
           cause: 'A JSON Schema object is required so consumers can validate inputs.',
           action: `Provide an 'inputSchema' (JSON Schema object) when registering '${tool.name}'.`,
+        }),
+      );
+    }
+  }
+
+  // Cross-check the advertised tools list against mcp-pipeline.yaml#mcps.<id>.tools.
+  // The Docker MCP Catalog publisher (PR #70) ships that static list to the
+  // catalog's servers/<mcp>/tools.json — if it drifts from what the server
+  // actually advertises, consumers see a wrong tool list (either claiming
+  // tools that don't exist, or hiding ones that do). Layer 2 owns the
+  // protocol contract, so this is where the cross-check lives.
+  //
+  // We only enforce when entry.tools is defined. MCPs without that field
+  // (legacy or Track-B-only) skip the check.
+  const yamlTools = await tryLoadYamlTools(opts.repoRoot, opts.mcpName);
+  if (yamlTools !== null) {
+    const actualNames = new Set(probe.tools_list.map((t) => t.name));
+    const expectedNames = new Set(yamlTools);
+    const onlyInServer = [...actualNames].filter((n) => !expectedNames.has(n)).sort();
+    const onlyInYaml = [...expectedNames].filter((n) => !actualNames.has(n)).sort();
+    if (onlyInServer.length > 0) {
+      errors.push(
+        gateError('tools_yaml_drift', {
+          observation: `Tools advertised by src/server.ts but missing from mcp-pipeline.yaml#mcps.${opts.mcpName}.tools: [${onlyInServer.join(', ')}].`,
+          cause:
+            'Static tools list in mcp-pipeline.yaml is consumed by the Docker MCP Catalog publisher; drift means the catalog submission omits tools that consumers can actually call.',
+          action: `Add the missing tool(s) to mcp-pipeline.yaml#mcps.${opts.mcpName}.tools[] with a 'description' field for each.`,
+        }),
+      );
+    }
+    if (onlyInYaml.length > 0) {
+      errors.push(
+        gateError('tools_yaml_drift', {
+          observation: `Tools listed in mcp-pipeline.yaml#mcps.${opts.mcpName}.tools but NOT advertised by src/server.ts: [${onlyInYaml.join(', ')}].`,
+          cause:
+            "Static tools list is out of date — the server no longer registers these tools, so the catalog submission would advertise tools consumers can't actually call.",
+          action: `Remove the obsolete tool(s) from mcp-pipeline.yaml#mcps.${opts.mcpName}.tools[] (or restore them in src/server.ts if the removal was unintentional).`,
         }),
       );
     }
