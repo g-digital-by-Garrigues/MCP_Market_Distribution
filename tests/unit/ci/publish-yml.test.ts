@@ -178,7 +178,7 @@ describe('.github/workflows/publish.yml scaffold', () => {
     }
   });
 
-  it('final-report job runs always() and aggregates all 7 Track A publishers', () => {
+  it('final-report job runs always() and aggregates all 7 Track A publishers + Track B publish-n8n', () => {
     const job = parsed.jobs['final-report'] as unknown as {
       needs: string[];
       if?: string;
@@ -195,10 +195,91 @@ describe('.github/workflows/publish.yml scaffold', () => {
         'publish-docker-mcp-catalog',
         'publish-cline',
         'publish-mcpso',
+        'publish-n8n',
       ]),
     );
     expect(job!.if).toContain('always()');
     expect(job!.permissions?.contents).toBe('write');
     expect(job!.permissions?.['pull-requests']).toBe('write');
+  });
+
+  it('Track B — generate-n8n-adapter job gates on track-a-layer-3 success + ledger-read.run_n8n, uploads an artifact', () => {
+    const job = parsed.jobs['generate-n8n-adapter'] as unknown as {
+      needs?: string[];
+      if?: string;
+      outputs?: Record<string, string>;
+      steps: Array<Record<string, unknown>>;
+    } | undefined;
+    expect(job).toBeDefined();
+    expect(job!.needs).toContain('setup');
+    expect(job!.needs).toContain('ledger-read');
+    expect(job!.needs).toContain('track-a-layer-3');
+    expect(job!.if).toContain('track-a-layer-3.result');
+    expect(job!.if).toContain("ledger-read.outputs.run_n8n == 'true'");
+    expect(job!.outputs?.artifact_name).toBeDefined();
+    // Must include the artifact upload so downstream jobs can fetch.
+    const stepFlat = JSON.stringify(job!.steps);
+    expect(stepFlat).toContain('actions/upload-artifact');
+    expect(stepFlat).toContain('run-adapter-build.ts');
+    // And it must run-build the MCP source first so dist/server.js exists.
+    expect(stepFlat).toContain('npm run build');
+  });
+
+  it('Track B layer 1/2/3 jobs chain via needs + download the n8n adapter artifact', () => {
+    const layers = ['track-b-layer-1', 'track-b-layer-2', 'track-b-layer-3'];
+    for (const name of layers) {
+      const job = parsed.jobs[name] as unknown as {
+        needs?: string[];
+        if?: string;
+        steps: Array<Record<string, unknown>>;
+      } | undefined;
+      expect(job, name).toBeDefined();
+      expect(job!.needs, name).toContain('setup');
+      expect(job!.needs, name).toContain('generate-n8n-adapter');
+      const stepFlat = JSON.stringify(job!.steps);
+      expect(stepFlat, name).toContain('actions/download-artifact');
+      // The script for layer N is run-track-b-layer-N.ts; `name` is
+      // already track-b-layer-N so we can build the path directly.
+      expect(stepFlat, name).toContain(`run-${name}.ts`);
+    }
+    // Layer 2 chains after Layer 1; Layer 3 chains after Layer 2.
+    const layer2 = parsed.jobs['track-b-layer-2'] as unknown as { needs: string[] };
+    expect(layer2.needs).toContain('track-b-layer-1');
+    const layer3 = parsed.jobs['track-b-layer-3'] as unknown as { needs: string[] };
+    expect(layer3.needs).toContain('track-b-layer-2');
+    // Layer 3 also re-checkouts MCP source so it can spawn dist/server.js.
+    const layer3Steps = JSON.stringify(layer3 as unknown as { steps: unknown });
+    expect(layer3Steps).toContain('checkout-mcp-source');
+    expect(layer3Steps).toContain('npm run build');
+  });
+
+  it('publish-n8n job gates on track-b-layer-3 + publish-npm + ledger flag, exposes result_json, has OIDC id-token: write', () => {
+    const job = parsed.jobs['publish-n8n'] as unknown as {
+      needs?: string[];
+      if?: string;
+      outputs?: Record<string, string>;
+      permissions?: Record<string, string>;
+      steps: Array<Record<string, unknown>>;
+    } | undefined;
+    expect(job).toBeDefined();
+    expect(job!.needs).toEqual(
+      expect.arrayContaining([
+        'setup',
+        'ledger-read',
+        'generate-n8n-adapter',
+        'track-b-layer-3',
+        'publish-npm',
+      ]),
+    );
+    expect(job!.if).toContain('track-b-layer-3.result');
+    expect(job!.if).toContain("ledger-read.outputs.run_n8n == 'true'");
+    // Real-mode requires publish-npm to have succeeded; dry_run mode is the explicit exception.
+    expect(job!.if).toContain('publish-npm.outputs.result_json');
+    expect(job!.if).toContain('dry_run');
+    expect(job!.outputs?.result_json).toBe('${{ steps.publish.outputs.result_json }}');
+    expect(job!.permissions?.['id-token']).toBe('write');
+    const stepFlat = JSON.stringify(job!.steps);
+    expect(stepFlat).toContain('actions/download-artifact');
+    expect(stepFlat).toContain('./actions/publish-n8n');
   });
 });

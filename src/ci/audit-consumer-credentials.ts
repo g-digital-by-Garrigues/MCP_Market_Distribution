@@ -17,6 +17,11 @@ export const OPERATIONAL_ALLOWLIST: readonly string[] = [
   'DOCKERHUB_TOKEN',
   'BOT_PAT',
   'NPM_TOKEN',
+  // ANTHROPIC_API_KEY — Story 5.6b: gates the n8n adapter's optional
+  // LLM-refine pass (refine-with-llm.ts). Operational, not a consumer
+  // credential. Refine short-circuits when this is absent so CI without
+  // the key still publishes the adapter (with naive title-case copy).
+  'ANTHROPIC_API_KEY',
 ];
 
 const SECRET_REFERENCE_RE = /\$\{\{\s*secrets\.([A-Z][A-Z0-9_]*)\s*\}\}/g;

@@ -855,6 +855,255 @@ jobs:
           path: npx-verification.json
           if-no-files-found: warn
 
+  # =====================================================================
+  # Track B (Epic 5) — n8n community node adaptation + publication.
+  # Chain: generate-n8n-adapter → track-b-layer-1 → track-b-layer-2 →
+  #        track-b-layer-3 → publish-n8n. Gated by ledger-read.run_n8n.
+  # publish-n8n also depends on publish-npm because the n8n adapter
+  # declares the source MCP as an npm dep; install at publish time
+  # needs it on the registry. In dry_run, generate-n8n-adapter
+  # substitutes the dep to a local file: tarball so the chain works
+  # without a registry round-trip (see run-adapter-build.ts).
+  # =====================================================================
+
+  generate-n8n-adapter:
+    name: Generate n8n adapter tree (Track B)
+    needs: [setup, ledger-read, track-a-layer-3]
+    if: |
+      needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_n8n == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_name: n8n-adapter-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+      # Optional: refine the adapter's displayName/description copy via
+      # Claude. The refine pass short-circuits when the key is absent.
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install + build MCP source
+        # buildN8nNodeSpec spawns the MCP via dist/server.js to fetch
+        # tools/list, so dist/ must exist before run-adapter-build.ts runs.
+        working-directory: pending-to-publish/${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+          npm run build
+      - name: Run adapter build
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+          VERSION: ${{ needs.setup.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p _n8n-adapter
+          pnpm tsx src/adapters/n8n-adapter/run-adapter-build.ts \
+            "$MCP_NAME" \
+            "$VERSION" \
+            "pending-to-publish/$MCP_NAME" \
+            "_n8n-adapter" \
+            "$DRY_RUN"
+      - name: Upload adapter artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: n8n-adapter-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
+          path: _n8n-adapter
+          if-no-files-found: error
+
+  track-b-layer-1:
+    name: Track B — Layer 1 (structural lint)
+    needs: [setup, generate-n8n-adapter]
+    if: needs.generate-n8n-adapter.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download adapter artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-n8n-adapter.outputs.artifact_name }}
+          path: _n8n-adapter
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run Layer 1 lint
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/gates/run-track-b-layer-1.ts \
+            "$MCP_NAME" \
+            "_n8n-adapter" \
+            "_n8n-adapter/.spec.json"
+
+  track-b-layer-2:
+    name: Track B — Layer 2 (compile)
+    needs: [setup, generate-n8n-adapter, track-b-layer-1]
+    if: needs.track-b-layer-1.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download adapter artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-n8n-adapter.outputs.artifact_name }}
+          path: _n8n-adapter
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run Layer 2 compile gate
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/gates/run-track-b-layer-2.ts \
+            "$MCP_NAME" \
+            "_n8n-adapter"
+
+  track-b-layer-3:
+    name: Track B — Layer 3 (per-operation smoke)
+    needs: [setup, generate-n8n-adapter, track-b-layer-2]
+    if: needs.track-b-layer-2.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Checkout MCP source
+        # Layer 3 spawns the source MCP (dist/server.js) to roundtrip
+        # each operation through tools/call, so we need the source tree
+        # AND its built dist/ here.
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
+      - name: Download adapter artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-n8n-adapter.outputs.artifact_name }}
+          path: _n8n-adapter
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install + build MCP source
+        working-directory: pending-to-publish/${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+          npm run build
+      - name: Run Layer 3 smoke
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/gates/run-track-b-layer-3.ts \
+            "$MCP_NAME" \
+            "_n8n-adapter/.spec.json" \
+            "pending-to-publish/$MCP_NAME"
+
+  publish-n8n:
+    name: Publish n8n community node
+    # The n8n adapter declares the source MCP as an npm dependency; in
+    # real mode the source must be on the registry first (publish-npm
+    # succeeded). In dry_run, generate-n8n-adapter rewrote that dep to
+    # a local file: tarball so install resolves without registry.
+    needs: [setup, ledger-read, generate-n8n-adapter, track-b-layer-3, publish-npm]
+    if: |
+      always()
+      && needs.track-b-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_n8n == 'true'
+      && (needs.publish-npm.result == 'skipped'
+          || needs.setup.outputs.dry_run == 'true'
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      result_json: ${{ steps.publish.outputs.result_json }}
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download adapter artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-n8n-adapter.outputs.artifact_name }}
+          path: _n8n-adapter
+      - name: Publish via composite action
+        id: publish
+        uses: ./actions/publish-n8n
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          version: ${{ needs.setup.outputs.version }}
+          pipeline_run_id: ${{ needs.setup.outputs.pipeline_run_id }}
+          dry_run: ${{ needs.setup.outputs.dry_run }}
+          package_dir: ${{ github.workspace }}/_n8n-adapter
+
   # ---------------------------------------------------------------------
   # Story 3.7: final-report job — aggregates Track A publishers,
   # commits the release report, and upserts the PR comment.
@@ -872,6 +1121,7 @@ jobs:
       - publish-docker-mcp-catalog
       - publish-cline
       - publish-mcpso
+      - publish-n8n
     if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-latest
     permissions:
@@ -925,6 +1175,7 @@ jobs:
             ${{ needs.publish-docker-mcp-catalog.outputs.result_json || (needs.publish-docker-mcp-catalog.result == 'skipped' && format('{{"target":"docker-mcp-catalog","status":"skipped","target_url":"https://example.invalid/skipped/docker-mcp-catalog","version_published":null,"duration_ms":0,"attempts":1,"dry_run":{0}}}', needs.setup.outputs.dry_run) || format('{{"target":"docker-mcp-catalog","status":"failed","target_url":"https://example.invalid/skipped/docker-mcp-catalog","version_published":null,"duration_ms":0,"attempts":1,"dry_run":{0},"error":{{"message":"publish-docker-mcp-catalog job did not run.","cause":"Upstream gate or dependency was not successful.","action":"Inspect the workflow run; re-run after fixing the upstream gate."}}}}', needs.setup.outputs.dry_run)) }}
             ${{ needs.publish-cline.outputs.result_json || (needs.publish-cline.result == 'skipped' && format('{{"target":"cline","status":"skipped","target_url":"https://example.invalid/skipped/cline","version_published":null,"duration_ms":0,"attempts":1,"dry_run":{0}}}', needs.setup.outputs.dry_run) || format('{{"target":"cline","status":"failed","target_url":"https://example.invalid/skipped/cline","version_published":null,"duration_ms":0,"attempts":1,"dry_run":{0},"error":{{"message":"publish-cline job did not run.","cause":"Upstream gate or dependency was not successful.","action":"Inspect the workflow run; re-run after fixing the upstream gate."}}}}', needs.setup.outputs.dry_run)) }}
             ${{ needs.publish-mcpso.outputs.result_json || (needs.publish-mcpso.result == 'skipped' && format('{{"target":"mcpso","status":"skipped","target_url":"https://example.invalid/skipped/mcpso","version_published":null,"duration_ms":0,"attempts":1,"dry_run":{0}}}', needs.setup.outputs.dry_run) || format('{{"target":"mcpso","status":"failed","target_url":"https://example.invalid/skipped/mcpso","version_published":null,"duration_ms":0,"attempts":1,"dry_run":{0},"error":{{"message":"publish-mcpso job did not run.","cause":"Upstream gate or dependency was not successful.","action":"Inspect the workflow run; re-run after fixing the upstream gate."}}}}', needs.setup.outputs.dry_run)) }}
+            ${{ needs.publish-n8n.outputs.result_json || (needs.publish-n8n.result == 'skipped' && format('{{"target":"n8n","status":"skipped","target_url":"https://example.invalid/skipped/n8n","version_published":null,"duration_ms":0,"attempts":1,"dry_run":{0}}}', needs.setup.outputs.dry_run) || format('{{"target":"n8n","status":"failed","target_url":"https://example.invalid/skipped/n8n","version_published":null,"duration_ms":0,"attempts":1,"dry_run":{0},"error":{{"message":"publish-n8n job did not run.","cause":"Upstream Track B gate or publish-npm dependency was not successful.","action":"Inspect the workflow run; re-run after fixing the upstream gate."}}}}', needs.setup.outputs.dry_run)) }}
         run: |
           set -euo pipefail
           pnpm tsx src/ci/render-release-report.ts > /dev/null
@@ -956,6 +1207,7 @@ jobs:
             ${{ needs.publish-docker-mcp-catalog.outputs.result_json || '' }}
             ${{ needs.publish-cline.outputs.result_json || '' }}
             ${{ needs.publish-mcpso.outputs.result_json || '' }}
+            ${{ needs.publish-n8n.outputs.result_json || '' }}
         run: pnpm tsx src/state/write-ledger.ts
 
       - name: Commit + push release-report to main

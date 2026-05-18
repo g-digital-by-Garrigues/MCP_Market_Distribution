@@ -1,0 +1,73 @@
+name: "Publish n8n community node"
+description: "Story 5.6: install + build + npm publish the generated n8n adapter tree. Mirror of publish-npm but reads from the GENERATED adapter dir (passed via package_dir) rather than pending-to-publish/<id>/."
+
+inputs:
+  mcp_name:
+    description: "Source MCP id (kebab-case, e.g. 'ead-factory'). Used in structured logs."
+    required: true
+  version:
+    description: "Semver to publish — must match the source MCP version (FR32 alignment) and the generated package.json's version."
+    required: true
+  pipeline_run_id:
+    description: "Run correlation id from the setup job."
+    required: true
+  dry_run:
+    description: "When 'true', runs `npm publish --dry-run` instead of a real publish."
+    required: false
+    default: "false"
+  package_dir:
+    description: "Absolute path to the GENERATED n8n adapter tree (the artifact produced by generate-n8n-adapter)."
+    required: true
+
+outputs:
+  result_json:
+    description: "PublisherOutputSchema-conforming JSON (target='n8n')."
+    value: ${{ steps.publish.outputs.result_json }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up pnpm
+      uses: pnpm/action-setup@v4
+      with:
+        version: 9.15.0
+
+    - name: Set up Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: 22
+        cache: pnpm
+        registry-url: https://registry.npmjs.org/
+
+    - name: Install pipeline dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile
+
+    - name: Publish n8n adapter to npm
+      id: publish
+      shell: bash
+      env:
+        INPUT_MCP_NAME: ${{ inputs.mcp_name }}
+        INPUT_VERSION: ${{ inputs.version }}
+        INPUT_PIPELINE_RUN_ID: ${{ inputs.pipeline_run_id }}
+        INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        INPUT_PACKAGE_DIR: ${{ inputs.package_dir }}
+        # NPM_TOKEN is read inside publishN8n; same OIDC-fallback rules as
+        # publish-npm. For the first-ever publish of an n8n adapter the
+        # trusted publisher won't exist yet on npmjs, so NPM_TOKEN is the
+        # bootstrap path.
+        NPM_TOKEN: ${{ env.NPM_TOKEN }}
+      run: |
+        # `+e` disables errexit so a failed publisher still echoes the
+        # PublisherOutput JSON into GITHUB_OUTPUT — without this, final-
+        # report's aggregation falls back to "did not run" and the
+        # engineer never sees the structured error block. Mirror of the
+        # publish-npm composite.
+        set +e -uo pipefail
+        pnpm tsx src/publishers/run-publish-n8n.ts > result.json
+        exit_code=$?
+        printf 'result_json<<EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json >> "$GITHUB_OUTPUT"
+        printf 'EOF\n' >> "$GITHUB_OUTPUT"
+        cat result.json
+        exit $exit_code
