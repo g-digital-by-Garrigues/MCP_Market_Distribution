@@ -70,25 +70,99 @@ describe('publishCline', () => {
     silentLogger.error.mockClear();
   });
 
-  it('idempotency: existing open issue with matching title → status=skipped', async () => {
+  // updateBodyOnIdempotencyHit (v1.1 item 1): cline uses a version-less
+  // title, so every release after the first hits the same issue. Without
+  // refresh, the body would forever show v1.0.0 even when we ship
+  // v1.0.4. The opt-in changes "skipped → succeeded + edit body" so
+  // reviewers always see the latest version in the single open issue.
+
+  it('updateBodyOnIdempotencyHit: existing issue → render body + gh issue edit + status=succeeded', async () => {
     await withRepoRoot(async (repoRoot) => {
+      const existingUrl = 'https://github.com/cline/mcp-marketplace/issues/12';
       const { exec, calls } = fakeExec(({ cmd, args }) => {
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify([{ number: 12, title: '[io.github.g-digital-by-Garrigues/ead-factory] ead-factory', url: existingUrl }]),
+          };
+        }
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'edit') return { exitCode: 0 };
+        return { exitCode: 1, stderr: 'unexpected' };
+      });
+      const result = await publishCline(
+        { mcp_name: 'ead-factory', version: '1.0.4', pipeline_run_id: 'r', dry_run: false, repo_root: repoRoot },
+        { exec, logger: silentLogger, env: { BOT_PAT: 'pat' } },
+      );
+      expect(result.status).toBe('succeeded');
+      expect(result.target_url).toBe(existingUrl);
+      expect(result.target).toBe('cline');
+
+      // gh issue edit was called against issue 12 with --body containing
+      // the new version's content.
+      const edit = calls.find((c) => c.cmd === 'gh' && c.args[0] === 'issue' && c.args[1] === 'edit');
+      expect(edit).toBeDefined();
+      expect(edit?.args).toContain('12');
+      const bodyIdx = edit!.args.indexOf('--body');
+      expect(bodyIdx).toBeGreaterThan(-1);
+      const body = edit!.args[bodyIdx + 1]!;
+      // Body should contain the v1.0.4 version (logo unpkg URL carries it).
+      expect(body).toContain('1.0.4');
+      expect(body).toContain('@g-digital/mcp-ead-factory');
+
+      // No gh issue create should have happened — we updated, not created.
+      const create = calls.find((c) => c.cmd === 'gh' && c.args[0] === 'issue' && c.args[1] === 'create');
+      expect(create).toBeUndefined();
+    });
+  });
+
+  it('updateBodyOnIdempotencyHit + dry_run: returns succeeded WITHOUT calling gh issue edit', async () => {
+    await withRepoRoot(async (repoRoot) => {
+      const existingUrl = 'https://github.com/cline/mcp-marketplace/issues/12';
+      const { exec, calls } = fakeExec(({ cmd, args }) => {
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify([{ number: 12, title: '[io.github.g-digital-by-Garrigues/ead-factory] ead-factory', url: existingUrl }]),
+          };
+        }
+        return { exitCode: 1, stderr: 'should not be called in dry_run' };
+      });
+      const result = await publishCline(
+        { mcp_name: 'ead-factory', version: '1.0.4', pipeline_run_id: 'r', dry_run: true, repo_root: repoRoot },
+        { exec, logger: silentLogger, env: { BOT_PAT: 'pat' } },
+      );
+      expect(result.status).toBe('succeeded');
+      expect(result.dry_run).toBe(true);
+      expect(result.target_url).toBe(existingUrl);
+      // Only the idempotency search call should have happened. No edit.
+      expect(calls).toHaveLength(1);
+      const edit = calls.find((c) => c.args[1] === 'edit');
+      expect(edit).toBeUndefined();
+    });
+  });
+
+  it('updateBodyOnIdempotencyHit: gh issue edit failure → status=failed with remediation', async () => {
+    await withRepoRoot(async (repoRoot) => {
+      const { exec } = fakeExec(({ cmd, args }) => {
         if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
           return {
             exitCode: 0,
             stdout: JSON.stringify([{ number: 12, title: '[io.github.g-digital-by-Garrigues/ead-factory] ead-factory', url: 'https://github.com/cline/mcp-marketplace/issues/12' }]),
           };
         }
-        return { exitCode: 1, stderr: 'should not be called' };
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'edit') {
+          return { exitCode: 1, stderr: 'HTTP 403: Resource not accessible by integration' };
+        }
+        return { exitCode: 1, stderr: 'unexpected' };
       });
       const result = await publishCline(
-        { mcp_name: 'ead-factory', version: '1.0.0', pipeline_run_id: 'r', dry_run: false, repo_root: repoRoot },
+        { mcp_name: 'ead-factory', version: '1.0.4', pipeline_run_id: 'r', dry_run: false, repo_root: repoRoot },
         { exec, logger: silentLogger, env: { BOT_PAT: 'pat' } },
       );
-      expect(result.status).toBe('skipped');
-      expect(result.target_url).toBe('https://github.com/cline/mcp-marketplace/issues/12');
-      expect(result.target).toBe('cline');
-      expect(calls).toHaveLength(1);
+      expect(result.status).toBe('failed');
+      expect(result.error?.message).toContain('gh issue edit');
+      expect(result.error?.cause).toContain('#12');
+      expect(result.error?.action).toContain('issues:write');
     });
   });
 
