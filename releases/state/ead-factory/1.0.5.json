@@ -1,0 +1,121 @@
+{
+  "mcp_name": "ead-factory",
+  "started_at": "2026-05-18T16:21:11.380Z",
+  "status": "complete",
+  "targets": {
+    "cline": {
+      "attempts": [
+        {
+          "at": "2026-05-18T16:21:11.380Z",
+          "attempt": 1,
+          "duration_ms": 2130,
+          "pipeline_run_id": "26045698347-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/cline/mcp-marketplace/issues/1566"
+        }
+      ],
+      "last_attempt_at": "2026-05-18T16:21:11.380Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/cline/mcp-marketplace/issues/1566",
+      "version_published": "1.0.5"
+    },
+    "docker-hub": {
+      "attempts": [
+        {
+          "at": "2026-05-18T16:21:11.380Z",
+          "attempt": 1,
+          "duration_ms": 135520,
+          "pipeline_run_id": "26045698347-1",
+          "status": "succeeded",
+          "target_url": "https://hub.docker.com/r/gdigital/ead-factory"
+        }
+      ],
+      "last_attempt_at": "2026-05-18T16:21:11.380Z",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/ead-factory",
+      "version_published": "1.0.5"
+    },
+    "docker-mcp-catalog": {
+      "attempts": [
+        {
+          "at": "2026-05-18T16:21:11.380Z",
+          "attempt": 1,
+          "duration_ms": 5733,
+          "pipeline_run_id": "26045698347-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/docker/mcp-registry/pull/3607"
+        }
+      ],
+      "last_attempt_at": "2026-05-18T16:21:11.380Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/3607",
+      "version_published": "1.0.5"
+    },
+    "mcp-publisher": {
+      "attempts": [
+        {
+          "at": "2026-05-18T16:21:11.380Z",
+          "attempt": 1,
+          "duration_ms": 1603,
+          "pipeline_run_id": "26045698347-1",
+          "status": "skipped",
+          "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory"
+        }
+      ],
+      "last_attempt_at": "2026-05-18T16:21:11.380Z",
+      "status": "skipped",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory",
+      "version_published": "1.0.5"
+    },
+    "mcpso": {
+      "attempts": [
+        {
+          "at": "2026-05-18T16:21:11.380Z",
+          "attempt": 1,
+          "duration_ms": 4144,
+          "pipeline_run_id": "26045698347-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/chatmcp/mcpso/issues/2353"
+        }
+      ],
+      "last_attempt_at": "2026-05-18T16:21:11.380Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/chatmcp/mcpso/issues/2353",
+      "version_published": "1.0.5"
+    },
+    "n8n": {
+      "attempts": [
+        {
+          "at": "2026-05-18T16:21:11.380Z",
+          "attempt": 1,
+          "duration_ms": 17893,
+          "pipeline_run_id": "26045698347-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.5"
+        }
+      ],
+      "last_attempt_at": "2026-05-18T16:21:11.380Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.5",
+      "version_published": "1.0.5"
+    },
+    "npm": {
+      "attempts": [
+        {
+          "at": "2026-05-18T16:21:11.380Z",
+          "attempt": 1,
+          "duration_ms": 3013,
+          "pipeline_run_id": "26045698347-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.5"
+        }
+      ],
+      "last_attempt_at": "2026-05-18T16:21:11.380Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.5",
+      "version_published": "1.0.5"
+    }
+  },
+  "updated_at": "2026-05-18T16:21:11.380Z",
+  "version": "1.0.5"
+}
