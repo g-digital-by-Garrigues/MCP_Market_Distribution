@@ -191,6 +191,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      # Required so read-ledger.ts can load skip_targets from the MCP's
+      # .distribution.yaml (Phase C of v1.1 moved per-MCP fields out of
+      # this repo's mcp-pipeline.yaml). Without this step, the loader
+      # silently fails and the skip filter is never applied — see the
+      # bug observed in run #25893xxx where publish-smithery executed
+      # despite skip_targets: [smithery].
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
