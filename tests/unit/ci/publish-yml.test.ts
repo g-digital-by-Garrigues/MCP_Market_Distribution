@@ -223,6 +223,12 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(stepFlat).toContain('run-adapter-build.ts');
     // And it must run-build the MCP source first so dist/server.js exists.
     expect(stepFlat).toContain('npm run build');
+    // upload-artifact@v4 SILENTLY drops dotfiles by default. The adapter
+    // generator writes `.spec.json` (Layer 1's truth source) and
+    // `.adapter-build.json` (release-report summary). Regression for
+    // run #26039546691 where Layer 1 failed with ENOENT on the missing
+    // dotfile.
+    expect(stepFlat).toContain('include-hidden-files');
   });
 
   it('Track B layer 1/2/3 jobs chain via needs + download the n8n adapter artifact', () => {

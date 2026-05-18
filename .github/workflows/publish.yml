@@ -932,6 +932,12 @@ jobs:
           name: n8n-adapter-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
           path: _n8n-adapter
           if-no-files-found: error
+          # `.spec.json` (Layer 1's truth source) and `.adapter-build.json`
+          # (summary surfaced to the release report) are dotfiles;
+          # upload-artifact@v4 SILENTLY drops them by default. Without
+          # this flag, downstream track-b-layer-1 fails with
+          # `ENOENT: _n8n-adapter/.spec.json`. Caught in run #26039546691.
+          include-hidden-files: true
 
   track-b-layer-1:
     name: Track B — Layer 1 (structural lint)
