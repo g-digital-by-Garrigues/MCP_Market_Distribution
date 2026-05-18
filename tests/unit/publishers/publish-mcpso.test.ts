@@ -103,4 +103,137 @@ describe('publishMcpSo', () => {
       expect(result.target_url).toBe('https://github.com/chatmcp/mcp-directory/issues/9');
     });
   });
+
+  // close-stale-issues (v1.1 backlog item 2). mcpso uses a versioned title,
+  // so without cleanup each release leaves the previous version's issue
+  // open. We assert that after the new issue is created, the publisher
+  // finds older open submissions (same mcp_name, different version) and
+  // closes each with a Superseded-by comment.
+
+  it('close-stale: after creating new issue, closes older open submissions with Superseded comment', async () => {
+    await withRepoRoot(async (repoRoot) => {
+      const newIssueUrl = 'https://github.com/chatmcp/mcp-directory/issues/777';
+      const newIssueNumber = 777;
+      let issueListCalls = 0;
+      const { exec, calls } = fakeExec(({ cmd, args }) => {
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+          issueListCalls += 1;
+          // 1st call → idempotency search for exact new title (no match).
+          // 2nd call → stale search returns 3 older versions + the new one.
+          if (issueListCalls === 1) return { exitCode: 0, stdout: '[]' };
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify([
+              { number: 100, title: '[Submission] ead-factory v1.0.0' },
+              { number: 200, title: '[Submission] ead-factory v1.0.1' },
+              { number: 300, title: '[Submission] ead-factory v1.0.2' },
+              { number: newIssueNumber, title: '[Submission] ead-factory v1.0.3' },
+              { number: 999, title: '[Submission] other-mcp v1.0.0' }, // unrelated — must NOT close
+            ]),
+          };
+        }
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+          return { exitCode: 0, stdout: `${newIssueUrl}\n` };
+        }
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'comment') return { exitCode: 0 };
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'close') return { exitCode: 0 };
+        return { exitCode: 1, stderr: 'unexpected' };
+      });
+      const result = await publishMcpSo(
+        { mcp_name: 'ead-factory', version: '1.0.3', pipeline_run_id: 'r', dry_run: false, repo_root: repoRoot },
+        { exec, logger: silentLogger, env: { BOT_PAT: 'pat' }, sleep: async () => {} },
+      );
+
+      expect(result.status).toBe('succeeded');
+      expect(result.target_url).toBe(newIssueUrl);
+
+      // Three closes, three comments — one per stale issue (100, 200, 300).
+      // The unrelated 'other-mcp' issue (999) must NOT be touched even though
+      // gh's fuzzy --search returned it.
+      const closes = calls.filter((c) => c.cmd === 'gh' && c.args[0] === 'issue' && c.args[1] === 'close');
+      const comments = calls.filter((c) => c.cmd === 'gh' && c.args[0] === 'issue' && c.args[1] === 'comment');
+      expect(closes).toHaveLength(3);
+      expect(comments).toHaveLength(3);
+      const closedNumbers = closes.map((c) => c.args[2]).sort();
+      expect(closedNumbers).toEqual(['100', '200', '300']);
+
+      // The Superseded-by comment must reference #777.
+      const commentBodies = comments
+        .map((c) => c.args.find((_, i) => i > 0 && c.args[i - 1] === '--body'))
+        .filter((b): b is string => typeof b === 'string');
+      expect(commentBodies).toHaveLength(3);
+      for (const body of commentBodies) {
+        expect(body).toContain('#777');
+        expect(body).toContain('ead-factory v1.0.3');
+      }
+
+      // Each close uses --reason not_planned.
+      for (const close of closes) {
+        const reasonIdx = close.args.findIndex((a) => a === '--reason');
+        expect(reasonIdx).toBeGreaterThan(-1);
+        expect(close.args[reasonIdx + 1]).toBe('not_planned');
+      }
+    });
+  });
+
+  it('close-stale: failures to comment or close DO NOT fail the publisher (best-effort)', async () => {
+    await withRepoRoot(async (repoRoot) => {
+      const newIssueUrl = 'https://github.com/chatmcp/mcp-directory/issues/777';
+      let issueListCalls = 0;
+      const { exec } = fakeExec(({ cmd, args }) => {
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+          issueListCalls += 1;
+          if (issueListCalls === 1) return { exitCode: 0, stdout: '[]' };
+          return {
+            exitCode: 0,
+            stdout: JSON.stringify([{ number: 100, title: '[Submission] ead-factory v1.0.0' }]),
+          };
+        }
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+          return { exitCode: 0, stdout: `${newIssueUrl}\n` };
+        }
+        // Both cleanup ops fail. Publisher should still return succeeded.
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'comment') return { exitCode: 1, stderr: 'comment failed' };
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'close') return { exitCode: 1, stderr: 'close failed' };
+        return { exitCode: 1, stderr: 'unexpected' };
+      });
+      const result = await publishMcpSo(
+        { mcp_name: 'ead-factory', version: '1.0.3', pipeline_run_id: 'r', dry_run: false, repo_root: repoRoot },
+        { exec, logger: silentLogger, env: { BOT_PAT: 'pat' }, sleep: async () => {} },
+      );
+
+      expect(result.status).toBe('succeeded');
+      expect(result.target_url).toBe(newIssueUrl);
+    });
+  });
+
+  it('close-stale: stale search failing DOES NOT fail the publisher', async () => {
+    await withRepoRoot(async (repoRoot) => {
+      const newIssueUrl = 'https://github.com/chatmcp/mcp-directory/issues/777';
+      let issueListCalls = 0;
+      const { exec, calls } = fakeExec(({ cmd, args }) => {
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+          issueListCalls += 1;
+          if (issueListCalls === 1) return { exitCode: 0, stdout: '[]' };
+          // Stale-issue search fails (rate limit, network blip, etc.).
+          return { exitCode: 1, stderr: 'HTTP 503' };
+        }
+        if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'create') {
+          return { exitCode: 0, stdout: `${newIssueUrl}\n` };
+        }
+        return { exitCode: 1, stderr: 'should not be called' };
+      });
+      const result = await publishMcpSo(
+        { mcp_name: 'ead-factory', version: '1.0.3', pipeline_run_id: 'r', dry_run: false, repo_root: repoRoot },
+        { exec, logger: silentLogger, env: { BOT_PAT: 'pat' }, sleep: async () => {} },
+      );
+
+      expect(result.status).toBe('succeeded');
+      // No close/comment ops should have happened.
+      const closes = calls.filter((c) => c.cmd === 'gh' && c.args[0] === 'issue' && c.args[1] === 'close');
+      const comments = calls.filter((c) => c.cmd === 'gh' && c.args[0] === 'issue' && c.args[1] === 'comment');
+      expect(closes).toHaveLength(0);
+      expect(comments).toHaveLength(0);
+    });
+  });
 });
