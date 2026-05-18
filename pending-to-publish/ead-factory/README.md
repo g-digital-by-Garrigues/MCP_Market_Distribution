@@ -151,9 +151,8 @@ Then restart Claude Code so the new commands are picked up.
 | Environment | `API_BASE_URL` |
 |---|---|
 | INT | `https://api.int.eadtrust.gcloudfactory.com/digital-trust` |
-| PRE (Facilitea) | `https://api.pre.fc.eadtrust.gcloudfactory.com/digital-trust` |
 | PRO | `https://api.eadtrust.gcloudfactory.com/digital-trust` |
-| PRO (Facilitea) | `https://api.fc.eadtrust.gcloudfactory.com/digital-trust` |
+
 
 ## Remote deployment (HTTP + Bearer auth)
 
