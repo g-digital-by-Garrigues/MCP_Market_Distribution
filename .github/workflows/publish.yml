@@ -66,6 +66,12 @@ jobs:
       pipeline_run_id: ${{ steps.resolve.outputs.pipeline_run_id }}
       source: ${{ steps.resolve.outputs.source }}
       dry_run: ${{ steps.resolve.outputs.dry_run }}
+      # Per-MCP source repo (v1.1 per-MCP-repo refactor — Phase B). Empty
+      # string when the MCP hasn't migrated yet (back-compat: pipeline
+      # then uses the copy committed under pending-to-publish/<id>/).
+      repo_url: ${{ steps.resolve-mcp-repo.outputs.repo_url }}
+      # Tag (v<version>) for real publishes; 'main' for dry-runs.
+      repo_ref: ${{ steps.resolve-mcp-repo.outputs.repo_ref }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,6 +129,28 @@ jobs:
             echo "- step: \`${{ inputs.step || 'all' }}\`"
             echo "- track: \`${{ inputs.track || 'both' }}\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      # Resolve the MCP's own source repo (if it has migrated to its own
+      # repo per v1.1 Phase B). Empty repo_url is fine: downstream jobs
+      # then keep using the committed pending-to-publish/<id>/ copy.
+      # repo_ref = 'v<version>' on real publishes, 'main' on dry-runs.
+      - name: Resolve MCP source repo
+        id: resolve-mcp-repo
+        run: |
+          set -euo pipefail
+          REPO_URL=$(yq -r ".mcps[\"${{ steps.resolve.outputs.mcp_name }}\"].repo_url // \"\"" mcp-pipeline.yaml)
+          if [ "${{ steps.resolve.outputs.dry_run }}" = "true" ]; then
+            REPO_REF="main"
+          else
+            REPO_REF="v${{ steps.resolve.outputs.version }}"
+          fi
+          echo "repo_url=$REPO_URL" >> "$GITHUB_OUTPUT"
+          echo "repo_ref=$REPO_REF" >> "$GITHUB_OUTPUT"
+          if [ -n "$REPO_URL" ]; then
+            echo "Per-MCP source repo: $REPO_URL @ $REPO_REF"
+          else
+            echo "No per-MCP repo configured for ${{ steps.resolve.outputs.mcp_name }}; pipeline will use the copy under pending-to-publish/${{ steps.resolve.outputs.mcp_name }}/."
+          fi
 
       - name: Verify the build still compiles on the runner
         run: pnpm run typecheck && pnpm run test
@@ -210,6 +238,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -248,6 +283,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -299,6 +341,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
 
       - name: Set up Docker Buildx (for BuildKit + layer caching)
         uses: docker/setup-buildx-action@v3
@@ -491,6 +540,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-npm
@@ -517,6 +572,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-docker-hub
@@ -559,6 +620,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-mcp-registry
@@ -589,6 +656,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-smithery
@@ -625,6 +698,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-docker-mcp-catalog
@@ -658,6 +737,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-cline
@@ -691,6 +776,12 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-mcpso

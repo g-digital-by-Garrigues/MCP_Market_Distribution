@@ -30,6 +30,46 @@ Expected initial milestones:
 
 Result: code drop → live across 10+ distribution channels in < 30 minutes.
 
+## Release flow (per-MCP-repo model, v1.1+)
+
+Each MCP source lives in its **own public repository** under `g-digital-by-Garrigues/`, named `<MCP-Title-Case>-MCP` (e.g. [`EAD-Factory-MCP`](https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP)). The MCP code, README, Dockerfile, `package.json`, `server.json`, and a `.distribution.yaml` (publishing config consumed by this pipeline) live there. This repo holds only the pipeline tooling and the registry of MCPs to manage.
+
+To cut a new release of an MCP:
+
+1. **In the MCP's own repo (e.g. `EAD-Factory-MCP`):**
+   - Open a PR bumping `package.json` and `server.json` to the new version (e.g. `1.0.5`).
+   - When the PR merges to `main`, create and push the matching tag:
+     ```bash
+     git checkout main && git pull
+     git tag -a v1.0.5 -m "Release 1.0.5"
+     git push origin v1.0.5
+     ```
+   - The tag **must** match `v<version>` exactly. The pipeline fails fast if the tag doesn't exist.
+
+2. **In this repo (`MCP_Market_Distribution`):**
+   - Go to **Actions → publish → Run workflow** and dispatch with:
+     | input | value |
+     |---|---|
+     | `mcp_name` | the MCP id (e.g. `ead-factory`) |
+     | `version` | the version you just tagged (e.g. `1.0.5`) |
+     | `dry_run` | `false` (use `true` to validate without publishing) |
+     | `step`/`track`/`bump` | defaults are fine for a fresh release |
+
+3. **The pipeline** will:
+   - Clone the MCP repo at `v1.0.5` (or `main` for dry-runs).
+   - Run the 3-layer Track A gate against that source.
+   - Publish to npm, Docker Hub, MCP Official Registry, and open submissions on Docker MCP Catalog, Cline, mcp.so. Smithery is skipped per `skip_targets` until the MCPB generator lands.
+   - Commit a release report to `_bmad-output/release-reports/` and post it as a comment if dispatched from a PR context.
+
+### Registering a new MCP
+
+To add an MCP to the pipeline:
+
+1. Create the public repo `g-digital-by-Garrigues/<MCP-Title-Case>-MCP` with MIT license.
+2. Add the MCP code, plus a `.distribution.yaml` at the root (see [`EAD-Factory-MCP/.distribution.yaml`](https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP/blob/main/.distribution.yaml) for the canonical example). Schema: `src/schemas/mcp-pipeline-config.schema.ts`.
+3. In this repo, append an entry under `mcps:` in [`mcp-pipeline.yaml`](./mcp-pipeline.yaml) with at minimum `repo_url`. Everything else lives in the MCP's own `.distribution.yaml`.
+4. Open the v1.0.0 PR in the MCP repo, tag `v1.0.0`, dispatch this workflow with `mcp_name=<your-id>, version=1.0.0`.
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).

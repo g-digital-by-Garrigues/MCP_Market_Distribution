@@ -31,6 +31,20 @@ const targetOverridesSchema = z.record(z.string(), z.unknown());
 
 export const mcpEntrySchema = z
   .object({
+    // Phase B of the v1.1 per-MCP-repo refactor: when set, the pipeline
+    // clones the MCP's own GitHub repo into pending-to-publish/<id>/ at
+    // workflow time (tag v<version> for real publishes, main for dry-runs)
+    // instead of using the copy committed under pending-to-publish/<id>/
+    // in this repo. Each MCP repo owns its own source + .distribution.yaml.
+    // Optional during the transition; once all MCPs migrate, drop the
+    // committed copies from pending-to-publish/ in this repo (Phase C).
+    repo_url: z
+      .string()
+      .url({
+        message:
+          'repo_url must be the full HTTPS URL of the MCP source repo (e.g., https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP)',
+      })
+      .optional(),
     reverse_dns_name: z.string().regex(REVERSE_DNS, {
       message:
         "reverse_dns_name must match '<domain.tld>/<name>' (e.g., io.github.org/my-mcp)",

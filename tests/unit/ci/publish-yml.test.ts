@@ -66,13 +66,16 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(stepFlat).toContain('pnpm run test');
   });
 
-  it('exports pipeline_run_id, mcp_name, version, source, dry_run as job outputs', () => {
+  it('exports pipeline_run_id, mcp_name, version, source, dry_run + repo_url/repo_ref as job outputs', () => {
     const setup = parsed.jobs.setup as unknown as {
       outputs: Record<string, string>;
     } | undefined;
     expect(setup).toBeDefined();
+    // repo_url + repo_ref added by the v1.1 per-MCP-repo refactor (Phase B):
+    // downstream jobs use them to clone the MCP's own source repo into
+    // pending-to-publish/<id>/ via the checkout-mcp-source composite action.
     expect(Object.keys(setup!.outputs).sort()).toEqual(
-      ['dry_run', 'mcp_name', 'pipeline_run_id', 'source', 'version'],
+      ['dry_run', 'mcp_name', 'pipeline_run_id', 'repo_ref', 'repo_url', 'source', 'version'],
     );
   });
 
