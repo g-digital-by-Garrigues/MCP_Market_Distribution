@@ -89,9 +89,22 @@ export class {{className}} implements INodeType {
     const out: INodeExecutionData[] = [];
     const credentials = await this.getCredentials('{{credentialParamName}}');
 
-    // Build env from credentials, mapping each n8n credential field
-    // (named after the MCP's env var) back to process.env at spawn time.
+    // Build env for the spawned MCP. We INHERIT process.env first so
+    // corp-wide knobs the host has set (NODE_EXTRA_CA_CERTS for TLS
+    // inspection, HTTP_PROXY / HTTPS_PROXY / NO_PROXY for outbound
+    // proxies, PATH for nested spawns, etc.) reach the child. The
+    // credential values then shadow any matching key — n8n credentials
+    // are the canonical source of MCP-specific configuration.
+    //
+    // Without the inherit step the child runs with ONLY the credential
+    // fields, so any outbound HTTPS the MCP performs (e.g. to backing
+    // APIs in a corp TLS-inspection environment) fails with
+    // "self-signed certificate in certificate chain" even when the
+    // host n8n process has the corp bundle correctly configured.
     const env: Record<string, string> = {};
+    for (const [k, v] of Object.entries(process.env)) {
+      if (typeof v === 'string') env[k] = v;
+    }
     for (const key of Object.keys(credentials)) {
       const value = credentials[key];
       if (typeof value === 'string') env[key] = value;

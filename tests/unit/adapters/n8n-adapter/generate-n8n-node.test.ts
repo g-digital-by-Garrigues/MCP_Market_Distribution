@@ -150,6 +150,28 @@ describe('generateN8nNode', () => {
     expect(node).toContain("'list_widgets': ['page_size', 'sort']");
   });
 
+  it("node.ts inherits process.env before applying credentials so NODE_EXTRA_CA_CERTS reaches the spawned MCP (corp TLS regression)", async () => {
+    // Without process.env propagation the spawned source MCP runs with
+    // ONLY the credential fields as env, so any HTTPS call from inside
+    // the MCP fails on corp TLS-inspected networks with "self-signed
+    // certificate in certificate chain". Discovered while testing
+    // create_signature_request against EAD Factory in n8n self-hosted
+    // behind PaloAlto + GarriguesRootCA inspection.
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    // process.env loop must precede the credentials loop so credentials
+    // shadow any host env collisions (this is the contract; without it,
+    // a leaky env var would override the user's credential value).
+    const envLoopIdx = node.indexOf('for (const [k, v] of Object.entries(process.env))');
+    const credLoopIdx = node.indexOf('for (const key of Object.keys(credentials))');
+    expect(envLoopIdx).toBeGreaterThan(-1);
+    expect(credLoopIdx).toBeGreaterThan(-1);
+    expect(envLoopIdx).toBeLessThan(credLoopIdx);
+  });
+
   it('node.ts imports IDataObject from n8n-workflow and casts the MCP response to it (TS2322 regression #26043958622)', async () => {
     // Layer 2 compile gate caught a TS2322 in dry-run #26043958622:
     // `Record<string, unknown>` is not assignable to n8n-workflow's
