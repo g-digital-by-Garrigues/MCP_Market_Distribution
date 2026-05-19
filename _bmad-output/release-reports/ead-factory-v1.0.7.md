@@ -15,7 +15,7 @@
 | mcpso | ✅ succeeded | https://github.com/chatmcp/mcpso/issues/2390 | 2771 |
 | n8n | ✅ succeeded | https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.7 | 19449 |
 | npm | ✅ succeeded | https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.7 | 2879 |
-| smithery | ❌ failed | https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7 | 4377 |
+| smithery | ❌ failed | https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7 | 4018 |
 
 ## Failures
 
