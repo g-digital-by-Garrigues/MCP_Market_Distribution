@@ -128,8 +128,14 @@ describe('publishSmithery (MCPB flow — Story 5.11)', () => {
     expect(args[0]).toBe('--yes');
     expect(args[1]).toBe('@smithery/cli@^4.11.1');
     expect(args.slice(2)).toEqual(['mcp', 'publish', bundlePath, '-n', QUALIFIED]);
-    // Token forwarded to the child only.
-    expect((opts as { env?: Record<string, string> })?.env?.SMITHERY_TOKEN).toBe('service-tok');
+    // Token forwarded to the child env under SMITHERY_API_KEY (NOT
+    // SMITHERY_TOKEN — the @smithery/cli reads SMITHERY_API_KEY per
+    // smithery-ai/cli src/utils/smithery-settings.ts; passing it under
+    // any other name makes the CLI prompt interactively and exit 130 on
+    // stdin EOF in CI). Regression for real-publish run #26109827581.
+    const childEnv = (opts as { env?: Record<string, string> })?.env ?? {};
+    expect(childEnv.SMITHERY_API_KEY).toBe('service-tok');
+    expect(childEnv.SMITHERY_TOKEN).toBeUndefined();
   });
 
   it("idempotency on publish-time error: maps 'duplicate version' stderr to skipped(version_published)", async () => {
