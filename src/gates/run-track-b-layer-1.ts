@@ -246,6 +246,13 @@ async function checkNodeClass(opts: RunTrackBLayer1Options): Promise<TrackBLayer
   if (!src.includes(`credentials: [{ name: '${spec.credentialParamName}', required: true }]`)) {
     issues.push(`description.credentials must reference '${spec.credentialParamName}'`);
   }
+  // Story 5.8: require the AI-Tool flag so n8n's CLI generates a virtual
+  // tool sibling at startup. Without it the node is invisible to AI
+  // Agent nodes — the very regression we want this lint to catch if the
+  // template ever drifts.
+  if (!src.includes('usableAsTool: true')) {
+    issues.push('description must include `usableAsTool: true` (Story 5.8 — needed so n8n AI Agent can consume the node)');
+  }
   // Every operation must appear in the dropdown AND in OPERATION_PROPERTY_NAMES.
   for (const op of spec.operations) {
     if (!src.includes(`value: '${op.name}'`)) {

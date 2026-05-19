@@ -47,6 +47,17 @@ export class {{className}} implements INodeType {
     name: '{{paramName}}',
     group: ['transform'],
     version: 1,
+    // Story 5.8: flag this node as usable by n8n's AI Agent. With this
+    // flag, n8n's CLI auto-generates a virtual `<Name>Tool` sibling at
+    // startup (clones the description, rewires outputs to `AiTool`, and
+    // injects a Tool-Description selector). We do NOT author a second
+    // .node.ts file. The LLM sees this top-level `description` string
+    // plus each property's `description` to decide which operation to
+    // call and how to fill the arguments. Requires n8n-workflow ≥ 1.79.0.
+    usableAsTool: true,
+    // Surface the node under n8n's AI panel. `categories: ['AI', 'Langchain']`
+    // is the convention used by n8n's built-in tool-capable nodes.
+    codex: { categories: ['AI', 'Langchain'] },
     description: {{json description}},
     defaults: { name: '{{displayName}}' },
     inputs: ['main'],
