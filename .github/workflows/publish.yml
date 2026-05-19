@@ -1266,11 +1266,12 @@ jobs:
       - name: Run Layer 2 (mcpb validate)
         env:
           MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
-          VERSION: ${{ needs.setup.outputs.version }}
         run: |
           set -euo pipefail
-          BUNDLE="_mcpb-bundle/${MCP_NAME}-v${VERSION}.mcpb"
-          pnpm tsx src/gates/run-track-c-layer-2.ts "$MCP_NAME" "$BUNDLE"
+          # `mcpb validate` expects the pre-pack project DIR (with
+          # manifest.json at the root), not the packed .mcpb ZIP. See
+          # the contract note at the top of run-track-c-layer-2.ts.
+          pnpm tsx src/gates/run-track-c-layer-2.ts "$MCP_NAME" "_mcpb-bundle"
 
   track-c-layer-3:
     name: Track C — Layer 3 (runtime roundtrip)
