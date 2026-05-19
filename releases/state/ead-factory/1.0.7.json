@@ -190,14 +190,23 @@
           "pipeline_run_id": "26109827581-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7"
+        },
+        {
+          "at": "2026-05-19T16:30:10.987Z",
+          "attempt": 3,
+          "duration_ms": 5640,
+          "error_message": "`smithery mcp publish` exited 1: \u001b[31m\n✗ 404 {\"error\":\"Namespace not found\"}\u001b[39m",
+          "pipeline_run_id": "26110512056-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7"
         }
       ],
-      "last_attempt_at": "2026-05-19T16:24:47.941Z",
+      "last_attempt_at": "2026-05-19T16:30:10.987Z",
       "status": "failed",
       "target_url": "https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7",
       "version_published": null
     }
   },
-  "updated_at": "2026-05-19T16:24:47.941Z",
+  "updated_at": "2026-05-19T16:30:10.987Z",
   "version": "1.0.7"
 }
