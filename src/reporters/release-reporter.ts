@@ -47,12 +47,28 @@ export function classifyReleaseStatus(outputs: readonly PublisherOutput[]): Rele
   return 'partial';
 }
 
-function statusBadge(status: PublisherOutput['status']): string {
-  switch (status) {
+function statusBadge(row: PublisherOutput): string {
+  switch (row.status) {
     case 'succeeded':
       return '✅ succeeded';
     case 'skipped':
-      return '⏭ skipped';
+      // `skipped` overloads two distinct end states in the schema:
+      //   1. Intentional skip — publisher never ran (smithery in v1.0,
+      //      or any target with version_published === null). Render as
+      //      "⏭ skipped" so the reader sees this target was deliberately
+      //      not exercised this release.
+      //   2. Idempotency hit — the target ALREADY had the requested
+      //      version when the publisher started, so it had nothing new
+      //      to do. version_published is set to the live version.
+      //      Render as "♻️ already-published" so engineers don't
+      //      mistakenly think the target was missed; the desired end
+      //      state (version live on the target) was reached.
+      // mcp-publisher in particular trips the idempotency path whenever
+      // a retry runs after the first attempt put the version in the
+      // registry — caught while inspecting ead-factory v1.0.5 + v1.0.6
+      // reports where mcp-publisher kept appearing as "skipped" despite
+      // the registry showing isLatest=true for both releases.
+      return row.version_published ? '♻️ already-published' : '⏭ skipped';
     case 'failed':
       return '❌ failed';
   }
@@ -104,7 +120,7 @@ export function generateReleaseReport(input: GenerateReleaseReportInput): string
   lines.push('| --- | --- | --- | --- |');
   for (const row of rows) {
     lines.push(
-      `| ${row.target} | ${statusBadge(row.status)} | ${row.target_url} | ${row.duration_ms} |`,
+      `| ${row.target} | ${statusBadge(row)} | ${row.target_url} | ${row.duration_ms} |`,
     );
   }
   lines.push('');
