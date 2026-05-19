@@ -1,0 +1,138 @@
+{
+  "mcp_name": "ead-factory",
+  "started_at": "2026-05-19T16:18:51.652Z",
+  "status": "partial",
+  "targets": {
+    "cline": {
+      "attempts": [
+        {
+          "at": "2026-05-19T16:18:51.652Z",
+          "attempt": 1,
+          "duration_ms": 2078,
+          "pipeline_run_id": "26109827581-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/cline/mcp-marketplace/issues/1566"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T16:18:51.652Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/cline/mcp-marketplace/issues/1566",
+      "version_published": "1.0.7"
+    },
+    "docker-hub": {
+      "attempts": [
+        {
+          "at": "2026-05-19T16:18:51.652Z",
+          "attempt": 1,
+          "duration_ms": 174711,
+          "pipeline_run_id": "26109827581-1",
+          "status": "succeeded",
+          "target_url": "https://hub.docker.com/r/gdigital/ead-factory"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T16:18:51.652Z",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/ead-factory",
+      "version_published": "1.0.7"
+    },
+    "docker-mcp-catalog": {
+      "attempts": [
+        {
+          "at": "2026-05-19T16:18:51.652Z",
+          "attempt": 1,
+          "duration_ms": 4966,
+          "pipeline_run_id": "26109827581-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/docker/mcp-registry/pull/3648"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T16:18:51.652Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/3648",
+      "version_published": "1.0.7"
+    },
+    "mcp-publisher": {
+      "attempts": [
+        {
+          "at": "2026-05-19T16:18:51.652Z",
+          "attempt": 1,
+          "duration_ms": 1192,
+          "pipeline_run_id": "26109827581-1",
+          "status": "skipped",
+          "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T16:18:51.652Z",
+      "status": "skipped",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory",
+      "version_published": "1.0.7"
+    },
+    "mcpso": {
+      "attempts": [
+        {
+          "at": "2026-05-19T16:18:51.652Z",
+          "attempt": 1,
+          "duration_ms": 2771,
+          "pipeline_run_id": "26109827581-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/chatmcp/mcpso/issues/2390"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T16:18:51.652Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/chatmcp/mcpso/issues/2390",
+      "version_published": "1.0.7"
+    },
+    "n8n": {
+      "attempts": [
+        {
+          "at": "2026-05-19T16:18:51.652Z",
+          "attempt": 1,
+          "duration_ms": 19449,
+          "pipeline_run_id": "26109827581-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.7"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T16:18:51.652Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.7",
+      "version_published": "1.0.7"
+    },
+    "npm": {
+      "attempts": [
+        {
+          "at": "2026-05-19T16:18:51.652Z",
+          "attempt": 1,
+          "duration_ms": 2879,
+          "pipeline_run_id": "26109827581-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.7"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T16:18:51.652Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.7",
+      "version_published": "1.0.7"
+    },
+    "smithery": {
+      "attempts": [
+        {
+          "at": "2026-05-19T16:18:51.652Z",
+          "attempt": 1,
+          "duration_ms": 4377,
+          "error_message": "`smithery mcp publish` exited 130: ? Please enter your Smithery API key \u001b[36m(get one for free from\u001b[39m \n\u001b[34m\u001b[4mhttps://smithery.ai/account/api-keys\u001b[24m\u001b[39m\u001b[36m)\u001b[39m: \u001b[1A\u001b[39D\u001b[99C\u001b[1B",
+          "pipeline_run_id": "26109827581-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T16:18:51.652Z",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7",
+      "version_published": null
+    }
+  },
+  "updated_at": "2026-05-19T16:18:51.652Z",
+  "version": "1.0.7"
+}
