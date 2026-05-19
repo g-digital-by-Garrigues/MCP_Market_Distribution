@@ -162,8 +162,12 @@ describe('.github/workflows/publish.yml scaffold', () => {
     }
   });
 
-  it('Epic 4 publisher jobs (smithery, docker-mcp-catalog, cline, mcpso) gate on ledger-read flag and expose result_json', () => {
-    for (const name of ['publish-smithery', 'publish-docker-mcp-catalog', 'publish-cline', 'publish-mcpso']) {
+  it('Epic 4 publisher jobs (docker-mcp-catalog, cline, mcpso) gate on track-a-layer-3 + ledger-read flag and expose result_json', () => {
+    // publish-smithery was moved out of this enumeration by Story 5.12.
+    // It's now an artifact-consumer (Track C) that depends on
+    // generate-mcpb-bundle + track-c-layer-3 rather than track-a-layer-3;
+    // its contract is asserted in the dedicated test below.
+    for (const name of ['publish-docker-mcp-catalog', 'publish-cline', 'publish-mcpso']) {
       const job = parsed.jobs[name] as unknown as {
         needs?: string[];
         if?: string;
@@ -176,6 +180,83 @@ describe('.github/workflows/publish.yml scaffold', () => {
       expect(job!.if, name).toContain('ledger-read.outputs.run_');
       expect(job!.outputs?.result_json, name).toBe('${{ steps.publish.outputs.result_json }}');
     }
+  });
+
+  it('publish-smithery gates on generate-mcpb-bundle + track-c-layer-3 + ledger flag, downloads the bundle artifact, forwards SMITHERY_TOKEN (Story 5.12)', () => {
+    const job = parsed.jobs['publish-smithery'] as unknown as {
+      needs?: string[];
+      if?: string;
+      outputs?: Record<string, string>;
+      steps: Array<Record<string, unknown>>;
+    } | undefined;
+    expect(job).toBeDefined();
+    expect(job!.needs).toContain('setup');
+    expect(job!.needs).toContain('ledger-read');
+    expect(job!.needs).toContain('generate-mcpb-bundle');
+    expect(job!.needs).toContain('track-c-layer-3');
+    // The old wiring depended on track-a-layer-3 (Track A gates over the
+    // source MCP). 5.12 replaced that with the Track C chain because the
+    // .mcpb bundle's correctness — not the source MCP's — is what we're
+    // publishing to Smithery. Track A still feeds Track C transitively
+    // via generate-mcpb-bundle's own needs.
+    expect(job!.needs).not.toContain('track-a-layer-3');
+    expect(job!.if).toContain("ledger-read.outputs.run_smithery == 'true'");
+    expect(job!.if).toContain("track-c-layer-3.result == 'success'");
+    expect(job!.outputs?.result_json).toBe('${{ steps.publish.outputs.result_json }}');
+    const stepFlat = JSON.stringify(job!.steps);
+    // Composite action invocation passes bundle_artifact_name (so
+    // download-artifact in the composite resolves the .mcpb) and
+    // smithery_token (sourced from the repo secret).
+    expect(stepFlat).toContain('bundle_artifact_name');
+    expect(stepFlat).toContain('smithery_token');
+    expect(stepFlat).toContain('secrets.SMITHERY_TOKEN');
+  });
+
+  it('Track C — generate-mcpb-bundle job gates on track-a-layer-3 + ledger-read.run_smithery, uploads the bundle artifact (Story 5.12)', () => {
+    const job = parsed.jobs['generate-mcpb-bundle'] as unknown as {
+      needs?: string[];
+      if?: string;
+      outputs?: Record<string, string>;
+      steps: Array<Record<string, unknown>>;
+    } | undefined;
+    expect(job).toBeDefined();
+    expect(job!.needs).toContain('setup');
+    expect(job!.needs).toContain('ledger-read');
+    expect(job!.needs).toContain('track-a-layer-3');
+    expect(job!.if).toContain('track-a-layer-3.result');
+    expect(job!.if).toContain("ledger-read.outputs.run_smithery == 'true'");
+    expect(job!.outputs?.artifact_name).toBeDefined();
+    const stepFlat = JSON.stringify(job!.steps);
+    expect(stepFlat).toContain('actions/upload-artifact');
+    expect(stepFlat).toContain('run-mcpb-adapter-build.ts');
+    expect(stepFlat).toContain('npm run build');
+    // Same trap as Track B: upload-artifact@v4 silently drops dotfiles.
+    // The bundle's `.spec.json` (Layer 1 truth source) + `.mcpb-build.json`
+    // (release-report summary) are dotfiles, so include-hidden-files is
+    // required.
+    expect(stepFlat).toContain('include-hidden-files');
+  });
+
+  it('Track C layer 1/2/3 jobs chain via needs + download the MCPB bundle artifact', () => {
+    const layers = ['track-c-layer-1', 'track-c-layer-2', 'track-c-layer-3'];
+    for (const name of layers) {
+      const job = parsed.jobs[name] as unknown as {
+        needs?: string[];
+        if?: string;
+        steps: Array<Record<string, unknown>>;
+      } | undefined;
+      expect(job, name).toBeDefined();
+      expect(job!.needs, name).toContain('setup');
+      expect(job!.needs, name).toContain('generate-mcpb-bundle');
+      const stepFlat = JSON.stringify(job!.steps);
+      expect(stepFlat, name).toContain('actions/download-artifact');
+      expect(stepFlat, name).toContain(`run-${name}.ts`);
+    }
+    // Layer 2 chains after Layer 1; Layer 3 chains after Layer 2.
+    const layer2 = parsed.jobs['track-c-layer-2'] as unknown as { needs: string[] };
+    expect(layer2.needs).toContain('track-c-layer-1');
+    const layer3 = parsed.jobs['track-c-layer-3'] as unknown as { needs: string[] };
+    expect(layer3.needs).toContain('track-c-layer-2');
   });
 
   it('final-report job runs always() and aggregates all 7 Track A publishers + Track B publish-n8n', () => {

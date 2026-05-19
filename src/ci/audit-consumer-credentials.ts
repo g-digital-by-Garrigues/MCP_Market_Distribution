@@ -22,6 +22,12 @@ export const OPERATIONAL_ALLOWLIST: readonly string[] = [
   // credential. Refine short-circuits when this is absent so CI without
   // the key still publishes the adapter (with naive title-case copy).
   'ANTHROPIC_API_KEY',
+  // SMITHERY_TOKEN — Story 5.12: scoped Smithery service token (minted
+  // via `smithery auth token --policy '{"resources":["<ns>/*"],
+  // "operations":["publish"]}'`) forwarded to the Smithery CLI by the
+  // publish-smithery composite action. Operational publishing
+  // credential, not a consumer one.
+  'SMITHERY_TOKEN',
 ];
 
 const SECRET_REFERENCE_RE = /\$\{\{\s*secrets\.([A-Z][A-Z0-9_]*)\s*\}\}/g;
