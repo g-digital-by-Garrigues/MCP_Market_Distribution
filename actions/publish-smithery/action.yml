@@ -1,20 +1,35 @@
 name: "Publish to Smithery"
-description: "Verifies Smithery's auto-deploy of the linked repo by polling the public API for ≤15 minutes."
+description: "Uploads the generated .mcpb bundle to Smithery via `smithery mcp publish`. Replaces the v1.0 repo-auto-deploy polling flow (Smithery retired that model in 2026)."
 
 inputs:
   mcp_name:
-    description: "Pipeline-internal MCP id (kebab-case). Used to look up the reverse_dns_name from mcp-pipeline.yaml."
+    description: "Pipeline-internal MCP id (kebab-case). Used in the qualified Smithery name <namespace>/<mcp_name>."
     required: true
   version:
-    description: "Semver to verify as deployed on Smithery."
+    description: "Semver to publish."
     required: true
   pipeline_run_id:
     description: "Run correlation id from the setup job."
     required: true
   dry_run:
-    description: "When 'true', skips the API poll and returns immediately with a placeholder target_url."
+    description: "When 'true', validates the bundle exists but skips the Smithery upload."
     required: false
     default: "false"
+  bundle_artifact_name:
+    description: "Name of the workflow artifact that carries the .mcpb bundle (uploaded by generate-mcpb-bundle in Story 5.12)."
+    required: true
+  bundle_file_name:
+    description: "Filename of the .mcpb inside the downloaded artifact, e.g. ead-factory-v1.0.7.mcpb. Defaults to <mcp_name>-v<version>.mcpb."
+    required: false
+    default: ""
+  smithery_namespace:
+    description: "Smithery org namespace. Defaults to g-digital-by-Garrigues."
+    required: false
+    default: "g-digital-by-Garrigues"
+  smithery_token:
+    description: "SMITHERY_TOKEN secret (service token with publish scope on the namespace). Required for non-dry-run."
+    required: false
+    default: ""
 
 outputs:
   result_json:
@@ -39,7 +54,35 @@ runs:
       shell: bash
       run: pnpm install --frozen-lockfile
 
-    - name: Verify Smithery deployment
+    - name: Download bundle artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: ${{ inputs.bundle_artifact_name }}
+        path: ./_bundle
+
+    - name: Resolve bundle path
+      id: resolve_bundle
+      shell: bash
+      env:
+        MCP_NAME: ${{ inputs.mcp_name }}
+        VERSION: ${{ inputs.version }}
+        EXPLICIT_FILE: ${{ inputs.bundle_file_name }}
+      run: |
+        set -euo pipefail
+        if [ -n "$EXPLICIT_FILE" ]; then
+          BUNDLE_FILE="$EXPLICIT_FILE"
+        else
+          BUNDLE_FILE="${MCP_NAME}-v${VERSION}.mcpb"
+        fi
+        BUNDLE_PATH="$(pwd)/_bundle/${BUNDLE_FILE}"
+        if [ ! -f "$BUNDLE_PATH" ]; then
+          echo "::error::Resolved bundle path does not exist: $BUNDLE_PATH"
+          ls -la _bundle || true
+          exit 1
+        fi
+        echo "bundle_path=$BUNDLE_PATH" >> "$GITHUB_OUTPUT"
+
+    - name: Publish via composite action
       id: publish
       shell: bash
       env:
@@ -47,6 +90,9 @@ runs:
         INPUT_VERSION: ${{ inputs.version }}
         INPUT_PIPELINE_RUN_ID: ${{ inputs.pipeline_run_id }}
         INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        INPUT_BUNDLE_PATH: ${{ steps.resolve_bundle.outputs.bundle_path }}
+        INPUT_SMITHERY_NAMESPACE: ${{ inputs.smithery_namespace }}
+        SMITHERY_TOKEN: ${{ inputs.smithery_token }}
       run: |
         # See actions/publish-npm/action.yml for the rationale on actively
         # disabling errexit with `+e`: we want result.json to reach

@@ -9,10 +9,12 @@ async function main(): Promise<number> {
   const version = process.env.INPUT_VERSION ?? '';
   const pipelineRunId = process.env.INPUT_PIPELINE_RUN_ID ?? '';
   const dryRun = parseDryRunFlag(process.env.INPUT_DRY_RUN);
+  const bundlePath = process.env.INPUT_BUNDLE_PATH ?? '';
+  const smitheryNamespace = process.env.INPUT_SMITHERY_NAMESPACE; // optional
 
-  if (!mcpName || !version || !pipelineRunId) {
+  if (!mcpName || !version || !pipelineRunId || !bundlePath) {
     process.stderr.write(
-      `actions/publish-smithery requires INPUT_MCP_NAME, INPUT_VERSION, INPUT_PIPELINE_RUN_ID env vars\n`,
+      `actions/publish-smithery requires INPUT_MCP_NAME, INPUT_VERSION, INPUT_PIPELINE_RUN_ID, INPUT_BUNDLE_PATH env vars\n`,
     );
     return 2;
   }
@@ -22,7 +24,8 @@ async function main(): Promise<number> {
     version,
     pipeline_run_id: pipelineRunId,
     dry_run: dryRun,
-    repo_root: process.cwd(),
+    bundle_path: bundlePath,
+    ...(smitheryNamespace ? { smithery_namespace: smitheryNamespace } : {}),
   });
 
   process.stdout.write(JSON.stringify(output) + '\n');
