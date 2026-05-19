@@ -1240,16 +1240,59 @@ jobs:
           set -euo pipefail
           git config user.name "g-digital-mcp-bot"
           git config user.email "g-digital-mcp-bot@users.noreply.github.com"
-          git add "$REPORT_PATH"
-          if git diff --staged --quiet; then
-            echo "No changes to release report — nothing to commit."
-            exit 0
+
+          # Race fix: the previous logic added the rendered file,
+          # committed, then tried to reconcile via an in-flight rebase
+          # against origin before pushing. That pattern fails with an
+          # add/add merge conflict when an EARLIER
+          # ATTEMPT of the same run already committed a different version
+          # of THIS file path. Concrete repro: run #26085194146 attempt -1
+          # failed at checkout-mcp-source but its final-report job still
+          # committed an all-skipped report at 60ddbe9. Attempt -2 ran the
+          # publishers successfully, but its workspace was cloned at the
+          # dispatch SHA (which precedes 60ddbe9), so the in-flight
+          # rebase against origin/main hit an add/add conflict and the
+          # push died.
+          #
+          # The fix below: capture our render in a shell variable, then
+          # fast-forward the working tree to the ACTUAL upstream HEAD
+          # (not the stale dispatch SHA we cloned at), re-write our render
+          # so it ALWAYS wins for this same MCP+version path, commit, and
+          # push. Retry with backoff so a genuinely concurrent push from a
+          # different run also resolves cleanly.
+          if [ ! -f "$REPORT_PATH" ]; then
+            echo "ERROR: $REPORT_PATH not found — render step must have failed."
+            exit 1
           fi
-          git commit -m "docs(release): ${MCP_NAME} v${VERSION} release report"
-          # Rebase any concurrent commits in case another run landed
-          # something while this one was in flight.
-          git pull --rebase origin "${GITHUB_REF_NAME}" || git pull --rebase origin main
-          git push
+          rendered_content=$(cat "$REPORT_PATH")
+
+          attempt=0
+          max_attempts=5
+          while [ "$attempt" -lt "$max_attempts" ]; do
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt of $max_attempts..."
+            git fetch origin "${GITHUB_REF_NAME}"
+            # Discards anything left in the tree from a prior loop iteration.
+            git reset --hard "origin/${GITHUB_REF_NAME}"
+            # Replay our render — overwrites whatever the upstream commit
+            # had at the same path (intended: latest run's report wins).
+            mkdir -p "$(dirname "$REPORT_PATH")"
+            printf '%s' "$rendered_content" > "$REPORT_PATH"
+            git add "$REPORT_PATH"
+            if git diff --staged --quiet; then
+              echo "Report identical to upstream — nothing to commit (idempotent re-run)."
+              exit 0
+            fi
+            git commit -m "docs(release): ${MCP_NAME} v${VERSION} release report"
+            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+              echo "Pushed on attempt $attempt."
+              exit 0
+            fi
+            echo "Push rejected (concurrent commit landed); retrying..."
+            sleep $((attempt * 2))
+          done
+          echo "Could not push release report after $max_attempts attempts."
+          exit 1
 
       - name: Upsert PR comment with release report
         if: needs.setup.outputs.dry_run != 'true'
