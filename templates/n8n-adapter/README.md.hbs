@@ -30,6 +30,12 @@ This node requires a "{{displayName}} API" credential with the following fields:
 
 The credential values are passed as environment variables to the spawned `{{sourceMcpPackageName}}` process at execute() time.
 
+## Use as an AI Agent tool
+
+This node is flagged `usableAsTool: true`, so any n8n AI Agent (n8n ≥ 1.79.0) can consume it dynamically: drag it into the workflow and wire its main output to an AI Agent's "Tool" input. The LLM picks which operation to invoke and what arguments to pass based on the operation descriptions above and each property's hint text.
+
+For best results pair with an AI Agent node running **V2** — V3 has a known empty-tool-response bug in some recent n8n versions (see [n8n issue #26202](https://github.com/n8n-io/n8n/issues/26202)).
+
 ## License
 
 MIT. See [LICENSE](./LICENSE).

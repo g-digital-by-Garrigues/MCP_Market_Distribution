@@ -202,6 +202,42 @@ describe('generateN8nNode', () => {
     expect(node).toContain('"A \\"tricky\\" description\'s edge case"');
   });
 
+  it('node.ts flags usableAsTool:true + codex.categories so n8n AI Agents auto-discover the node (Story 5.8)', async () => {
+    // Without `usableAsTool: true` n8n's CLI does NOT auto-generate the
+    // virtual `<Name>Tool` sibling, so the node is invisible to AI Agent
+    // nodes. codex.categories surfaces it under the AI panel in the
+    // workflow builder. Both are the Option A path validated in Story
+    // 5.8 research — Hugo's feedback was that v1.0.5 was "bastante tonto"
+    // for the EAD Factory domain; this flag unlocks the AI-driven flow
+    // without needing a hand-authored sibling .node.ts file.
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).toContain('usableAsTool: true');
+    expect(node).toContain("categories: ['AI', 'Langchain']");
+  });
+
+  it('package.json peer-deps n8n-workflow >=1.79.0 (the version that ships usableAsTool — Story 5.8)', async () => {
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const pkg = JSON.parse(await fs.readFile(path.join(outputDir, 'package.json'), 'utf8')) as {
+      peerDependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    expect(pkg.peerDependencies['n8n-workflow']).toBe('>=1.79.0');
+    // devDep also bumped so `tsc` sees the `usableAsTool` field on
+    // INodeTypeDescription — older typings don't expose it.
+    expect(pkg.devDependencies['n8n-workflow']).toBe('^1.79.0');
+  });
+
+  it('README.md documents the AI Agent usage path so users know to wire the node to an AI Agent (Story 5.8)', async () => {
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const readme = await fs.readFile(path.join(outputDir, 'README.md'), 'utf8');
+    expect(readme).toContain('AI Agent');
+    expect(readme).toContain('usableAsTool');
+  });
+
   it('credentials.ts marks the secret field with typeOptions.password and lists every env var', async () => {
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const creds = await fs.readFile(

@@ -160,6 +160,24 @@ describe('Track B — Layer 1 (structural lint)', () => {
     expect(pkgError!.observation).toContain('pin version');
   });
 
+  it("fails node_class when the usableAsTool flag is missing (Story 5.8 regression)", async () => {
+    // Without `usableAsTool: true` n8n's CLI does NOT auto-generate the
+    // virtual `<Name>Tool` sibling, so the node is invisible to AI Agent
+    // nodes. Simulate a template drift that drops the flag — Layer 1
+    // must catch it before publish.
+    const spec = sampleSpec();
+    await generateN8nNode({ spec, outputDir: nodeDir });
+    const nodePath = path.join(nodeDir, 'nodes', 'MultiTool', 'MultiTool.node.ts');
+    const original = await fs.readFile(nodePath, 'utf8');
+    const tampered = original.replace(/usableAsTool: true,?\s*\n/, '');
+    await fs.writeFile(nodePath, tampered);
+    const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
+    expect(result.passed).toBe(false);
+    const nodeError = result.errors.find((e) => e.check === 'node_class');
+    expect(nodeError).toBeDefined();
+    expect(nodeError!.observation).toContain('usableAsTool');
+  });
+
   it("fails node_class when an operation is missing from OPERATION_PROPERTY_NAMES", async () => {
     const spec = sampleSpec();
     await generateN8nNode({ spec, outputDir: nodeDir });
