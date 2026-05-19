@@ -9,7 +9,7 @@
 | target | status | target_url | duration_ms |
 | --- | --- | --- | --- |
 | docker-hub | ❌ failed | https://example.invalid/dry-run/docker-hub/gdigital%2Fead-factory/1.0.1 | 9421 |
-| mcp-publisher | ⏭ skipped | https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory | 1230 |
+| mcp-publisher | ♻️ already-published | https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory | 1230 |
 | npm | ✅ succeeded | https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.1 | 19842 |
 
 ## Failures

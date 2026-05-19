@@ -58,6 +58,53 @@ describe('generateReleaseReport (byte-equality fixtures)', () => {
     expect(generateReleaseReport(input)).toBe(expected);
   });
 
+  it("renders status='skipped' WITH version_published as ♻️ already-published (idempotency hit), distinct from intentional skip", () => {
+    // Background: the `skipped` enum overloads two end states — an
+    // intentional skip (publisher never ran; version_published === null,
+    // e.g. smithery in v1.0) AND an idempotency hit (target already
+    // had the version; version_published is set, e.g. mcp-publisher on
+    // a retry that lands after the version is already in the registry).
+    // Rendering both as "⏭ skipped" misled engineers reviewing the
+    // ead-factory v1.0.5 + v1.0.6 reports — they read "mcp-publisher
+    // skipped" and asked whether the registry actually carried the new
+    // version (it did). The renderer now differentiates the two so the
+    // audit trail is unambiguous.
+    const md = generateReleaseReport({
+      metadata: {
+        mcp_name: 'ead-factory',
+        version: '9.9.9',
+        pipeline_run_id: 'r-1',
+        workflow_run_url: 'https://example.invalid/r/1',
+      },
+      outputs: [
+        {
+          target: 'mcp-publisher',
+          status: 'skipped',
+          target_url: 'https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory',
+          version_published: '9.9.9',
+          duration_ms: 1200,
+          attempts: 1,
+          dry_run: false,
+        },
+        {
+          target: 'smithery',
+          status: 'skipped',
+          target_url: 'https://example.invalid/skipped/smithery',
+          version_published: null,
+          duration_ms: 0,
+          attempts: 1,
+          dry_run: false,
+        },
+      ],
+    });
+    // Idempotency hit: ♻️ marker, registry url visible.
+    expect(md).toContain('| mcp-publisher | ♻️ already-published |');
+    // Intentional skip: ⏭ stays the same.
+    expect(md).toContain('| smithery | ⏭ skipped |');
+    // Status line stays Complete (both count as ok-side per classifyReleaseStatus).
+    expect(md).toContain('**Status:** ✅ Complete');
+  });
+
   it('is deterministic: same input emitted twice produces identical bytes', async () => {
     const { input } = await loadFixture('complete');
     const a = generateReleaseReport(input);

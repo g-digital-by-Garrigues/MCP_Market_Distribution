@@ -10,7 +10,19 @@ import { z } from 'zod';
 //                       directory name minus the `publish-` prefix, e.g.
 //                       'npm', 'docker-hub', 'mcp-publisher', 'smithery').
 //   status            — succeeded: actually published / would have published.
-//                       skipped:   version already live (idempotency hit).
+//                       skipped:   publisher did not produce the artifact in
+//                                  this run. TWO causes share this status:
+//                                    (a) Intentional skip — target disabled
+//                                        (e.g. smithery in v1.0). In this
+//                                        case version_published is null.
+//                                    (b) Idempotency hit — version was
+//                                        already live on the target. In
+//                                        this case version_published is set
+//                                        to the live version.
+//                                  The release-reporter (Story 3.5) renders
+//                                  these two cases with different badges
+//                                  (⏭ skipped vs ♻️ already-published) so
+//                                  engineers don't mistake (b) for (a).
 //                       failed:    publisher could not produce the artifact.
 //   target_url        — public URL where the artifact lives. In dry-run, this
 //                       is a deterministic placeholder of the form
