@@ -1,8 +1,121 @@
 {
   "mcp_name": "ead-factory",
   "started_at": "2026-05-19T08:21:18.665Z",
-  "status": "in_progress",
-  "targets": {},
-  "updated_at": "2026-05-19T08:21:18.665Z",
+  "status": "complete",
+  "targets": {
+    "cline": {
+      "attempts": [
+        {
+          "at": "2026-05-19T08:41:32.280Z",
+          "attempt": 1,
+          "duration_ms": 2187,
+          "pipeline_run_id": "26085194146-2",
+          "status": "succeeded",
+          "target_url": "https://github.com/cline/mcp-marketplace/issues/1566"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T08:41:32.280Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/cline/mcp-marketplace/issues/1566",
+      "version_published": "1.0.6"
+    },
+    "docker-hub": {
+      "attempts": [
+        {
+          "at": "2026-05-19T08:41:32.280Z",
+          "attempt": 1,
+          "duration_ms": 133873,
+          "pipeline_run_id": "26085194146-2",
+          "status": "succeeded",
+          "target_url": "https://hub.docker.com/r/gdigital/ead-factory"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T08:41:32.280Z",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/ead-factory",
+      "version_published": "1.0.6"
+    },
+    "docker-mcp-catalog": {
+      "attempts": [
+        {
+          "at": "2026-05-19T08:41:32.280Z",
+          "attempt": 1,
+          "duration_ms": 8298,
+          "pipeline_run_id": "26085194146-2",
+          "status": "succeeded",
+          "target_url": "https://github.com/docker/mcp-registry/pull/3646"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T08:41:32.280Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/3646",
+      "version_published": "1.0.6"
+    },
+    "mcp-publisher": {
+      "attempts": [
+        {
+          "at": "2026-05-19T08:41:32.280Z",
+          "attempt": 1,
+          "duration_ms": 1628,
+          "pipeline_run_id": "26085194146-2",
+          "status": "skipped",
+          "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T08:41:32.280Z",
+      "status": "skipped",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory",
+      "version_published": "1.0.6"
+    },
+    "mcpso": {
+      "attempts": [
+        {
+          "at": "2026-05-19T08:41:32.280Z",
+          "attempt": 1,
+          "duration_ms": 3807,
+          "pipeline_run_id": "26085194146-2",
+          "status": "succeeded",
+          "target_url": "https://github.com/chatmcp/mcpso/issues/2383"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T08:41:32.280Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/chatmcp/mcpso/issues/2383",
+      "version_published": "1.0.6"
+    },
+    "n8n": {
+      "attempts": [
+        {
+          "at": "2026-05-19T08:41:32.280Z",
+          "attempt": 1,
+          "duration_ms": 15739,
+          "pipeline_run_id": "26085194146-2",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.6"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T08:41:32.280Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.6",
+      "version_published": "1.0.6"
+    },
+    "npm": {
+      "attempts": [
+        {
+          "at": "2026-05-19T08:41:32.280Z",
+          "attempt": 1,
+          "duration_ms": 2769,
+          "pipeline_run_id": "26085194146-2",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.6"
+        }
+      ],
+      "last_attempt_at": "2026-05-19T08:41:32.280Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.6",
+      "version_published": "1.0.6"
+    }
+  },
+  "updated_at": "2026-05-19T08:41:32.280Z",
   "version": "1.0.6"
 }
