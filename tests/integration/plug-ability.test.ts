@@ -71,8 +71,13 @@ describe('Plug-ability contract (NFR-X3 — Story 4.6)', () => {
     }
   });
 
-  it.each(['publish-npm', 'publish-docker-hub', 'publish-mcp-registry', 'publish-smithery', 'publish-docker-mcp-catalog', 'publish-cline', 'publish-mcpso'])(
-    'actions/%s/action.yml conforms to the canonical input/output contract',
+  // publish-smithery dropped from the strict-enumeration check below because
+  // Story 5.11 reshaped it as an artifact-consumer (MCPB bundle), same
+  // category as publish-n8n. Those publishers must still carry the 4
+  // canonical inputs (asserted in the next test) but ALSO have extra
+  // artifact-related inputs that don't fit a fixed enumeration.
+  it.each(['publish-npm', 'publish-docker-hub', 'publish-mcp-registry', 'publish-docker-mcp-catalog', 'publish-cline', 'publish-mcpso'])(
+    'actions/%s/action.yml conforms to the canonical input/output contract (Track A: exactly 4 canonical inputs)',
     async (dirName) => {
       const actionYmlPath = path.join(ACTIONS_DIR, dirName, 'action.yml');
       const raw = await fs.readFile(actionYmlPath, 'utf8');
@@ -92,6 +97,21 @@ describe('Plug-ability contract (NFR-X3 — Story 4.6)', () => {
       expect(action.outputs!.result_json!.value).toContain('steps.publish.outputs.result_json');
 
       // Composite action (not docker/javascript) — that's our v1 standard.
+      expect(action.runs?.using).toBe('composite');
+    },
+  );
+
+  it.each(['publish-n8n', 'publish-smithery'])(
+    'actions/%s/action.yml (artifact-consumer) still carries the 4 canonical inputs (Track B/C: extras allowed)',
+    async (dirName) => {
+      const actionYmlPath = path.join(ACTIONS_DIR, dirName, 'action.yml');
+      const raw = await fs.readFile(actionYmlPath, 'utf8');
+      const action = yaml.load(raw) as CompositeAction;
+      expect(action.inputs!.mcp_name?.required).toBe(true);
+      expect(action.inputs!.version?.required).toBe(true);
+      expect(action.inputs!.pipeline_run_id?.required).toBe(true);
+      expect(String(action.inputs!.dry_run?.default ?? '')).toBe('false');
+      expect(action.outputs?.result_json?.value).toContain('steps.publish.outputs.result_json');
       expect(action.runs?.using).toBe('composite');
     },
   );
