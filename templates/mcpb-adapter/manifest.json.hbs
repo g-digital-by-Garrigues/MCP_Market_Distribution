@@ -1,0 +1,34 @@
+{
+  "manifest_version": "0.3",
+  "name": "{{name}}",
+  "display_name": {{json displayName}},
+  "version": "{{version}}",
+  "description": {{json description}},
+  "author": {
+    "name": {{json author.name}}{{#if author.email}},
+    "email": {{json author.email}}{{/if}}{{#if author.url}},
+    "url": {{json author.url}}{{/if}}
+  },
+  "homepage": {{json sourceRepoUrl}},
+  "license": "MIT",
+  "server": {
+    "type": "node",
+    "entry_point": "{{entryPoint}}",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/{{entryPoint}}"],
+      "env": {
+{{#each userConfig}}        {{json this.envName}}: {{json (userConfigRef this.configKey)}}{{#unless @last}},{{/unless}}
+{{/each}}      }
+    }
+  },
+  "user_config": {
+{{#each userConfig}}    "{{this.configKey}}": {
+      "type": "string",
+      "title": {{json this.title}},
+      "description": {{json this.description}},
+      "sensitive": {{this.sensitive}},
+      "required": {{this.required}}
+    }{{#unless @last}},{{/unless}}
+{{/each}}  }
+}

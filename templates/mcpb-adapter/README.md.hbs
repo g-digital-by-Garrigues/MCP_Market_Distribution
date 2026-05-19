@@ -1,0 +1,33 @@
+# {{displayName}} (MCP Bundle)
+
+> Auto-generated from [{{sourceMcpPackageName}}]({{sourceRepoUrl}}) by the g-digital MCP distribution pipeline. Do not edit by hand — re-generate the next time the MCP is published.
+
+This is an MCP Bundle (`.mcpb`) packaging the `{{sourceMcpPackageName}}` MCP server for distribution via Smithery and any other MCPB-aware host (Claude Desktop, etc.).
+
+## Install via Smithery
+
+```bash
+smithery mcp install {{smitheryNamespace}}/{{name}}
+```
+
+Or download the `.mcpb` from the Smithery release page and drag into an MCPB-aware host.
+
+## Tools
+
+| Tool | Description |
+|---|---|
+{{#each operations}}| `{{this.name}}` | {{this.description}} |
+{{/each}}
+
+## Configuration
+
+At install time the host will prompt you for the following user-config fields. Each maps to an environment variable the spawned MCP server reads at startup:
+
+| Field | Env var | Sensitive? | Required? | Description |
+|---|---|---|---|---|
+{{#each userConfig}}| {{this.title}} | `{{this.envName}}` | {{#if this.sensitive}}yes{{else}}no{{/if}} | {{#if this.required}}yes{{else}}no{{/if}} | {{this.description}} |
+{{/each}}
+
+## License
+
+MIT. See [LICENSE](./LICENSE) (bundled in the MCPB archive).
