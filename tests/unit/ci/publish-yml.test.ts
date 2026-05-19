@@ -203,6 +203,34 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(job!.permissions?.['pull-requests']).toBe('write');
   });
 
+  it("final-report commit-push uses race-safe pattern (fast-forward + replay + retry) — regression for run #26085194146 add/add", () => {
+    // The previous logic was `git add → commit → git pull --rebase →
+    // push`, which fails with an add/add merge conflict when an EARLIER
+    // attempt of the same run already committed a different version of
+    // the same file path. Concrete repro: run #26085194146 attempt -1
+    // committed an all-skipped report at 60ddbe9; attempt -2 ran the
+    // publishers successfully but its push died on the rebase conflict
+    // because its workspace cloned the stale dispatch SHA. The fix
+    // captures the render, fast-forwards to upstream HEAD, replays the
+    // render so it always wins for the same MCP+version path, commits,
+    // and pushes with retry on rejection.
+    const job = parsed.jobs['final-report'] as unknown as {
+      steps: Array<{ name?: string; run?: string }>;
+    };
+    const commitStep = job.steps.find((s) => s.name === 'Commit + push release-report to main');
+    expect(commitStep).toBeDefined();
+    const script = commitStep!.run ?? '';
+    // No more naïve pull --rebase (that was the broken path).
+    expect(script).not.toContain('git pull --rebase');
+    // The race-safe shape.
+    expect(script).toContain('rendered_content=$(cat "$REPORT_PATH")');
+    expect(script).toContain('git fetch origin "${GITHUB_REF_NAME}"');
+    expect(script).toContain('git reset --hard "origin/${GITHUB_REF_NAME}"');
+    expect(script).toMatch(/printf .*"\$rendered_content".*> "\$REPORT_PATH"/);
+    expect(script).toContain('max_attempts=5');
+    expect(script).toContain('git push origin "HEAD:${GITHUB_REF_NAME}"');
+  });
+
   it('npx-verification job runs checkout-mcp-source so verify-npx-install.ts can read .distribution.yaml', () => {
     // Regression for run #26045698347: any job that calls into code
     // which loads .distribution.yaml MUST run checkout-mcp-source
