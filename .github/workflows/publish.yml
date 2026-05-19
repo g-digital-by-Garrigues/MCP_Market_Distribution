@@ -655,9 +655,13 @@ jobs:
 
   publish-smithery:
     name: Publish to Smithery
-    needs: [setup, ledger-read, track-a-layer-3]
+    # Story 5.12: rewired from the v1.0 repo-auto-deploy polling shape
+    # (track-a-layer-3 only) to the MCPB-bundle flow. The publisher now
+    # consumes the .mcpb produced by generate-mcpb-bundle and validated
+    # by the Track C gates (layer 1/2/3).
+    needs: [setup, ledger-read, generate-mcpb-bundle, track-c-layer-3]
     if: |
-      needs.track-a-layer-3.result == 'success'
+      needs.track-c-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_smithery == 'true'
     runs-on: ubuntu-latest
     outputs:
@@ -668,12 +672,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Checkout MCP source
-        uses: ./actions/checkout-mcp-source
-        with:
-          mcp_name: ${{ needs.setup.outputs.mcp_name }}
-          repo_url: ${{ needs.setup.outputs.repo_url }}
-          repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-smithery
@@ -682,6 +680,8 @@ jobs:
           version: ${{ needs.setup.outputs.version }}
           pipeline_run_id: ${{ needs.setup.outputs.pipeline_run_id }}
           dry_run: ${{ needs.setup.outputs.dry_run }}
+          bundle_artifact_name: ${{ needs.generate-mcpb-bundle.outputs.artifact_name }}
+          smithery_token: ${{ secrets.SMITHERY_TOKEN }}
 
   publish-docker-mcp-catalog:
     name: Publish to Docker MCP Catalog
@@ -1122,6 +1122,195 @@ jobs:
           pipeline_run_id: ${{ needs.setup.outputs.pipeline_run_id }}
           dry_run: ${{ needs.setup.outputs.dry_run }}
           package_dir: ${{ github.workspace }}/_n8n-adapter
+
+  # =====================================================================
+  # Track C — MCPB bundle generation + validation gates (Story 5.9–5.10).
+  # Generates a .mcpb file from the source MCP, validates it through the
+  # 3 Track C gates, then publish-smithery (above) uploads to Smithery.
+  # =====================================================================
+
+  generate-mcpb-bundle:
+    name: Generate MCPB bundle (Track C)
+    needs: [setup, ledger-read, track-a-layer-3]
+    if: |
+      needs.track-a-layer-3.result == 'success'
+      && needs.ledger-read.outputs.run_smithery == 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      artifact_name: mcpb-bundle-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Checkout MCP source
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Install + build MCP source
+        # The MCPB generator stages dist/ into the bundle's server/
+        # directory; dist/ must exist before run-mcpb-adapter-build.ts runs.
+        working-directory: pending-to-publish/${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          if [ -f package-lock.json ]; then
+            npm ci --no-audit --no-fund
+          else
+            npm install --no-audit --no-fund
+          fi
+          npm run build
+      - name: Run MCPB adapter build
+        # Renders the manifest, stages source/, runs `npm install --omit=dev`
+        # in <out>/server/, and `mcpb pack` to produce the .mcpb ZIP.
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+          VERSION: ${{ needs.setup.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p _mcpb-bundle
+          pnpm tsx src/adapters/mcpb-adapter/run-mcpb-adapter-build.ts \
+            "$MCP_NAME" \
+            "$VERSION" \
+            "pending-to-publish/$MCP_NAME" \
+            "_mcpb-bundle" \
+            "$DRY_RUN"
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mcpb-bundle-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
+          path: _mcpb-bundle
+          if-no-files-found: error
+          # `.spec.json` (Layer 1's truth source) and `.mcpb-build.json`
+          # (release-report summary) are dotfiles. Same trap as Track B
+          # — upload-artifact@v4 silently drops them by default.
+          include-hidden-files: true
+
+  track-c-layer-1:
+    name: Track C — Layer 1 (structural lint)
+    needs: [setup, generate-mcpb-bundle]
+    if: needs.generate-mcpb-bundle.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-mcpb-bundle.outputs.artifact_name }}
+          path: _mcpb-bundle
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run Layer 1 lint
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/gates/run-track-c-layer-1.ts \
+            "$MCP_NAME" \
+            "_mcpb-bundle" \
+            "_mcpb-bundle/.spec.json"
+
+  track-c-layer-2:
+    name: Track C — Layer 2 (mcpb validate)
+    needs: [setup, generate-mcpb-bundle, track-c-layer-1]
+    if: needs.track-c-layer-1.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-mcpb-bundle.outputs.artifact_name }}
+          path: _mcpb-bundle
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run Layer 2 (mcpb validate)
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+          VERSION: ${{ needs.setup.outputs.version }}
+        run: |
+          set -euo pipefail
+          BUNDLE="_mcpb-bundle/${MCP_NAME}-v${VERSION}.mcpb"
+          pnpm tsx src/gates/run-track-c-layer-2.ts "$MCP_NAME" "$BUNDLE"
+
+  track-c-layer-3:
+    name: Track C — Layer 3 (runtime roundtrip)
+    needs: [setup, generate-mcpb-bundle, track-c-layer-2]
+    if: needs.track-c-layer-2.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
+      DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Download bundle artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.generate-mcpb-bundle.outputs.artifact_name }}
+          path: _mcpb-bundle
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run Layer 3 (runtime roundtrip)
+        # Spawns the bundled server (server/index.js + bundled
+        # node_modules) via inspector-harness and confirms tools/list
+        # returns the same operation set the spec declares.
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/gates/run-track-c-layer-3.ts \
+            "$MCP_NAME" \
+            "_mcpb-bundle" \
+            "_mcpb-bundle/.spec.json"
 
   # ---------------------------------------------------------------------
   # Story 3.7: final-report job — aggregates Track A publishers,
