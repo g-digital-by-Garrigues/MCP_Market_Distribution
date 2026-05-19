@@ -265,10 +265,19 @@ export async function publishSmithery(
     });
   }
 
+  // The @smithery/cli reads `SMITHERY_API_KEY` (NOT SMITHERY_TOKEN) for
+  // non-interactive auth. We accept the secret under SMITHERY_TOKEN at
+  // the pipeline level (consistent with the rest of the *_TOKEN secrets)
+  // but rename on the way into the CLI's child env. Source:
+  // smithery-ai/cli src/utils/smithery-settings.ts + the user-visible
+  // "Set SMITHERY_API_KEY=<token>" tip the CLI prints after
+  // `smithery auth token`. Caught in real-publish run #26109827581
+  // where the CLI prompted interactively for an API key (exit 130 from
+  // inquirer's EOF on closed stdin) despite SMITHERY_TOKEN being set.
   const publishArgs = ['--yes', SMITHERY_CLI_PACKAGE, 'mcp', 'publish', input.bundle_path, '-n', qualifiedName];
   const result = await exec('npx', publishArgs, {
     timeoutMs: PUBLISH_TIMEOUT_MS,
-    env: { SMITHERY_TOKEN: env.SMITHERY_TOKEN },
+    env: { SMITHERY_API_KEY: env.SMITHERY_TOKEN },
   });
 
   if (result.exitCode === 0) {
