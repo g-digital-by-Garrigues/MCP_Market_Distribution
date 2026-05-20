@@ -266,11 +266,27 @@ export async function publishNpm(
     });
   }
 
-  // Auth setup: NPM_TOKEN if present, else assume OIDC + trusted publisher.
+  // Auth setup. Order of preference:
+  //   1. OIDC trusted publisher — when GitHub Actions has granted
+  //      `id-token: write` (signalled by ACTIONS_ID_TOKEN_REQUEST_URL +
+  //      ACTIONS_ID_TOKEN_REQUEST_TOKEN being present in env). Required
+  //      once npm enforces TP on the package — token publishes then
+  //      get rejected with the bizarre `404 PUT` error. Caught on the
+  //      v1.0.8 publish run #26156942921 right after npm's security
+  //      mailout auto-invalidated all existing tokens.
+  //   2. NPM_TOKEN fallback — kept for local-publish and for any future
+  //      package that doesn't have TP configured yet. With TP enforced
+  //      AND a token present, we deliberately ignore the token to
+  //      avoid the 404 PUT trap.
+  const hasOidc =
+    typeof env.ACTIONS_ID_TOKEN_REQUEST_URL === 'string' &&
+    env.ACTIONS_ID_TOKEN_REQUEST_URL.length > 0 &&
+    typeof env.ACTIONS_ID_TOKEN_REQUEST_TOKEN === 'string' &&
+    env.ACTIONS_ID_TOKEN_REQUEST_TOKEN.length > 0;
   const npmToken = env.NPM_TOKEN?.trim();
   const npmrcPath = path.join(input.package_dir, '.npmrc');
-  const npmrcWritten = npmToken !== undefined && npmToken !== '';
-  if (npmrcWritten) {
+  const useTokenAuth = !hasOidc && npmToken !== undefined && npmToken !== '';
+  if (useTokenAuth) {
     const lines = [
       `//registry.npmjs.org/:_authToken=${npmToken}`,
       'always-auth=true',
@@ -282,11 +298,19 @@ export async function publishNpm(
   try {
     const publishArgs = ['publish', '--access', 'public'];
     if (isDryRun) publishArgs.push('--dry-run');
-    if (!isDryRun && !npmrcWritten) publishArgs.push('--provenance');
+    // --provenance triggers the OIDC token exchange; only valid when
+    // the workflow exposed id-token: write and there's no .npmrc
+    // shadowing it with a long-lived token.
+    if (!isDryRun && !useTokenAuth) publishArgs.push('--provenance');
     const result = await exec('npm', publishArgs, {
       cwd: input.package_dir,
-      // Suppress the env when token is in the .npmrc; rely on the file for auth.
-      env: { npm_config_userconfig: npmrcWritten ? npmrcPath : '' },
+      // Token path: point npm at the publisher's .npmrc with the
+      // literal token. OIDC path: leave npm_config_userconfig unset
+      // so npm reads the runner's default config (with whatever
+      // setup-node@v4 wrote at $RUNNER_TEMP/.npmrc) and lets
+      // --provenance + the ACTIONS_ID_TOKEN_REQUEST_URL env do the
+      // OIDC exchange directly.
+      env: useTokenAuth ? { npm_config_userconfig: npmrcPath } : {},
     });
     const duration = now() - started;
     if (result.exitCode !== 0) {
@@ -325,7 +349,7 @@ export async function publishNpm(
     log.info('target.publish_succeeded', {
       ...baseEvent,
       attempts: probe.attempts + 1,
-      auth_mode: npmrcWritten ? 'npm_token' : 'oidc',
+      auth_mode: useTokenAuth ? 'npm_token' : 'oidc',
     });
     return validate({
       target: 'npm',
@@ -337,10 +361,10 @@ export async function publishNpm(
       duration_ms: duration,
       attempts: probe.attempts + 1,
       dry_run: isDryRun,
-      metadata: { auth_mode: npmrcWritten ? 'npm_token' : 'oidc' },
+      metadata: { auth_mode: useTokenAuth ? 'npm_token' : 'oidc' },
     });
   } finally {
-    if (npmrcWritten) await removeNpmrc(npmrcPath);
+    if (useTokenAuth) await removeNpmrc(npmrcPath);
   }
 }
 
