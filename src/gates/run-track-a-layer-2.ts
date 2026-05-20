@@ -9,6 +9,7 @@ import {
 } from './inspector-harness.js';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
 import { loadDistributionConfig } from '../distribution/load-distribution-config.js';
+import { resolveMcpEntryRelPath } from '../utils/resolve-mcp-entry.js';
 
 const PLACEHOLDER_STRING = 'placeholder';
 const METHOD_NOT_FOUND = -32601;
@@ -22,7 +23,7 @@ export interface RunTrackALayer2Options {
   mcpName: string;
   /** Defaults to `node`. */
   serverCommand?: string;
-  /** Defaults to `['dist/server.js']` relative to `pending-to-publish/<mcpName>/`. */
+  /** Defaults to `[<package.json#bin>]` (falls back to `['dist/server.js']` if no bin), relative to `pending-to-publish/<mcpName>/`. */
   serverArgs?: readonly string[];
   /** Defaults to `pending-to-publish/<mcpName>/`. */
   serverCwd?: string;
@@ -112,7 +113,9 @@ export async function runTrackALayer2(
   const fixture = await loadFixture(fixturePath);
 
   const command = opts.serverCommand ?? 'node';
-  const args = opts.serverArgs ? [...opts.serverArgs] : ['dist/server.js'];
+  const args = opts.serverArgs
+    ? [...opts.serverArgs]
+    : [await resolveMcpEntryRelPath(mcpFolder)];
   const resolvedArgs = args.map((a) =>
     path.isAbsolute(a) ? a : path.resolve(mcpFolder, a),
   );
@@ -134,7 +137,7 @@ export async function runTrackALayer2(
         cause: probe.launch_error
           ? 'The server binary could not be launched.'
           : 'The server launched but did not complete the initialize handshake.',
-        action: 'Run `node dist/server.js` locally to reproduce, fix the error, rebuild, and re-tag.',
+        action: 'Run the MCP\'s bin script locally (`node <package.json#bin>`) to reproduce, fix the error, rebuild, and re-tag.',
       }),
     );
     return {

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Handlebars from 'handlebars';
 import type { McpbBundleSpec } from './types.js';
+import { resolveMcpEntryRelPath } from '../../utils/resolve-mcp-entry.js';
 
 // Story 5.9c: render the Handlebars templates under templates/mcpb-adapter/
 // and stage the source MCP files into the bundle layout. Writes the
@@ -220,14 +221,21 @@ export async function generateMcpbBundle(
     );
   }
 
-  // Rename dist/server.js → server/index.js so the entry_point in the
-  // manifest is the conventional `server/index.js`. Every other
-  // compiled file under dist/ retains its sub-path under server/.
+  // Rename the bin's basename (e.g. `dist/cli.js` → `cli.js`, or
+  // legacy `dist/server.js` → `server.js`) to `index.js` so the
+  // entry_point in the manifest is the conventional `server/index.js`.
+  // Reads package.json#bin to find the canonical entry — historic
+  // hardcoded `server.js` broke for EAD-Factory-MCP v1.0.9 which
+  // moved bootstrap to `dist/cli.js` (PR #9 in EAD-Factory-MCP).
+  // Every other compiled file under dist/ retains its sub-path
+  // under server/.
+  const binRelPath = await resolveMcpEntryRelPath(sourceMcpDir);
+  const binBasename = path.basename(binRelPath);
   const distEntries = await fs.readdir(distSrc, { withFileTypes: true });
   for (const entry of distEntries) {
     const srcPath = path.join(distSrc, entry.name);
     let dstName = entry.name;
-    if (entry.isFile() && entry.name === 'server.js') {
+    if (entry.isFile() && entry.name === binBasename) {
       dstName = 'index.js';
     }
     const dstPath = path.join(serverDir, dstName);
