@@ -64,9 +64,18 @@
           "pipeline_run_id": "26179192001-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.10"
+        },
+        {
+          "at": "2026-05-20T17:49:59.104Z",
+          "attempt": 5,
+          "duration_ms": 2118,
+          "error_message": "npm publish exited 1: npm warn publish npm auto-corrected some errors in your package.json when publishing.  Please run \"npm pkg fix\" to address these errors.\nnpm warn publish errors corrected:\nnpm warn publish \"repository.url\" was normalized to \"git+https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP.git\"\nnpm notice\nnpm notice 📦  @g-digital/mcp-ead-factory@1.0.10\nnpm notice Tarball Contents\nnpm notice 8.1kB .cl",
+          "pipeline_run_id": "26179192001-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.10"
         }
       ],
-      "last_attempt_at": "2026-05-20T17:39:10.350Z",
+      "last_attempt_at": "2026-05-20T17:49:59.104Z",
       "status": "failed",
       "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.10",
       "version_published": null
@@ -96,6 +105,6 @@
       "version_published": "1.0.10"
     }
   },
-  "updated_at": "2026-05-20T17:39:10.350Z",
+  "updated_at": "2026-05-20T17:49:59.104Z",
   "version": "1.0.10"
 }
