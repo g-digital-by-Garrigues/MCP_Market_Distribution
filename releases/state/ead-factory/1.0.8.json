@@ -29,14 +29,40 @@
           "pipeline_run_id": "26156390122-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.8"
+        },
+        {
+          "at": "2026-05-20T10:38:26.204Z",
+          "attempt": 2,
+          "duration_ms": 2015,
+          "error_message": "npm publish exited 1: npm warn publish npm auto-corrected some errors in your package.json when publishing.  Please run \"npm pkg fix\" to address these errors.\nnpm warn publish errors corrected:\nnpm warn publish \"repository.url\" was normalized to \"git+https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP.git\"\nnpm notice\nnpm notice 📦  @g-digital/mcp-ead-factory@1.0.8\nnpm notice Tarball Contents\nnpm notice 8.1kB .cla",
+          "pipeline_run_id": "26156942921-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.8"
         }
       ],
-      "last_attempt_at": "2026-05-20T10:27:21.871Z",
+      "last_attempt_at": "2026-05-20T10:38:26.204Z",
       "status": "failed",
       "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.8",
       "version_published": null
+    },
+    "smithery": {
+      "attempts": [
+        {
+          "at": "2026-05-20T10:38:26.204Z",
+          "attempt": 1,
+          "duration_ms": 5204,
+          "error_message": "`smithery mcp publish` exited 1: \u001b[31mDeployment failed: 400 {\"error\":\"Invalid input: expected object, received undefined; Invalid input: expected object, received undefined; Invalid input: expected object, received undefined; Invalid input: expected object, received undefined; Invalid input: expected object, received undefined; Invalid input: expected object, received undefined; Invalid input: expected object, received undefined…",
+          "pipeline_run_id": "26156942921-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-factory/1.0.8"
+        }
+      ],
+      "last_attempt_at": "2026-05-20T10:38:26.204Z",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-factory/1.0.8",
+      "version_published": null
     }
   },
-  "updated_at": "2026-05-20T10:27:21.871Z",
+  "updated_at": "2026-05-20T10:38:26.204Z",
   "version": "1.0.8"
 }
