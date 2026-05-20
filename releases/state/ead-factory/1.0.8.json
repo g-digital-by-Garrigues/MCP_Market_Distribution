@@ -38,9 +38,18 @@
           "pipeline_run_id": "26156942921-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.8"
+        },
+        {
+          "at": "2026-05-20T10:57:02.233Z",
+          "attempt": 3,
+          "duration_ms": 2605,
+          "error_message": "npm publish exited 1: npm warn publish npm auto-corrected some errors in your package.json when publishing.  Please run \"npm pkg fix\" to address these errors.\nnpm warn publish errors corrected:\nnpm warn publish \"repository.url\" was normalized to \"git+https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP.git\"\nnpm notice\nnpm notice 📦  @g-digital/mcp-ead-factory@1.0.8\nnpm notice Tarball Contents\nnpm notice 8.1kB .cla",
+          "pipeline_run_id": "26157830356-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.8"
         }
       ],
-      "last_attempt_at": "2026-05-20T10:38:26.204Z",
+      "last_attempt_at": "2026-05-20T10:57:02.233Z",
       "status": "failed",
       "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.8",
       "version_published": null
@@ -55,14 +64,22 @@
           "pipeline_run_id": "26156942921-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-factory/1.0.8"
+        },
+        {
+          "at": "2026-05-20T10:57:02.233Z",
+          "attempt": 2,
+          "duration_ms": 6923,
+          "pipeline_run_id": "26157830356-1",
+          "status": "succeeded",
+          "target_url": "https://smithery.ai/server/g-digital/ead-factory"
         }
       ],
-      "last_attempt_at": "2026-05-20T10:38:26.204Z",
-      "status": "failed",
-      "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-factory/1.0.8",
-      "version_published": null
+      "last_attempt_at": "2026-05-20T10:57:02.233Z",
+      "status": "succeeded",
+      "target_url": "https://smithery.ai/server/g-digital/ead-factory",
+      "version_published": "1.0.8"
     }
   },
-  "updated_at": "2026-05-20T10:38:26.204Z",
+  "updated_at": "2026-05-20T10:57:02.233Z",
   "version": "1.0.8"
 }
