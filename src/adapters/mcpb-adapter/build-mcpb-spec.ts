@@ -100,6 +100,11 @@ interface ServerJsonShape {
   }>;
 }
 
+interface PackageJsonShape {
+  keywords?: string[];
+  homepage?: string;
+}
+
 async function readServerJson(packageDir: string): Promise<ServerJsonShape> {
   const filePath = path.join(packageDir, 'server.json');
   let raw: string;
@@ -121,6 +126,26 @@ async function readServerJson(packageDir: string): Promise<ServerJsonShape> {
   }
 }
 
+// Best-effort read — returns an empty object when package.json is
+// missing or unparseable (some test fixtures don't ship one). The
+// fields we extract (keywords, homepage) are all manifest-optional, so
+// a missing package.json downgrades the manifest gracefully rather
+// than failing the whole adapter build.
+async function readPackageJson(packageDir: string): Promise<PackageJsonShape> {
+  const filePath = path.join(packageDir, 'package.json');
+  let raw: string;
+  try {
+    raw = await fs.readFile(filePath, 'utf8');
+  } catch {
+    return {};
+  }
+  try {
+    return JSON.parse(raw) as PackageJsonShape;
+  } catch {
+    return {};
+  }
+}
+
 function buildUserConfigFields(server: ServerJsonShape): McpbUserConfigField[] {
   const vars = server.packages?.[0]?.environmentVariables ?? [];
   return vars.map((v) => ({
@@ -136,10 +161,17 @@ function buildUserConfigFields(server: ServerJsonShape): McpbUserConfigField[] {
 }
 
 function buildOperation(tool: InspectorToolEntry): McpbOperationSpec {
-  return {
+  const op: McpbOperationSpec = {
     name: tool.name,
     description: tool.description ?? '',
   };
+  // Only thread inputSchema through when the source MCP actually
+  // provides one. Smithery indexes the schema for parameter UI hints;
+  // emitting `inputSchema: null` is worse than omitting the field.
+  if (tool.inputSchema !== undefined && tool.inputSchema !== null) {
+    op.inputSchema = tool.inputSchema;
+  }
+  return op;
 }
 
 function resolveRepoUrl(distribution: DistributionConfig, server: ServerJsonShape): string {
@@ -208,6 +240,8 @@ export async function buildMcpbBundleSpec(
   const operations = probe.tools_list.map(buildOperation);
   const userConfig = buildUserConfigFields(server);
   const displayName = toTitleCase(input.mcpName);
+  const pkg = await readPackageJson(input.packageDir);
+  const repoUrl = resolveRepoUrl(distribution, server);
 
   const spec: McpbBundleSpec = {
     name: input.mcpName,
@@ -215,8 +249,10 @@ export async function buildMcpbBundleSpec(
     version: input.version,
     description: server.description ?? `${displayName} MCP server.`,
     sourceMcpPackageName: distribution.npm_package_name,
-    sourceRepoUrl: resolveRepoUrl(distribution, server),
+    sourceRepoUrl: repoUrl,
+    ...(pkg.homepage && pkg.homepage !== repoUrl ? { homepageUrl: pkg.homepage } : {}),
     author: { name: 'g-digital by Garrigues' },
+    keywords: pkg.keywords ?? [],
     operations,
     userConfig,
     // Source MCPs compile to `dist/server.js` and we stage that into
@@ -226,6 +262,11 @@ export async function buildMcpbBundleSpec(
     // `server/index.js` for compatibility with hosts that hard-code
     // that path (per anthropics/mcpb examples).
     entryPoint: 'server/index.js',
+    // Icon: when .distribution.yaml declares a logo_path the source MCP
+    // ships, the generator (Story 5.9c) copies it into the bundle at
+    // `assets/icon.png` and emits manifest.icon pointing here. When
+    // logo_path is absent Smithery falls back to a generic placeholder.
+    ...(distribution.logo_path ? { iconPath: 'assets/icon.png' } : {}),
     smitheryNamespace: input.smitheryNamespace ?? DEFAULT_SMITHERY_NAMESPACE,
   };
 

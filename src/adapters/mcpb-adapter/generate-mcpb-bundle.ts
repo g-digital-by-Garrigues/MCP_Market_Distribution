@@ -48,6 +48,17 @@ function registerHelpers(): void {
   // Handlebars parser because the trailing `}}}` is greedy-parsed as a
   // triple-close mustache.
   Handlebars.registerHelper('userConfigRef', (configKey: string) => `\${user_config.${configKey}}`);
+  // `homepageOrRepo spec` → returns spec.homepageUrl when set (product
+  // landing page) or falls back to spec.sourceRepoUrl (the GitHub repo
+  // url). The manifest's `homepage` and `repository.url` end up at the
+  // same value for most MCPs we ship today; the helper keeps the door
+  // open for MCPs that ALSO have a separate product website by reading
+  // package.json#homepage in the spec builder.
+  Handlebars.registerHelper(
+    'homepageOrRepo',
+    (spec: { homepageUrl?: string; sourceRepoUrl: string }) =>
+      spec.homepageUrl ?? spec.sourceRepoUrl,
+  );
   helpersRegistered = true;
 }
 
@@ -85,6 +96,16 @@ export interface GenerateMcpbBundleOptions {
    * directory.
    */
   sourceMcpDir: string;
+  /**
+   * Optional path (relative to `sourceMcpDir`) to the logo PNG to bundle
+   * as the manifest icon. When set, the generator copies this file to
+   * `<outputDir>/assets/icon.png` and the manifest's `icon` field
+   * references that path (`spec.iconPath`). Sourced from
+   * `.distribution.yaml#logo_path` by the spec builder; pass-through
+   * here so this orchestrator stays IO-pure regarding distribution
+   * config.
+   */
+  sourceLogoRelPath?: string;
   /** Optional: clear the output dir first. Defaults to true. */
   clean?: boolean;
 }
@@ -151,6 +172,21 @@ export async function generateMcpbBundle(
   const licenseDst = path.join(outputDir, 'LICENSE');
   if (await safeCopyFile(licenseSrc, licenseDst)) {
     filesWritten.push('LICENSE');
+  }
+
+  // 2b) Icon: copy the source MCP's logo (if .distribution.yaml#logo_path
+  //     declared one) into the bundle at `assets/icon.png`. The manifest
+  //     template references this exact path via spec.iconPath. We always
+  //     normalise the destination filename to `icon.png` so the manifest
+  //     ref is deterministic regardless of how the source named its
+  //     logo (e.g. `logo-400x400.png` for EAD Factory).
+  if (opts.sourceLogoRelPath && spec.iconPath) {
+    const logoSrc = path.join(sourceMcpDir, opts.sourceLogoRelPath);
+    const iconDst = path.join(outputDir, spec.iconPath);
+    await fs.mkdir(path.dirname(iconDst), { recursive: true });
+    if (await safeCopyFile(logoSrc, iconDst)) {
+      filesWritten.push(spec.iconPath);
+    }
   }
 
   // 3) Staged source — server/package.json + server/dist tree.
