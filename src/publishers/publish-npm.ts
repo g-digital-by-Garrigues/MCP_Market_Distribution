@@ -267,17 +267,20 @@ export async function publishNpm(
   }
 
   // Auth setup. Order of preference:
-  //   1. OIDC trusted publisher — when GitHub Actions has granted
-  //      `id-token: write` (signalled by ACTIONS_ID_TOKEN_REQUEST_URL +
-  //      ACTIONS_ID_TOKEN_REQUEST_TOKEN being present in env). Required
-  //      once npm enforces TP on the package — token publishes then
-  //      get rejected with the bizarre `404 PUT` error. Caught on the
-  //      v1.0.8 publish run #26156942921 right after npm's security
-  //      mailout auto-invalidated all existing tokens.
-  //   2. NPM_TOKEN fallback — kept for local-publish and for any future
-  //      package that doesn't have TP configured yet. With TP enforced
-  //      AND a token present, we deliberately ignore the token to
-  //      avoid the 404 PUT trap.
+  //   1. NPM_TOKEN — when the secret is present, use the literal token.
+  //      Works for any package regardless of trusted-publisher state
+  //      provided the package's "Require trusted publisher" toggle is
+  //      OFF. Reverts the OIDC-first preference from PR #111 after a
+  //      week of OIDC-path 404 PUT failures that survived making the
+  //      repo public + verifying every Sigstore certificate claim:
+  //      the actual blocker turned out to be the bot/maintainer
+  //      mismatch on the TP record, which token publishes sidestep
+  //      entirely.
+  //   2. OIDC trusted publisher — fallback when NPM_TOKEN is absent
+  //      AND GitHub Actions has granted `id-token: write` (signalled
+  //      by ACTIONS_ID_TOKEN_REQUEST_URL + ACTIONS_ID_TOKEN_REQUEST_TOKEN
+  //      being present in env). Kept for the eventual move to a proper
+  //      `g-digital-Bot` identity as TP maintainer.
   const hasOidc =
     typeof env.ACTIONS_ID_TOKEN_REQUEST_URL === 'string' &&
     env.ACTIONS_ID_TOKEN_REQUEST_URL.length > 0 &&
@@ -285,7 +288,7 @@ export async function publishNpm(
     env.ACTIONS_ID_TOKEN_REQUEST_TOKEN.length > 0;
   const npmToken = env.NPM_TOKEN?.trim();
   const npmrcPath = path.join(input.package_dir, '.npmrc');
-  const useTokenAuth = !hasOidc && npmToken !== undefined && npmToken !== '';
+  const useTokenAuth = npmToken !== undefined && npmToken !== '';
   if (useTokenAuth) {
     const lines = [
       `//registry.npmjs.org/:_authToken=${npmToken}`,
