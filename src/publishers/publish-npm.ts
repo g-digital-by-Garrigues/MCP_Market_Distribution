@@ -290,6 +290,17 @@ export async function publishNpm(
     });
     const duration = now() - started;
     if (result.exitCode !== 0) {
+      // Surface the CLI's raw stdout + stderr to OUR stderr so the
+      // workflow log shows the full error inline. Without this, the
+      // only signal is the orchestrator's 400-char-trimmed
+      // PublisherOutput.error.message, which masks anything past the
+      // tarball-contents listing (caught on v1.0.8 publish run
+      // #26156390122 where the actual failure reason was beyond the
+      // trim). Same rationale + pattern as publish-mcp-registry's
+      // login-failure branch.
+      process.stderr.write(
+        `[publish-npm] exit ${result.exitCode}\n--- stdout ---\n${result.stdout}\n--- stderr ---\n${result.stderr}\n--- end ---\n`,
+      );
       log.error('target.publish_failed', {
         ...baseEvent,
         reason: 'npm_publish_failed',

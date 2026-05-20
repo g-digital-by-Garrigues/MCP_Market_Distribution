@@ -21,8 +21,7 @@
   "tools": [
 {{#each operations}}    {
       "name": "{{this.name}}",
-      "description": {{json this.description}}{{#if this.inputSchema}},
-      "input_schema": {{json this.inputSchema}}{{/if}}
+      "description": {{json this.description}}
     }{{#unless @last}},{{/unless}}
 {{/each}}  ],
   "server": {
