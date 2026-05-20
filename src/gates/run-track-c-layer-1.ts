@@ -120,6 +120,12 @@ interface ManifestShape {
   version?: string;
   description?: string;
   author?: { name?: string };
+  homepage?: string;
+  repository?: { type?: string; url?: string };
+  icon?: string;
+  keywords?: string[];
+  tools_generated?: boolean;
+  tools?: Array<{ name?: string; description?: string }>;
   server?: {
     type?: string;
     entry_point?: string;
@@ -182,6 +188,33 @@ async function checkManifest(opts: RunTrackCLayer1Options): Promise<TrackCLayer1
   const args = m.server?.mcp_config?.args ?? [];
   if (!args.some((a) => a.includes(spec.entryPoint))) {
     issues.push(`server.mcp_config.args must reference '${spec.entryPoint}'`);
+  }
+  // Manifest metadata that materially affects how Smithery indexes the
+  // bundle. We discovered in the first real publish (v1.0.7, run
+  // #26110512056) that omitting these fields left the Smithery listing
+  // looking abandoned (`description: ""`, `tools: null`). Layer 1 now
+  // catches drift instead of letting it ship.
+  if (!m.repository?.url || m.repository.url.length === 0) {
+    issues.push("repository.url must be set so Smithery surfaces the GitHub repo link");
+  }
+  if (!m.homepage || m.homepage.length === 0) {
+    issues.push("homepage must be set");
+  }
+  if (m.tools_generated !== false) {
+    issues.push("tools_generated must be explicitly false (we declare the full tool set at manifest-build time)");
+  }
+  if (!Array.isArray(m.tools) || m.tools.length !== spec.operations.length) {
+    issues.push(`tools[] must have ${spec.operations.length} entries (got ${Array.isArray(m.tools) ? m.tools.length : 'undefined'})`);
+  } else {
+    const expected = new Set(spec.operations.map((o) => o.name));
+    const got = new Set(m.tools.map((t) => t.name ?? ''));
+    const missing = [...expected].filter((n) => !got.has(n));
+    if (missing.length > 0) {
+      issues.push(`tools[] missing entries for: ${missing.join(', ')}`);
+    }
+  }
+  if (spec.iconPath && m.icon !== spec.iconPath) {
+    issues.push(`icon='${m.icon}' expected '${spec.iconPath}'`);
   }
 
   if (issues.length === 0) return { name: 'manifest', passed: true };

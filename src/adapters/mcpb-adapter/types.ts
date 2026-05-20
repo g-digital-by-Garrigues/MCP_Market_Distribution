@@ -25,16 +25,26 @@ export const MCPB_MANIFEST_VERSION = '0.3';
 export type McpbServerType = 'node';
 
 /**
- * One MCP tool, surfaced in the README for documentation. The manifest
- * itself does NOT list tools (MCPB delegates discovery to the runtime
- * `tools/list` call), but the README is the user-visible catalogue that
- * Smithery's web UI scrapes.
+ * One MCP tool, surfaced BOTH in the manifest's `tools` array (so
+ * Smithery's registry indexes them as a real list rather than
+ * `tools: null`) AND in the bundle README catalogue.
+ *
+ * `inputSchema` is optional only because some MCPs declare a tool
+ * without a JSON Schema for its inputs; the manifest spec accepts that.
  */
 export interface McpbOperationSpec {
   /** Tool name as the MCP exposes it (snake_case). */
   name: string;
   /** Concise human-readable description. */
   description: string;
+  /** Raw JSON Schema describing the tool's input arguments (from `tools/list`). */
+  inputSchema?: unknown;
+}
+
+/** Source code repository information for the manifest's `repository` field. */
+export interface McpbRepository {
+  type: 'git';
+  url: string;
 }
 
 /**
@@ -89,11 +99,27 @@ export interface McpbBundleSpec {
   description: string;
   /** Source MCP npm package name (e.g. `@g-digital/mcp-ead-factory`) — surfaced in README + provenance. */
   sourceMcpPackageName: string;
-  /** Repo URL of the source MCP — surfaced in manifest.homepage + README. */
+  /**
+   * Source MCP's GitHub repo URL — also doubles as the default
+   * homepage when `homepageUrl` is not explicitly set.
+   */
   sourceRepoUrl: string;
+  /**
+   * Optional product homepage URL distinct from the source repo. When
+   * absent the manifest emits `homepage: sourceRepoUrl` (matches the
+   * `repository.url`); set this to the product landing page (e.g.
+   * https://www.eadtrust.com) when the MCP has one.
+   */
+  homepageUrl?: string;
   /** Author block for manifest + package.json carried inside the bundle. */
   author: McpbAuthor;
-  /** Tool catalogue (README only). */
+  /**
+   * Search keywords surfaced under `manifest.keywords`. Sourced from
+   * the source MCP's `package.json#keywords`; aids discoverability on
+   * Smithery / MCPB marketplaces.
+   */
+  keywords: string[];
+  /** Tool catalogue — emitted in `manifest.tools` AND in the README. */
   operations: McpbOperationSpec[];
   /** Manifest user_config fields derived from server.json#environmentVariables. */
   userConfig: McpbUserConfigField[];
@@ -104,6 +130,14 @@ export interface McpbBundleSpec {
    * compiled output deeper.
    */
   entryPoint: string;
-  /** Smithery namespace (typically the GitHub org, e.g. `g-digital-by-Garrigues`). */
+  /**
+   * Relative path inside the bundle to the icon file (PNG, typically
+   * 400x400). Populated when the source MCP's `.distribution.yaml`
+   * declares `logo_path`; the generator copies the source logo into
+   * the bundle at this path. Set to `null` (omit) when no logo is
+   * shipped — Smithery falls back to a generic placeholder.
+   */
+  iconPath?: string;
+  /** Smithery namespace (NOT the GitHub org — see [[smithery-mcpb-deferred]]). */
   smitheryNamespace: string;
 }

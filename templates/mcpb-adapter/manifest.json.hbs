@@ -9,8 +9,22 @@
     "email": {{json author.email}}{{/if}}{{#if author.url}},
     "url": {{json author.url}}{{/if}}
   },
-  "homepage": {{json sourceRepoUrl}},
-  "license": "MIT",
+  "homepage": {{json (homepageOrRepo this)}},
+  "repository": {
+    "type": "git",
+    "url": {{json sourceRepoUrl}}
+  },
+  "license": "MIT",{{#if iconPath}}
+  "icon": "{{iconPath}}",{{/if}}
+  "keywords": {{json keywords}},
+  "tools_generated": false,
+  "tools": [
+{{#each operations}}    {
+      "name": "{{this.name}}",
+      "description": {{json this.description}}{{#if this.inputSchema}},
+      "input_schema": {{json this.inputSchema}}{{/if}}
+    }{{#unless @last}},{{/unless}}
+{{/each}}  ],
   "server": {
     "type": "node",
     "entry_point": "{{entryPoint}}",

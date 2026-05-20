@@ -5,6 +5,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { buildMcpbBundleSpec } from './build-mcpb-spec.js';
 import { generateMcpbBundle } from './generate-mcpb-bundle.js';
+import { loadDistributionConfig } from '../../distribution/load-distribution-config.js';
 
 // Story 5.9d: orchestrator CLI invoked by the publish.yml
 // `generate-mcpb-bundle` job (added in Story 5.12). Chains the three
@@ -93,8 +94,18 @@ export async function runMcpbAdapterBuild(
     version: opts.version,
   });
 
-  // 2. Render templates + stage source dist/ into <outputDir>/.
-  await generateMcpbBundle({ spec, outputDir, sourceMcpDir: packageDir });
+  // 2. Render templates + stage source dist/ into <outputDir>/. We
+  //    re-load .distribution.yaml here (the spec already encoded the
+  //    decision to ship an icon via spec.iconPath; we just need the
+  //    SOURCE side of the copy — the relative path inside the source
+  //    MCP repo where the logo file actually lives).
+  const distribution = await loadDistributionConfig(repoRoot, opts.mcpName);
+  await generateMcpbBundle({
+    spec,
+    outputDir,
+    sourceMcpDir: packageDir,
+    ...(distribution.logo_path ? { sourceLogoRelPath: distribution.logo_path } : {}),
+  });
 
   // Drop the spec next to the generated tree so Layer 1 (lint) has its
   // truth source without re-running buildMcpbBundleSpec.

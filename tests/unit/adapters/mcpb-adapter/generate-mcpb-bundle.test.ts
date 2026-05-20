@@ -15,8 +15,13 @@ function sampleSpec(): McpbBundleSpec {
     sourceMcpPackageName: '@g-digital/mcp-multi-tool',
     sourceRepoUrl: 'https://github.com/g-digital-by-Garrigues/multi-tool-mcp',
     author: { name: 'g-digital by Garrigues' },
+    keywords: ['mcp', 'test', 'widget'],
     operations: [
-      { name: 'get_widget', description: 'Fetch a widget by id.' },
+      {
+        name: 'get_widget',
+        description: 'Fetch a widget by id.',
+        inputSchema: { type: 'object', properties: { id: { type: 'string' } }, required: ['id'] },
+      },
       { name: 'list_widgets', description: 'List widgets.' },
     ],
     userConfig: [
@@ -38,20 +43,23 @@ function sampleSpec(): McpbBundleSpec {
       },
     ],
     entryPoint: 'server/index.js',
+    iconPath: 'assets/icon.png',
     smitheryNamespace: 'g-digital',
   };
 }
 
 async function writeStubSourceMcp(sourceDir: string): Promise<void> {
   // Minimal source-MCP shape the generator depends on: package.json,
-  // LICENSE, and a dist/ with at least server.js plus a sub-file we
-  // can use to verify recursive copying.
+  // LICENSE, dist/ with at least server.js, a logo (so the icon-copy
+  // path exercises), plus a sub-file to verify recursive copying.
   await fs.mkdir(path.join(sourceDir, 'dist', 'lib'), { recursive: true });
+  await fs.mkdir(path.join(sourceDir, 'assets'), { recursive: true });
   await fs.writeFile(
     path.join(sourceDir, 'package.json'),
     JSON.stringify({ name: '@g-digital/mcp-multi-tool', version: '1.0.0', main: 'dist/server.js' }, null, 2),
   );
   await fs.writeFile(path.join(sourceDir, 'LICENSE'), 'MIT License — stub.\n');
+  await fs.writeFile(path.join(sourceDir, 'assets', 'logo-400x400.png'), 'PNG-stub-bytes');
   await fs.writeFile(path.join(sourceDir, 'dist', 'server.js'), 'console.log("server entry");\n');
   await fs.writeFile(path.join(sourceDir, 'dist', 'lib', 'helper.js'), 'export function h() {}\n');
 }
@@ -70,13 +78,21 @@ describe('generateMcpbBundle', () => {
   });
 
   it('writes the canonical pre-pack bundle tree (manifest + README + LICENSE + staged server/)', async () => {
-    const result = await generateMcpbBundle({ spec: sampleSpec(), outputDir, sourceMcpDir });
-    // Sorted with locale-aware compare. Locale ordering places upper-
-    // case `LICENSE` first (uppercase < lowercase in this locale), then
-    // `manifest.json`, then `README.md` (uppercase R lands between `m`
-    // and `s` per the same rule the n8n adapter test documented), then
-    // the staged server/ files.
+    const result = await generateMcpbBundle({
+      spec: sampleSpec(),
+      outputDir,
+      sourceMcpDir,
+      sourceLogoRelPath: 'assets/logo-400x400.png',
+    });
+    // Sorted with locale-aware compare. Locale ordering puts lowercase
+    // `assets/...` first, then uppercase `LICENSE`, then `manifest.json`,
+    // then `README.md` (uppercase R lands between `m` and `s` per the
+    // same rule the n8n adapter test documented), then the staged
+    // server/ files. Note: `assets/icon.png` only appears when
+    // sourceLogoRelPath is set; the optional-LICENSE test below removes
+    // both LICENSE and the logo to verify graceful fallback.
     expect(result.filesWritten).toEqual([
+      'assets/icon.png',
       'LICENSE',
       'manifest.json',
       'README.md',
@@ -162,7 +178,12 @@ describe('generateMcpbBundle', () => {
 
   it("omits LICENSE from filesWritten when the source MCP doesn't ship one (optional file)", async () => {
     await fs.rm(path.join(sourceMcpDir, 'LICENSE'));
-    const result = await generateMcpbBundle({ spec: sampleSpec(), outputDir, sourceMcpDir });
+    const result = await generateMcpbBundle({
+      spec: sampleSpec(),
+      outputDir,
+      sourceMcpDir,
+      sourceLogoRelPath: 'assets/logo-400x400.png',
+    });
     expect(result.filesWritten).not.toContain('LICENSE');
   });
 

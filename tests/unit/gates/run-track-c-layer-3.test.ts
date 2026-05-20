@@ -22,6 +22,7 @@ function sampleSpec(): McpbBundleSpec {
     sourceMcpPackageName: '@g-digital/mcp-multi-tool',
     sourceRepoUrl: 'https://github.com/g-digital-by-Garrigues/multi-tool-mcp',
     author: { name: 'g-digital by Garrigues' },
+    keywords: ['mcp', 'test'],
     operations: [
       { name: 'get_widget', description: 'Fetch a widget.' },
       { name: 'list_widgets', description: 'List widgets.' },
