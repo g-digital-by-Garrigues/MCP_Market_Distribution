@@ -1,7 +1,7 @@
 {
   "mcp_name": "ead-factory",
   "started_at": "2026-05-19T16:18:51.652Z",
-  "status": "partial",
+  "status": "complete",
   "targets": {
     "cline": {
       "attempts": [
@@ -199,14 +199,22 @@
           "pipeline_run_id": "26110512056-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7"
+        },
+        {
+          "at": "2026-05-20T09:36:01.512Z",
+          "attempt": 4,
+          "duration_ms": 7748,
+          "pipeline_run_id": "26153927619-1",
+          "status": "succeeded",
+          "target_url": "https://smithery.ai/server/g-digital/ead-factory"
         }
       ],
-      "last_attempt_at": "2026-05-19T16:30:10.987Z",
-      "status": "failed",
-      "target_url": "https://example.invalid/dry-run/smithery/g-digital-by-Garrigues%2Fead-factory/1.0.7",
-      "version_published": null
+      "last_attempt_at": "2026-05-20T09:36:01.512Z",
+      "status": "succeeded",
+      "target_url": "https://smithery.ai/server/g-digital/ead-factory",
+      "version_published": "1.0.7"
     }
   },
-  "updated_at": "2026-05-19T16:30:10.987Z",
+  "updated_at": "2026-05-20T09:36:01.512Z",
   "version": "1.0.7"
 }
