@@ -12,6 +12,7 @@ import type {
   McpbOperationSpec,
   McpbUserConfigField,
 } from './types.js';
+import { resolveMcpEntryRelPath } from '../../utils/resolve-mcp-entry.js';
 
 // Story 5.9: assemble the McpbBundleSpec for a single MCP.
 //
@@ -199,7 +200,7 @@ export async function buildMcpbBundleSpec(
   const server = await readServerJson(input.packageDir);
 
   const command = input.inspectorCommand ?? 'node';
-  const args = input.inspectorArgs ?? ['dist/server.js'];
+  const args = input.inspectorArgs ?? [await resolveMcpEntryRelPath(input.packageDir)];
   const resolvedArgs = args.map((a) =>
     path.isAbsolute(a) ? a : path.resolve(input.packageDir, a),
   );

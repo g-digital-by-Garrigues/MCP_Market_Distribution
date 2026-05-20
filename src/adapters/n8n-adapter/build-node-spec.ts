@@ -15,6 +15,7 @@ import type {
   N8nNodeSpec,
   N8nOperationSpec,
 } from './types.js';
+import { resolveMcpEntryRelPath } from '../../utils/resolve-mcp-entry.js';
 
 // Story 5.1b: assemble the N8nNodeSpec for a single MCP.
 //
@@ -187,7 +188,7 @@ export async function buildN8nNodeSpec(
 
   // Spawn the MCP via inspector-harness to fetch the live tools/list.
   const command = input.inspectorCommand ?? 'node';
-  const args = input.inspectorArgs ?? ['dist/server.js'];
+  const args = input.inspectorArgs ?? [await resolveMcpEntryRelPath(input.packageDir)];
   const resolvedArgs = args.map((a) =>
     path.isAbsolute(a) ? a : path.resolve(input.packageDir, a),
   );

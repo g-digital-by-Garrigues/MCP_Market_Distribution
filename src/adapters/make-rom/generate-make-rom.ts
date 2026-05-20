@@ -16,6 +16,7 @@ import type {
   MakeConnectionField,
   MakeRomArtifact,
 } from './types.js';
+import { resolveMcpEntryRelPath } from '../../utils/resolve-mcp-entry.js';
 
 // Story 5.7 / FR33: produce a Make ROM artifact from an MCP source.
 //
@@ -180,7 +181,7 @@ export async function generateMakeRom(
   const server = await readServerJson(input.packageDir);
 
   const command = input.inspectorCommand ?? 'node';
-  const args = input.inspectorArgs ?? ['dist/server.js'];
+  const args = input.inspectorArgs ?? [await resolveMcpEntryRelPath(input.packageDir)];
   const resolvedArgs = args.map((a) =>
     path.isAbsolute(a) ? a : path.resolve(input.packageDir, a),
   );

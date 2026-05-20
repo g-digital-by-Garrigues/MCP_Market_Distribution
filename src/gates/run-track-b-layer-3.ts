@@ -9,6 +9,7 @@ import {
 } from './inspector-harness.js';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
 import type { N8nNodeSpec, N8nProperty } from '../adapters/n8n-adapter/types.js';
+import { resolveMcpEntryRelPath } from '../utils/resolve-mcp-entry.js';
 
 // Story 5.4: Track B — Layer 3 (per-operation smoke).
 //
@@ -152,7 +153,7 @@ export async function runTrackBLayer3(
   opts: RunTrackBLayer3Options,
 ): Promise<TrackBLayer3Result> {
   const command = opts.serverCommand ?? 'node';
-  const args = opts.serverArgs ?? ['dist/server.js'];
+  const args = opts.serverArgs ?? [await resolveMcpEntryRelPath(opts.packageDir)];
   const resolvedArgs = args.map((a) =>
     path.isAbsolute(a) ? a : path.resolve(opts.packageDir, a),
   );
