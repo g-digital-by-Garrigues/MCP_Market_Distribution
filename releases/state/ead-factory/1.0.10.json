@@ -1,7 +1,7 @@
 {
   "mcp_name": "ead-factory",
   "started_at": "2026-05-20T17:12:44.614Z",
-  "status": "partial",
+  "status": "complete",
   "targets": {
     "cline": {
       "attempts": [
@@ -69,12 +69,20 @@
           "pipeline_run_id": "26180276894-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fead-factory/1.0.10"
+        },
+        {
+          "at": "2026-05-20T18:10:32.890Z",
+          "attempt": 2,
+          "duration_ms": 99146,
+          "pipeline_run_id": "26180816998-1",
+          "status": "skipped",
+          "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory"
         }
       ],
-      "last_attempt_at": "2026-05-20T18:00:34.253Z",
-      "status": "failed",
-      "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fead-factory/1.0.10",
-      "version_published": null
+      "last_attempt_at": "2026-05-20T18:10:32.890Z",
+      "status": "skipped",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-factory",
+      "version_published": "1.0.10"
     },
     "mcpso": {
       "attempts": [
@@ -203,6 +211,6 @@
       "version_published": "1.0.10"
     }
   },
-  "updated_at": "2026-05-20T18:00:34.253Z",
+  "updated_at": "2026-05-20T18:10:32.890Z",
   "version": "1.0.10"
 }
