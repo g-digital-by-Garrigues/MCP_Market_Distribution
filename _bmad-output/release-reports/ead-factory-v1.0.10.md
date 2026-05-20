@@ -14,7 +14,7 @@
 | mcp-publisher | ⏭ skipped | https://example.invalid/skipped/mcp-publisher | 0 |
 | mcpso | ⏭ skipped | https://example.invalid/skipped/mcpso | 0 |
 | n8n | ⏭ skipped | https://example.invalid/skipped/n8n | 0 |
-| npm | ❌ failed | https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.10 | 1340 |
+| npm | ❌ failed | https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.10 | 2118 |
 | smithery | ⏭ skipped | https://example.invalid/skipped/smithery | 0 |
 
 ## Failures
@@ -28,9 +28,9 @@ npm notice
 npm notice 📦  @g-digital/mcp-ead-factory@1.0.10
 npm notice Tarball Contents
 npm notice 8.1kB .cl
-- **Cause:** npm publish failed for an unclassified reason — see stderr.
+- **Cause:** npm OIDC/trusted-publisher rejected the request. Verify the trusted publisher is configured on npmjs.com for this exact (repo, workflow) pair.
 - **Retry:** `/retry-publish?step=npm`
-- **Manual:** Check the npm publish output above, fix the underlying issue, then /retry-publish?step=npm.
+- **Manual:** Visit https://www.npmjs.com/package/@g-digital/mcp-ead-factory/access and configure trusted publishing for repository g-digital-by-Garrigues/MCP_Market_Distribution + workflow publish.yml.
 
 ## Notes
 
