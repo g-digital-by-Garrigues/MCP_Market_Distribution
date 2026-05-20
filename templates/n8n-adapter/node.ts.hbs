@@ -46,7 +46,12 @@ export class {{className}} implements INodeType {
     displayName: '{{displayName}}',
     name: '{{paramName}}',
     group: ['transform'],
-    version: 1,
+    version: 1,{{#if iconBundled}}
+    // Bundled brand icon — copied into nodes/{{className}}/icon.png by
+    // the generator (Story 5.X). n8n resolves `file:icon.png` relative
+    // to this .node.ts file at runtime, so the catalogue + editor UI
+    // render the MCP logo instead of the generic-box placeholder.
+    icon: 'file:icon.png',{{/if}}
     // Story 5.8: flag this node as usable by n8n's AI Agent. With this
     // flag, n8n's CLI auto-generates a virtual `<Name>Tool` sibling at
     // startup (clones the description, rewires outputs to `AiTool`, and

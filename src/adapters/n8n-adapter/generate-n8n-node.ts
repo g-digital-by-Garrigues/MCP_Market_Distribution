@@ -74,6 +74,15 @@ export interface GenerateN8nNodeOptions {
   spec: N8nNodeSpec;
   /** Absolute path where the n8n node source tree should be written. */
   outputDir: string;
+  /**
+   * Absolute path to the source MCP's logo PNG to bundle as the n8n
+   * node icon. When set (and spec.iconBundled === true), the generator
+   * copies this file to `nodes/<className>/icon.png` and the template
+   * emits `icon: 'file:icon.png'` on the n8n description. n8n's
+   * catalogue UI + workflow editor render this thumbnail next to the
+   * displayName instead of the generic-box default.
+   */
+  sourceLogoAbsPath?: string;
   /** Optional: clear the output dir first. Defaults to true. */
   clean?: boolean;
 }
@@ -117,5 +126,28 @@ export async function generateN8nNode(opts: GenerateN8nNodeOptions): Promise<Gen
     await fs.writeFile(absolute, content, 'utf8');
   }
 
-  return { filesWritten: writes.map((w) => w.rel) };
+  const filesWritten = writes.map((w) => w.rel);
+
+  // Icon: copy the source MCP's logo to nodes/<Class>/icon.png so
+  // n8n's `description.icon = 'file:icon.png'` resolves at runtime.
+  // We always normalise the destination filename to `icon.png`
+  // regardless of how the source named its logo, so the manifest
+  // reference is deterministic. Best-effort: when sourceLogoAbsPath
+  // is unset OR the source file is missing, we silently skip — the
+  // template falls back to no-icon and n8n shows the generic box
+  // (still functional, just less branded).
+  if (spec.iconBundled && opts.sourceLogoAbsPath) {
+    const iconRel = path.posix.join('nodes', spec.className, 'icon.png');
+    const iconAbs = path.join(outputDir, iconRel);
+    try {
+      await fs.mkdir(path.dirname(iconAbs), { recursive: true });
+      await fs.copyFile(opts.sourceLogoAbsPath, iconAbs);
+      filesWritten.push(iconRel);
+      filesWritten.sort((a, b) => a.localeCompare(b));
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    }
+  }
+
+  return { filesWritten };
 }

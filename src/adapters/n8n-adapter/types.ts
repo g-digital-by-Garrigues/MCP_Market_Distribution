@@ -130,4 +130,14 @@ export interface N8nNodeSpec {
    * Author block for the generated package.json. Defaults to "g-digital by Garrigues".
    */
   author: string;
+  /**
+   * When set, the generator copies the source MCP's logo PNG into
+   * `<output>/nodes/<className>/icon.png` and emits
+   * `icon: 'file:icon.png'` on the node's description so the n8n
+   * catalogue + workflow editor render the MCP's logo instead of a
+   * generic box. Set from `.distribution.yaml#logo_path` by
+   * `build-node-spec.ts`; left undefined when the source MCP ships no
+   * logo.
+   */
+  iconBundled?: boolean;
 }
