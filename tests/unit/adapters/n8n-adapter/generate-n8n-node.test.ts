@@ -111,6 +111,64 @@ describe('generateN8nNode', () => {
     }
   });
 
+  it('copies the source logo into nodes/<Class>/icon.png when iconBundled + sourceLogoAbsPath are set', async () => {
+    // Without the icon n8n renders a generic box in the catalogue.
+    // The generator must (a) copy the source logo into the conventional
+    // location, (b) include it in filesWritten so the release report
+    // surfaces it, and (c) the template emits `icon: 'file:icon.png'`
+    // on the node description (asserted in the node-class test below).
+    const tmpLogo = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-logo-'));
+    const logoPath = path.join(tmpLogo, 'logo.png');
+    await fs.writeFile(logoPath, 'PNG-stub-bytes');
+    try {
+      const spec = sampleSpec();
+      spec.iconBundled = true;
+      const result = await generateN8nNode({ spec, outputDir, sourceLogoAbsPath: logoPath });
+      expect(result.filesWritten).toContain('nodes/MultiTool/icon.png');
+      const copied = await fs.stat(path.join(outputDir, 'nodes', 'MultiTool', 'icon.png'));
+      expect(copied.isFile()).toBe(true);
+    } finally {
+      await fs.rm(tmpLogo, { recursive: true, force: true });
+    }
+  });
+
+  it("node.ts emits `icon: 'file:icon.png'` when iconBundled=true (so n8n's catalogue renders the brand)", async () => {
+    const spec = sampleSpec();
+    spec.iconBundled = true;
+    await generateN8nNode({ spec, outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).toContain("icon: 'file:icon.png'");
+  });
+
+  it("node.ts OMITS the icon field when iconBundled is unset (no logo shipped by the source MCP)", async () => {
+    const spec = sampleSpec();
+    // iconBundled left undefined.
+    await generateN8nNode({ spec, outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).not.toContain("icon: 'file:icon.png'");
+  });
+
+  it("package.json adds copyfiles devDep + build script copies .png assets into dist", async () => {
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const pkg = JSON.parse(await fs.readFile(path.join(outputDir, 'package.json'), 'utf8')) as {
+      scripts: Record<string, string>;
+      devDependencies: Record<string, string>;
+    };
+    // tsc emits .ts → .js only; the icon PNG needs an explicit copy
+    // step so it lands at dist/nodes/<Class>/icon.png where n8n's
+    // `file:icon.png` resolver looks for it post-install.
+    expect(pkg.scripts.build).toContain('copyfiles');
+    expect(pkg.scripts.build).toContain('nodes/**/*.png');
+    expect(pkg.scripts.build).toContain('dist');
+    expect(pkg.devDependencies.copyfiles).toBeDefined();
+  });
+
   it('package.json declares the source MCP as a dependency with matching version + n8n loader hints', async () => {
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const pkg = JSON.parse(await fs.readFile(path.join(outputDir, 'package.json'), 'utf8')) as {

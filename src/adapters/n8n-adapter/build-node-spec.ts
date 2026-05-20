@@ -257,6 +257,12 @@ export async function buildN8nNodeSpec(
     credentialParamName,
     sourceRepoUrl: resolveRepoUrl(distribution, server),
     author: 'g-digital by Garrigues',
+    // Flag set when the source MCP ships a logo via .distribution.yaml.
+    // The generator (Story 5.1c, extended for icon support) copies the
+    // logo into nodes/<Class>/icon.png and emits `icon: 'file:icon.png'`
+    // on the n8n description so the catalogue UI renders the brand
+    // instead of a generic box.
+    ...(distribution.logo_path ? { iconBundled: true } : {}),
   };
 
   return { spec, unsupportedNotes };

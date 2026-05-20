@@ -18,7 +18,7 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && copyfiles -u 0 \"nodes/**/*.png\" dist",
     "lint": "eslint nodes credentials --ext .ts",
     "prepublishOnly": "npm run build"
   },
@@ -43,6 +43,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
+    "copyfiles": "^2.4.1",
     "n8n-workflow": "^1.79.0",
     "typescript": "^5.0.0"
   }

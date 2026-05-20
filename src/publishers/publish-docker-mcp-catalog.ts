@@ -280,12 +280,22 @@ export async function publishDockerMcpCatalog(
     );
   }
 
+  // Logo URL — same unpkg.com path the cline + mcpso issue bodies use.
+  // The npm tarball includes assets/ so unpkg serves the file with no
+  // auth. publish-docker-mcp-catalog runs AFTER publish-npm (workflow
+  // dependency), so the URL is live by the time the catalog reviewers
+  // see the submission. Without the icon the catalog renders a generic
+  // box — caught when Hugo reviewed the v1.0.7 listing across stores.
+  const logoPath = distribution.logo_path ?? 'assets/logo.png';
+  const logoUrl = `https://unpkg.com/${distribution.npm_package_name}@${input.version}/${logoPath}`;
+
   const data = {
     mcp_name: input.mcp_name,
     version: input.version,
     docker_image_name: distribution.docker_image_name,
     license: distribution.license,
     description,
+    icon_url: logoUrl,
     environment_variables: envVars,
     tools,
   };

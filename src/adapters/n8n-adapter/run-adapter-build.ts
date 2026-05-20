@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { buildN8nNodeSpec } from './build-node-spec.js';
 import { refineWithLlm } from './refine-with-llm.js';
 import { generateN8nNode } from './generate-n8n-node.js';
+import { loadDistributionConfig } from '../../distribution/load-distribution-config.js';
 
 // Story 5.6b: orchestrator CLI that the publish.yml `generate-n8n-adapter`
 // job invokes. Chains the 4 atomic adapter pieces (build spec → refine →
@@ -131,8 +132,23 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
   // 2. Optional LLM refine — silent no-op when ANTHROPIC_API_KEY isn't set.
   const refinement = await refineWithLlm({ spec });
 
-  // 3. Render the n8n node tree.
-  await generateN8nNode({ spec: refinement.spec, outputDir });
+  // 3. Render the n8n node tree (with source logo when shipped).
+  //    Re-loading .distribution.yaml is cheap; the spec only carries a
+  //    boolean flag (iconBundled), the absolute logo path lives on the
+  //    source-side filesystem and stays out of the spec to keep it
+  //    IO-pure for unit tests.
+  let sourceLogoAbsPath: string | undefined;
+  if (refinement.spec.iconBundled) {
+    const distribution = await loadDistributionConfig(repoRoot, opts.mcpName);
+    if (distribution.logo_path) {
+      sourceLogoAbsPath = path.resolve(packageDir, distribution.logo_path);
+    }
+  }
+  await generateN8nNode({
+    spec: refinement.spec,
+    outputDir,
+    ...(sourceLogoAbsPath ? { sourceLogoAbsPath } : {}),
+  });
 
   // Drop the spec next to the generated tree so Layer 1 (lint) has its
   // truth source without re-running buildN8nNodeSpec.
