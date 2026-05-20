@@ -30,7 +30,7 @@ function sampleSpec(): McpbBundleSpec {
       { envName: 'TEST_API_KEY', configKey: 'test_api_key', title: 'Api Key', description: 'k', sensitive: true, required: true },
     ],
     entryPoint: 'server/index.js',
-    smitheryNamespace: 'g-digital-by-Garrigues',
+    smitheryNamespace: 'g-digital',
   };
 }
 

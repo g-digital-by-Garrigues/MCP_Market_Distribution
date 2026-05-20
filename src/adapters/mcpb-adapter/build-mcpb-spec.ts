@@ -70,7 +70,7 @@ export class BuildMcpbBundleSpecError extends Error {
   }
 }
 
-const DEFAULT_SMITHERY_NAMESPACE = 'g-digital-by-Garrigues';
+const DEFAULT_SMITHERY_NAMESPACE = 'g-digital';
 
 function toTitleCase(kebab: string): string {
   return kebab

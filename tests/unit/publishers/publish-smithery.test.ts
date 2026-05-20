@@ -17,7 +17,7 @@ function silentLogger() {
   return { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 }
 
-const NS = 'g-digital-by-Garrigues';
+const NS = 'g-digital';
 const QUALIFIED = `${NS}/multi-tool`;
 
 function makeFetch(probe: { version?: string; status?: string } = {}): SmitheryFetch {

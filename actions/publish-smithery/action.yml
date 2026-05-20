@@ -23,9 +23,9 @@ inputs:
     required: false
     default: ""
   smithery_namespace:
-    description: "Smithery org namespace. Defaults to g-digital-by-Garrigues."
+    description: "Smithery org namespace. Defaults to 'g-digital' — this is the namespace Hugo registered in smithery.ai under the g-digital-Bot account, and it is NOT the same as the GitHub org name 'g-digital-by-Garrigues'. The Smithery namespace + the GitHub org are independent identifiers that happen to live in adjacent infra; do not assume they align. Override per-MCP via the workflow_dispatch input when a future MCP onboards under a different Smithery namespace."
     required: false
-    default: "g-digital-by-Garrigues"
+    default: "g-digital"
   smithery_token:
     description: "SMITHERY_TOKEN secret (service token with publish scope on the namespace). Required for non-dry-run."
     required: false
