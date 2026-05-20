@@ -3,6 +3,22 @@
   "started_at": "2026-05-20T17:12:44.614Z",
   "status": "partial",
   "targets": {
+    "cline": {
+      "attempts": [
+        {
+          "at": "2026-05-20T18:00:34.253Z",
+          "attempt": 1,
+          "duration_ms": 1822,
+          "pipeline_run_id": "26180276894-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/cline/mcp-marketplace/issues/1566"
+        }
+      ],
+      "last_attempt_at": "2026-05-20T18:00:34.253Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/cline/mcp-marketplace/issues/1566",
+      "version_published": "1.0.10"
+    },
     "docker-hub": {
       "attempts": [
         {
@@ -25,6 +41,71 @@
       "last_attempt_at": "2026-05-20T17:22:22.751Z",
       "status": "succeeded",
       "target_url": "https://hub.docker.com/r/gdigital/ead-factory",
+      "version_published": "1.0.10"
+    },
+    "docker-mcp-catalog": {
+      "attempts": [
+        {
+          "at": "2026-05-20T18:00:34.253Z",
+          "attempt": 1,
+          "duration_ms": 4559,
+          "pipeline_run_id": "26180276894-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/docker/mcp-registry/pull/3686"
+        }
+      ],
+      "last_attempt_at": "2026-05-20T18:00:34.253Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/3686",
+      "version_published": "1.0.10"
+    },
+    "mcp-publisher": {
+      "attempts": [
+        {
+          "at": "2026-05-20T18:00:34.253Z",
+          "attempt": 1,
+          "duration_ms": 124902,
+          "error_message": "mcp-publisher publish --dry-run exited 1: Error: publish failed: server returned status 504: <html>\r\n<head><title>504 Gateway Time-out</title></head>\r\n<body>\r\n<center><h1>504 Gateway Time-out</h1></center>\r\n<hr><center>nginx</center>\r\n</body>\r\n</html>",
+          "pipeline_run_id": "26180276894-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fead-factory/1.0.10"
+        }
+      ],
+      "last_attempt_at": "2026-05-20T18:00:34.253Z",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fead-factory/1.0.10",
+      "version_published": null
+    },
+    "mcpso": {
+      "attempts": [
+        {
+          "at": "2026-05-20T18:00:34.253Z",
+          "attempt": 1,
+          "duration_ms": 2166,
+          "pipeline_run_id": "26180276894-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/chatmcp/mcpso/issues/2437"
+        }
+      ],
+      "last_attempt_at": "2026-05-20T18:00:34.253Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/chatmcp/mcpso/issues/2437",
+      "version_published": "1.0.10"
+    },
+    "n8n": {
+      "attempts": [
+        {
+          "at": "2026-05-20T18:00:34.253Z",
+          "attempt": 1,
+          "duration_ms": 15539,
+          "pipeline_run_id": "26180276894-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.10"
+        }
+      ],
+      "last_attempt_at": "2026-05-20T18:00:34.253Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.10",
       "version_published": "1.0.10"
     },
     "npm": {
@@ -82,12 +163,20 @@
           "pipeline_run_id": "26180093373-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.10"
+        },
+        {
+          "at": "2026-05-20T18:00:34.253Z",
+          "attempt": 7,
+          "duration_ms": 3061,
+          "pipeline_run_id": "26180276894-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.10"
         }
       ],
-      "last_attempt_at": "2026-05-20T17:54:48.200Z",
-      "status": "failed",
-      "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-factory/1.0.10",
-      "version_published": null
+      "last_attempt_at": "2026-05-20T18:00:34.253Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-factory/v/1.0.10",
+      "version_published": "1.0.10"
     },
     "smithery": {
       "attempts": [
@@ -114,6 +203,6 @@
       "version_published": "1.0.10"
     }
   },
-  "updated_at": "2026-05-20T17:54:48.200Z",
+  "updated_at": "2026-05-20T18:00:34.253Z",
   "version": "1.0.10"
 }
