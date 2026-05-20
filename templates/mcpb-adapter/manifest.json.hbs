@@ -17,13 +17,7 @@
   "license": "MIT",{{#if iconPath}}
   "icon": "{{iconPath}}",{{/if}}
   "keywords": {{json keywords}},
-  "tools_generated": false,
-  "tools": [
-{{#each operations}}    {
-      "name": "{{this.name}}",
-      "description": {{json this.description}}
-    }{{#unless @last}},{{/unless}}
-{{/each}}  ],
+  "tools_generated": true,
   "server": {
     "type": "node",
     "entry_point": "{{entryPoint}}",

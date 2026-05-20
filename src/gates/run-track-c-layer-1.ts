@@ -200,18 +200,19 @@ async function checkManifest(opts: RunTrackCLayer1Options): Promise<TrackCLayer1
   if (!m.homepage || m.homepage.length === 0) {
     issues.push("homepage must be set");
   }
-  if (m.tools_generated !== false) {
-    issues.push("tools_generated must be explicitly false (we declare the full tool set at manifest-build time)");
+  // tools_generated must be true. We deliberately do NOT emit tools[] in
+  // the manifest because the mcpb v0.3 strictObject schema rejects
+  // anything beyond {name, description?} (no inputSchema/input_schema)
+  // while Smithery's deploy API REQUIRES richer per-tool objects — the
+  // two upstream consumers are incompatible right now. Declaring
+  // tools_generated: true tells hosts "the server reports its tools via
+  // runtime tools/list" which is true for any MCP and lets both
+  // consumers be happy. Caught on v1.0.8 publish run #26156942921.
+  if (m.tools_generated !== true) {
+    issues.push("tools_generated must be true (we discover tools via runtime tools/list; manifest doesn't carry them)");
   }
-  if (!Array.isArray(m.tools) || m.tools.length !== spec.operations.length) {
-    issues.push(`tools[] must have ${spec.operations.length} entries (got ${Array.isArray(m.tools) ? m.tools.length : 'undefined'})`);
-  } else {
-    const expected = new Set(spec.operations.map((o) => o.name));
-    const got = new Set(m.tools.map((t) => t.name ?? ''));
-    const missing = [...expected].filter((n) => !got.has(n));
-    if (missing.length > 0) {
-      issues.push(`tools[] missing entries for: ${missing.join(', ')}`);
-    }
+  if (m.tools !== undefined) {
+    issues.push("tools[] must NOT be present in the manifest — see the comment above for the upstream-incompatibility rationale");
   }
   if (spec.iconPath && m.icon !== spec.iconPath) {
     issues.push(`icon='${m.icon}' expected '${spec.iconPath}'`);
