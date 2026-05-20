@@ -31,7 +31,7 @@ import {
 //      still renders consistently.
 
 const SMITHERY_CLI_PACKAGE = '@smithery/cli@^4.11.1';
-const DEFAULT_SMITHERY_NAMESPACE = 'g-digital-by-Garrigues';
+const DEFAULT_SMITHERY_NAMESPACE = 'g-digital';
 const PUBLISH_TIMEOUT_MS = 5 * 60_000;
 
 export interface PublishSmitheryInput {

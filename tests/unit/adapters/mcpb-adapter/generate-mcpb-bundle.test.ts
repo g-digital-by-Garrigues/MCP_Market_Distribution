@@ -38,7 +38,7 @@ function sampleSpec(): McpbBundleSpec {
       },
     ],
     entryPoint: 'server/index.js',
-    smitheryNamespace: 'g-digital-by-Garrigues',
+    smitheryNamespace: 'g-digital',
   };
 }
 
@@ -143,7 +143,7 @@ describe('generateMcpbBundle', () => {
     expect(readme).toContain('`TEST_API_KEY`');
     expect(readme).toContain('`TEST_BASE_URL`');
     // The Smithery install line carries the org-qualified name.
-    expect(readme).toContain('smithery mcp install g-digital-by-Garrigues/multi-tool');
+    expect(readme).toContain('smithery mcp install g-digital/multi-tool');
   });
 
   it('throws when the source MCP has no dist/ (caller forgot to build first)', async () => {

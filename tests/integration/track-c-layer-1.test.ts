@@ -39,7 +39,7 @@ function sampleSpec(): McpbBundleSpec {
       },
     ],
     entryPoint: 'server/index.js',
-    smitheryNamespace: 'g-digital-by-Garrigues',
+    smitheryNamespace: 'g-digital',
   };
 }
 
