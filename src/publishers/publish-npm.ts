@@ -293,6 +293,22 @@ export async function publishNpm(
       'registry=https://registry.npmjs.org/',
     ];
     await writeNpmrc(npmrcPath, lines.join('\n') + '\n');
+  } else if (hasOidc) {
+    // OIDC path: write a CLEAN .npmrc with just the registry URL — NO
+    // auth lines. Without this, the inherited NPM_CONFIG_USERCONFIG
+    // (set by setup-node@v4 at $RUNNER_TEMP/.npmrc) points npm at a
+    // file containing `_authToken=${NODE_AUTH_TOKEN}` which expands to
+    // setup-node's placeholder literal `XXXXX-XXXXX-XXXXX-XXXXX`. npm
+    // then sends that bogus token as Authorization on the PUT, mixing
+    // auths with the OIDC token + provenance, and the registry rejects
+    // with the misleading `404 Not Found - PUT`. Pointing
+    // npm_config_userconfig at our own auth-free file forces npm to
+    // rely on the OIDC token exchange + --provenance flag alone.
+    // Caught on the v1.0.8 publish run #26157830356 where the
+    // provenance signed successfully but the PUT still 404'd because
+    // the OIDC token was being shadowed by setup-node's placeholder.
+    const lines = ['registry=https://registry.npmjs.org/'];
+    await writeNpmrc(npmrcPath, lines.join('\n') + '\n');
   }
 
   try {
@@ -304,13 +320,14 @@ export async function publishNpm(
     if (!isDryRun && !useTokenAuth) publishArgs.push('--provenance');
     const result = await exec('npm', publishArgs, {
       cwd: input.package_dir,
-      // Token path: point npm at the publisher's .npmrc with the
-      // literal token. OIDC path: leave npm_config_userconfig unset
-      // so npm reads the runner's default config (with whatever
-      // setup-node@v4 wrote at $RUNNER_TEMP/.npmrc) and lets
-      // --provenance + the ACTIONS_ID_TOKEN_REQUEST_URL env do the
-      // OIDC exchange directly.
-      env: useTokenAuth ? { npm_config_userconfig: npmrcPath } : {},
+      // Both paths point npm at OUR .npmrc:
+      //   - Token path: has the literal auth token line.
+      //   - OIDC path: has only `registry=...` (no auth). This isolates
+      //     us from setup-node@v4's `$RUNNER_TEMP/.npmrc` which has a
+      //     placeholder token that would otherwise shadow the OIDC
+      //     handshake. See the writeNpmrc branch above for the full
+      //     rationale + the bug history that drove this.
+      env: { npm_config_userconfig: npmrcPath },
     });
     const duration = now() - started;
     if (result.exitCode !== 0) {
@@ -364,7 +381,11 @@ export async function publishNpm(
       metadata: { auth_mode: useTokenAuth ? 'npm_token' : 'oidc' },
     });
   } finally {
-    if (useTokenAuth) await removeNpmrc(npmrcPath);
+    // Both auth paths now write a .npmrc (token path with auth lines,
+    // OIDC path with just `registry=...`); both need cleanup so we
+    // don't leak a file into the package_dir that could affect a
+    // subsequent dry-run / retry inside the same job.
+    if (useTokenAuth || hasOidc) await removeNpmrc(npmrcPath);
   }
 }
 
