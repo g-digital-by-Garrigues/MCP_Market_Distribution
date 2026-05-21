@@ -332,8 +332,8 @@ describe('generateN8nNode', () => {
   it('index.ts re-exports both classes', async () => {
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const idx = await fs.readFile(path.join(outputDir, 'index.ts'), 'utf8');
-    expect(idx).toContain("export { MultiTool } from './nodes/MultiTool/MultiTool.node'");
-    expect(idx).toContain("export { MultiToolApi } from './credentials/MultiToolApi.credentials'");
+    expect(idx).toContain("export { MultiTool } from './nodes/MultiTool/MultiTool.node.js'");
+    expect(idx).toContain("export { MultiToolApi } from './credentials/MultiToolApi.credentials.js'");
   });
 
   it('clean=true wipes leftover files in the output dir before re-rendering', async () => {
