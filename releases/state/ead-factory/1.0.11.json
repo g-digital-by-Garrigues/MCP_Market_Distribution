@@ -1,7 +1,7 @@
 {
   "mcp_name": "ead-factory",
   "started_at": "2026-05-21T09:27:08.387Z",
-  "status": "partial",
+  "status": "complete",
   "targets": {
     "cline": {
       "attempts": [
@@ -93,12 +93,20 @@
           "pipeline_run_id": "26217980591-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/n8n/%40g-digital%2Fn8n-nodes-ead-factory/1.0.11"
+        },
+        {
+          "at": "2026-05-21T10:38:08.953Z",
+          "attempt": 2,
+          "duration_ms": 13452,
+          "pipeline_run_id": "26220689814-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.11"
         }
       ],
-      "last_attempt_at": "2026-05-21T09:40:48.623Z",
-      "status": "failed",
-      "target_url": "https://example.invalid/dry-run/n8n/%40g-digital%2Fn8n-nodes-ead-factory/1.0.11",
-      "version_published": null
+      "last_attempt_at": "2026-05-21T10:38:08.953Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-factory/v/1.0.11",
+      "version_published": "1.0.11"
     },
     "npm": {
       "attempts": [
@@ -142,6 +150,6 @@
       "version_published": "1.0.11"
     }
   },
-  "updated_at": "2026-05-21T09:40:48.623Z",
+  "updated_at": "2026-05-21T10:38:08.953Z",
   "version": "1.0.11"
 }
