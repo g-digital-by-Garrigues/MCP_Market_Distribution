@@ -15,12 +15,13 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import * as path from 'node:path';
 
-// Absolute path to dist/mcp-server.js — the bundled MCP server emitted
-// by tsup. It contains {{sourceMcpPackageName}} + @modelcontextprotocol/sdk
+// Absolute path to dist/mcp-server.mjs — the bundled MCP server emitted
+// by tsup (ESM, .mjs so Node.js loads it as ES module regardless of the
+// package's "type" field). It contains {{sourceMcpPackageName}} + @modelcontextprotocol/sdk
 // inlined, so no node_modules lookup is needed at n8n runtime.
 // Resolved once at module load; each execute() spawns a fresh process
 // with per-call credentials in env (no cross-execution credential bleed).
-const MCP_SERVER_PATH = path.join(__dirname, '..', '..', 'mcp-server.js');
+const MCP_SERVER_PATH = path.join(__dirname, '..', '..', 'mcp-server.mjs');
 
 export class {{className}} implements INodeType {
   description: INodeTypeDescription = {
