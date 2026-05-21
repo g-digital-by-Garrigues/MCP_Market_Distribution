@@ -14,6 +14,7 @@ const FIXTURES_DIR = path.resolve(
 const MULTI_TOOL_STUB = path.join(FIXTURES_DIR, 'server-multi-tool.mjs');
 const METHOD_NOT_FOUND_STUB = path.join(FIXTURES_DIR, 'server-rejects-method.mjs');
 const AUTH_ERROR_STUB = path.join(FIXTURES_DIR, 'server-auth-error.mjs');
+const POLLABLE_ERROR_STUB = path.join(FIXTURES_DIR, 'server-pollable-error.mjs');
 
 function specForMultiTool(): N8nNodeSpec {
   return {
@@ -114,6 +115,39 @@ describe('Track B — Layer 3 (per-operation smoke)', () => {
     });
     expect(result.passed).toBe(true);
     expect(result.operations_checked).toEqual(['do_thing']);
+  }, 30_000);
+
+  it('classifies pollable / task-based-execution responses as structurally valid (tool exists, demands callToolStream)', async () => {
+    const spec: N8nNodeSpec = {
+      ...specForMultiTool(),
+      operations: [
+        {
+          name: 'pollable_tool',
+          displayName: 'Pollable Tool',
+          description: '',
+          properties: [
+            {
+              name: 'id',
+              displayName: 'Id',
+              type: 'string',
+              default: '',
+              required: true,
+              showForOperation: 'pollable_tool',
+            },
+          ],
+        },
+      ],
+    };
+    const result = await runTrackBLayer3({
+      mcpName: 'pollable',
+      spec,
+      packageDir: os.tmpdir(),
+      serverCommand: process.execPath,
+      serverArgs: [POLLABLE_ERROR_STUB],
+      timeoutMs: 10_000,
+    });
+    expect(result.passed).toBe(true);
+    expect(result.operations_checked).toEqual(['pollable_tool']);
   }, 30_000);
 
   it("fails when the MCP rejects every tools/call with method-not-found (codegen drift signal)", async () => {

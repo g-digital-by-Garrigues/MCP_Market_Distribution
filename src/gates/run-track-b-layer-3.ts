@@ -146,6 +146,17 @@ function classifySampleResult(r: InspectorSampleCallResult): { ok: boolean; reas
   if (/network|econn|enotfound|fetch failed|backend/.test(err)) {
     return { ok: true, reason: 'MCP responded with a backend/network error (structurally valid)' };
   }
+  // Pollable/long-running tools: the server returns -32600 (Invalid Request)
+  // saying "use client.experimental.tasks.callToolStream() instead".
+  // This is proof that (a) the tool EXISTS in tools/list and (b) the MCP
+  // received and routed the call — it just demands a different calling
+  // convention. Structurally valid; not a codegen-drift signal.
+  if (/task[- ]based execution|calltoolstream|experimental\.?tasks/.test(err)) {
+    return {
+      ok: true,
+      reason: 'MCP advertised the tool as pollable (requires tasks.callToolStream); tool exists, structurally valid',
+    };
+  }
   return { ok: false, reason: `MCP returned an unclassified error: ${(r.error ?? '').slice(0, 300)}` };
 }
 
