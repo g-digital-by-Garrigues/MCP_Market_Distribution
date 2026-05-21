@@ -1,0 +1,58 @@
+{
+  "mcp_name": "gocertius",
+  "started_at": "2026-05-21T16:07:56.530Z",
+  "status": "partial",
+  "targets": {
+    "docker-hub": {
+      "attempts": [
+        {
+          "at": "2026-05-21T16:07:56.530Z",
+          "attempt": 1,
+          "duration_ms": 103220,
+          "pipeline_run_id": "26237635210-1",
+          "status": "succeeded",
+          "target_url": "https://hub.docker.com/r/gdigital/gocertius"
+        }
+      ],
+      "last_attempt_at": "2026-05-21T16:07:56.530Z",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/gocertius",
+      "version_published": "1.0.0"
+    },
+    "npm": {
+      "attempts": [
+        {
+          "at": "2026-05-21T16:07:56.530Z",
+          "attempt": 1,
+          "duration_ms": 3535,
+          "error_message": "npm publish exited 1: npm warn publish npm auto-corrected some errors in your package.json when publishing.  Please run \"npm pkg fix\" to address these errors.\nnpm warn publish errors corrected:\nnpm warn publish \"bin[mcp-gocertius]\" script name was cleaned\nnpm warn publish \"repository.url\" was normalized to \"git+https://github.com/g-digital-by-Garrigues/GoCertius_MCP.git\"\nnpm notice\nnpm notice 📦  @g-digital/mcp-gocerti",
+          "pipeline_run_id": "26237635210-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-gocertius/1.0.0"
+        }
+      ],
+      "last_attempt_at": "2026-05-21T16:07:56.530Z",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-gocertius/1.0.0",
+      "version_published": null
+    },
+    "smithery": {
+      "attempts": [
+        {
+          "at": "2026-05-21T16:07:56.530Z",
+          "attempt": 1,
+          "duration_ms": 9833,
+          "pipeline_run_id": "26237635210-1",
+          "status": "succeeded",
+          "target_url": "https://smithery.ai/server/g-digital/gocertius"
+        }
+      ],
+      "last_attempt_at": "2026-05-21T16:07:56.530Z",
+      "status": "succeeded",
+      "target_url": "https://smithery.ai/server/g-digital/gocertius",
+      "version_published": "1.0.0"
+    }
+  },
+  "updated_at": "2026-05-21T16:07:56.530Z",
+  "version": "1.0.0"
+}
