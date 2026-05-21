@@ -193,10 +193,16 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
   });
 
   // Step 4: server.json (Story 1.6)
+  // Normalise the identifier: if npm_package_name is unscoped (e.g.
+  // "mcp-gocertius" rather than "@g-digital/mcp-gocertius"), prepend
+  // npm_scope so the registry identifier matches the published package.
+  const fullPackageName = distribution.npm_package_name.startsWith('@')
+    ? distribution.npm_package_name
+    : `${distribution.npm_scope}/${distribution.npm_package_name}`;
   const serverJson = await generateServerJson({
     config: {
       reverse_dns_name: distribution.reverse_dns_name,
-      npm_package_name: distribution.npm_package_name,
+      npm_package_name: fullPackageName,
       mcp_schema_version: config.mcp_schema_version,
     },
     packageJson: sourcePkgInitial as {
