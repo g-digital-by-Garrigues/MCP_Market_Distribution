@@ -21,6 +21,7 @@ function sampleSpec(): N8nNodeSpec {
     credentialParamName: 'multiToolApi',
     sourceRepoUrl: 'https://github.com/test/test-mcp',
     author: 'g-digital by Garrigues',
+    mcpBinRelPath: 'dist/cli.js',
     operations: [
       {
         name: 'get_widget',
@@ -99,10 +100,12 @@ describe('generateN8nNode', () => {
     expect(result.filesWritten.sort((a, b) => a.localeCompare(b))).toEqual([
       'credentials/MultiToolApi.credentials.ts',
       'index.ts',
+      'mcp-server-entry.ts',
       'nodes/MultiTool/MultiTool.node.ts',
       'package.json',
       'README.md',
       'tsconfig.json',
+      'tsup.config.ts',
     ]);
     // Every file actually exists on disk.
     for (const rel of result.filesWritten) {
@@ -169,18 +172,22 @@ describe('generateN8nNode', () => {
     expect(pkg.devDependencies.copyfiles).toBeDefined();
   });
 
-  it('package.json declares the source MCP as a dependency with matching version + n8n loader hints', async () => {
+  it('package.json has zero runtime deps (n8n Verified) and source MCP + SDK in devDependencies (Approach B)', async () => {
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const pkg = JSON.parse(await fs.readFile(path.join(outputDir, 'package.json'), 'utf8')) as {
       name: string;
       version: string;
       dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
       n8n: { credentials: string[]; nodes: string[] };
     };
     expect(pkg.name).toBe('@g-digital/n8n-nodes-multi-tool');
     expect(pkg.version).toBe('1.0.0');
-    expect(pkg.dependencies['@g-digital/mcp-multi-tool']).toBe('1.0.0');
-    expect(pkg.dependencies['@modelcontextprotocol/sdk']).toBeDefined();
+    // n8n Verified requires zero runtime dependencies.
+    expect(Object.keys(pkg.dependencies)).toEqual([]);
+    // Source MCP + SDK are bundled by tsup — must be in devDependencies.
+    expect(pkg.devDependencies['@g-digital/mcp-multi-tool']).toBe('1.0.0');
+    expect(pkg.devDependencies['@modelcontextprotocol/sdk']).toBeDefined();
     expect(pkg.n8n.nodes).toEqual(['dist/nodes/MultiTool/MultiTool.node.js']);
     expect(pkg.n8n.credentials).toEqual(['dist/credentials/MultiToolApi.credentials.js']);
   });

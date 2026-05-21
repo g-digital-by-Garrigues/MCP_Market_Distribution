@@ -16,9 +16,8 @@
     "{{nodeName}}"
   ],
   "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc && copyfiles -u 0 \"nodes/**/*.png\" dist",
+    "build": "tsup && copyfiles -u 0 \"nodes/**/*.png\" dist",
     "lint": "eslint nodes credentials --ext .ts",
     "prepublishOnly": "npm run build"
   },
@@ -34,17 +33,17 @@
       "dist/nodes/{{className}}/{{className}}.node.js"
     ]
   },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.0.0",
-    "{{sourceMcpPackageName}}": "{{version}}"
-  },
+  "dependencies": {},
   "peerDependencies": {
     "n8n-workflow": ">=1.79.0"
   },
   "devDependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
     "@types/node": "^20.0.0",
     "copyfiles": "^2.4.1",
     "n8n-workflow": "^1.79.0",
-    "typescript": "^5.0.0"
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0",
+    "{{sourceMcpPackageName}}": "{{version}}"
   }
 }

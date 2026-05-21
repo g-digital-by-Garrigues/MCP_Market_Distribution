@@ -22,6 +22,7 @@ function sampleSpec(): N8nNodeSpec {
     credentialParamName: 'multiToolApi',
     sourceRepoUrl: 'https://github.com/test/test-mcp',
     author: 'g-digital by Garrigues',
+    mcpBinRelPath: 'dist/cli.js',
     operations: [
       {
         name: 'get_widget',
@@ -88,12 +89,12 @@ describe('Track B — Layer 1 (structural lint)', () => {
   it('fails package_json when the source MCP dep is not pinned to spec.version', async () => {
     const spec = sampleSpec();
     await generateN8nNode({ spec, outputDir: nodeDir });
-    // Corrupt the package.json's source-MCP dep version.
+    // Corrupt the package.json's source-MCP dep version (in devDependencies — Approach B).
     const pkgPath = path.join(nodeDir, 'package.json');
     const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
-      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
     };
-    pkg.dependencies[spec.sourceMcpPackageName] = '0.0.1';
+    pkg.devDependencies[spec.sourceMcpPackageName] = '0.0.1';
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
     const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
     expect(result.passed).toBe(false);
@@ -112,9 +113,9 @@ describe('Track B — Layer 1 (structural lint)', () => {
     await generateN8nNode({ spec, outputDir: nodeDir });
     const pkgPath = path.join(nodeDir, 'package.json');
     const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
-      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
     };
-    pkg.dependencies[spec.sourceMcpPackageName] = `file:./g-digital-mcp-multi-tool-${spec.version}.tgz`;
+    pkg.devDependencies[spec.sourceMcpPackageName] = `file:./g-digital-mcp-multi-tool-${spec.version}.tgz`;
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
     await fs.writeFile(
       path.join(nodeDir, '.adapter-build.json'),
@@ -130,9 +131,9 @@ describe('Track B — Layer 1 (structural lint)', () => {
     await generateN8nNode({ spec, outputDir: nodeDir });
     const pkgPath = path.join(nodeDir, 'package.json');
     const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
-      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
     };
-    pkg.dependencies[spec.sourceMcpPackageName] = `file:./stale-0.0.1.tgz`;
+    pkg.devDependencies[spec.sourceMcpPackageName] = `file:./stale-0.0.1.tgz`;
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
     await fs.writeFile(
       path.join(nodeDir, '.adapter-build.json'),
@@ -149,9 +150,9 @@ describe('Track B — Layer 1 (structural lint)', () => {
     await generateN8nNode({ spec, outputDir: nodeDir });
     const pkgPath = path.join(nodeDir, 'package.json');
     const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
-      dependencies: Record<string, string>;
+      devDependencies: Record<string, string>;
     };
-    pkg.dependencies[spec.sourceMcpPackageName] = `file:./g-digital-mcp-multi-tool-${spec.version}.tgz`;
+    pkg.devDependencies[spec.sourceMcpPackageName] = `file:./g-digital-mcp-multi-tool-${spec.version}.tgz`;
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
     // .adapter-build.json absent → defaults to "expect semver pin".
     const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });

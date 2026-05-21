@@ -242,6 +242,11 @@ export async function buildN8nNodeSpec(
   const credentialClassName = `${className}Api`;
   const credentialParamName = `${paramName}Api`;
 
+  // Resolve the source MCP's CLI entry (used by mcp-server-entry.ts.hbs
+  // so tsup can trace + bundle the dep tree into a self-contained
+  // dist/mcp-server.js). Same helper used by the inspector harness above.
+  const mcpBinRelPath = await resolveMcpEntryRelPath(input.packageDir);
+
   const spec: N8nNodeSpec = {
     packageName: npmPackageName(distribution.npm_scope, distribution.n8n_adapter_target_name),
     sourceMcpPackageName: distribution.npm_package_name,
@@ -258,6 +263,7 @@ export async function buildN8nNodeSpec(
     credentialParamName,
     sourceRepoUrl: resolveRepoUrl(distribution, server),
     author: 'g-digital by Garrigues',
+    mcpBinRelPath,
     // Flag set when the source MCP ships a logo via .distribution.yaml.
     // The generator (Story 5.1c, extended for icon support) copies the
     // logo into nodes/<Class>/icon.png and emits `icon: 'file:icon.png'`
