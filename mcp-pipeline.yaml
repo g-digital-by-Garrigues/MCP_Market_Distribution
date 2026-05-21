@@ -28,3 +28,11 @@ mcps:
   # lives in that repo's .distribution.yaml.
   ead-factory:
     repo_url: "https://github.com/g-digital-by-Garrigues/EAD-Factory-MCP"
+
+  # GoCertius MCP — certified evidence, dossiers, notifications, certified chats.
+  gocertius:
+    repo_url: "https://github.com/g-digital-by-Garrigues/GoCertius_MCP"
+
+  # EAD Enterprise Suite MCP — signature workflows + GoCertius surface for enterprise legal processes.
+  ead-enterprise-suite:
+    repo_url: "https://github.com/g-digital-by-Garrigues/EAD_Enterprise_Suite_MCP"
