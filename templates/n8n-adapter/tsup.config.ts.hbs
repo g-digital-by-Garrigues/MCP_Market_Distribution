@@ -35,14 +35,18 @@ export default defineConfig([
   {
     // Standalone MCP server: spawned per execute() by the n8n node with
     // credentials injected via process.env. Bundles {{sourceMcpPackageName}}
-    // and @modelcontextprotocol/sdk (server-side) so dist/mcp-server.js
+    // and @modelcontextprotocol/sdk (server-side) so dist/mcp-server.mjs
     // is fully self-contained — no node_modules lookup at n8n runtime.
+    //
+    // ESM format (.mjs) is required when the source MCP uses "type":"module"
+    // with top-level await — tsup cannot transpile top-level await to CJS.
     entry: { 'mcp-server': 'mcp-server-entry.ts' },
-    format: ['cjs'],
+    format: ['esm'],
     target: 'node18',
     outDir: 'dist',
     bundle: true,
     splitting: false,
     dts: false,
+    outExtension: () => ({ js: '.mjs' }),
   },
 ]);
