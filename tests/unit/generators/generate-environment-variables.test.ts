@@ -155,6 +155,78 @@ describe('generateEnvironmentVariables — NFR-S5 / NFR-R1', () => {
   });
 });
 
+describe('generateEnvironmentVariables — structured metadata (# description:/isSecret:/isRequired:)', () => {
+  it('uses # description: as the description and ignores preceding free-text comments (section headers)', () => {
+    const manifest = generateEnvironmentVariables({
+      envExampleContent: [
+        '# Flow 1: Email / password',
+        '# description: Your account email address',
+        '# isSecret: false',
+        'MCP_AUTH_EMAIL=',
+      ].join('\n'),
+      credentialHelpUrl: HELP_URL,
+    });
+    expect(manifest.environmentVariables[0]?.description).toBe(
+      'Your account email address',
+    );
+  });
+
+  it('honors # isSecret: true|false instead of guessing from the name suffix', () => {
+    const manifest = generateEnvironmentVariables({
+      envExampleContent: [
+        '# description: A username with no name-suffix hint',
+        '# isSecret: true',
+        'MCP_AUTH_HANDLE=',
+      ].join('\n'),
+      credentialHelpUrl: HELP_URL,
+    });
+    expect(manifest.environmentVariables[0]?.isSecret).toBe(true);
+    expect(manifest.environmentVariables[0]?.description).toContain(HELP_URL);
+  });
+
+  it('honors # isRequired: false (so PORT-style optional vars stop landing in smithery.required)', () => {
+    const manifest = generateEnvironmentVariables({
+      envExampleContent: [
+        '# Transport (optional)',
+        '# description: HTTP port when running in hosted mode',
+        '# isRequired: false',
+        '# isSecret: false',
+        'PORT=8080',
+      ].join('\n'),
+      credentialHelpUrl: HELP_URL,
+    });
+    expect(manifest.environmentVariables[0]).toMatchObject({
+      description: 'HTTP port when running in hosted mode',
+      isRequired: false,
+      isSecret: false,
+      name: 'PORT',
+    });
+  });
+
+  it('falls back to free-text concatenation when no structured field is present (back-compat with EAD-Factory)', () => {
+    const manifest = generateEnvironmentVariables({
+      envExampleContent: '# Okta application client ID.\n# Required.\nOKTA_CLIENT_ID=\n',
+      credentialHelpUrl: HELP_URL,
+    });
+    expect(manifest.environmentVariables[0]?.description).toBe(
+      'Okta application client ID. Required.',
+    );
+  });
+
+  it('a malformed boolean in # isSecret falls back to the name-suffix heuristic', () => {
+    const manifest = generateEnvironmentVariables({
+      envExampleContent: [
+        '# description: My secret-y thing',
+        '# isSecret: probably',
+        'API_KEY=',
+      ].join('\n'),
+      credentialHelpUrl: HELP_URL,
+    });
+    // API_KEY matches the *_KEY suffix → isSecret stays true via heuristic.
+    expect(manifest.environmentVariables[0]?.isSecret).toBe(true);
+  });
+});
+
 describe('generateEnvironmentVariables — edge cases', () => {
   it('returns an empty array for an empty .env.example', () => {
     const manifest = generateEnvironmentVariables({
