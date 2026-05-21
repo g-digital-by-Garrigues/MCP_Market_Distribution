@@ -140,4 +140,12 @@ export interface N8nNodeSpec {
    * logo.
    */
   iconBundled?: boolean;
+  /**
+   * Relative path of the source MCP's CLI entry within its package,
+   * derived from `package.json#bin` (e.g. `dist/cli.js`). The
+   * `mcp-server-entry.ts` template uses this to require the CLI
+   * bootstrap; tsup traces and bundles the dep tree at adapter
+   * build time so `dist/mcp-server.js` is self-contained at runtime.
+   */
+  mcpBinRelPath: string;
 }

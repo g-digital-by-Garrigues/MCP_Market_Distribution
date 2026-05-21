@@ -126,14 +126,16 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
         name: string;
         version: string;
         dependencies: Record<string, string>;
+        devDependencies: Record<string, string>;
         n8n: { credentials: string[]; nodes: string[] };
       };
       expect(pkg.name).toBe('@g-digital/n8n-nodes-multi-tool');
       expect(pkg.version).toBe('1.0.0');
-      // Source MCP is pinned exactly to the same version so the n8n
-      // node always travels with a matching MCP.
-      expect(pkg.dependencies['@g-digital/mcp-multi-tool']).toBe('1.0.0');
-      expect(pkg.dependencies['@modelcontextprotocol/sdk']).toBeDefined();
+      // Approach B: zero runtime deps (n8n Verified). Source MCP + SDK
+      // are bundled by tsup and live in devDependencies.
+      expect(Object.keys(pkg.dependencies)).toEqual([]);
+      expect(pkg.devDependencies['@g-digital/mcp-multi-tool']).toBe('1.0.0');
+      expect(pkg.devDependencies['@modelcontextprotocol/sdk']).toBeDefined();
       expect(pkg.n8n.nodes).toEqual(['dist/nodes/MultiTool/MultiTool.node.js']);
       expect(pkg.n8n.credentials).toEqual(['dist/credentials/MultiToolApi.credentials.js']);
 

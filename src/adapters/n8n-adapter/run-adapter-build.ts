@@ -61,11 +61,20 @@ async function substituteSourceMcpForDryRun(opts: {
   const pkgRaw = await fs.readFile(adapterPkgPath, 'utf8');
   const pkg = JSON.parse(pkgRaw) as {
     dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
   };
-  if (!pkg.dependencies?.[sourceMcpPackageName]) {
+  // Approach B: source MCP dep lives in devDependencies (bundled by tsup).
+  // Fall back to dependencies for forward-compat with any legacy layout.
+  const depField: 'dependencies' | 'devDependencies' | null =
+    pkg.devDependencies?.[sourceMcpPackageName] != null
+      ? 'devDependencies'
+      : pkg.dependencies?.[sourceMcpPackageName] != null
+        ? 'dependencies'
+        : null;
+  if (!depField) {
     return {
       substituted: false,
-      warning: `adapter package.json has no dependency on '${sourceMcpPackageName}' — nothing to substitute.`,
+      warning: `adapter package.json has no dependency on '${sourceMcpPackageName}' in dependencies or devDependencies — nothing to substitute.`,
     };
   }
 
@@ -94,7 +103,8 @@ async function substituteSourceMcpForDryRun(opts: {
     return { substituted: false, warning };
   }
 
-  pkg.dependencies[sourceMcpPackageName] = `file:./${tarballName}`;
+  // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+  pkg[depField]![sourceMcpPackageName] = `file:./${tarballName}`;
   await fs.writeFile(adapterPkgPath, JSON.stringify(pkg, null, 2) + '\n');
   return { substituted: true, tarballPath: path.join(outputDir, tarballName) };
 }

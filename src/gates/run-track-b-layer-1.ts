@@ -107,6 +107,7 @@ interface PackageJsonShape {
   name?: string;
   version?: string;
   dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
   peerDependencies?: Record<string, string>;
   n8n?: {
     n8nNodesApiVersion?: number;
@@ -176,29 +177,39 @@ async function checkPackageJson(opts: RunTrackBLayer1Options): Promise<TrackBLay
   if (!pkg.n8n?.credentials?.includes(expectedCredPath)) {
     issues.push(`n8n.credentials must include '${expectedCredPath}'`);
   }
-  const sourceDep = pkg.dependencies?.[spec.sourceMcpPackageName];
+  // n8n Verified Community Node requirement: zero runtime dependencies.
+  // @modelcontextprotocol/sdk and the source MCP are bundled by tsup
+  // into dist/; they belong in devDependencies, not dependencies.
+  const runtimeDepKeys = Object.keys(pkg.dependencies ?? {});
+  if (runtimeDepKeys.length > 0) {
+    issues.push(
+      `dependencies must be empty (n8n Verified requires zero runtime deps); found: ${runtimeDepKeys.join(', ')}`,
+    );
+  }
+  // Source MCP and SDK must be in devDependencies (bundled by tsup).
+  const sourceDep = pkg.devDependencies?.[spec.sourceMcpPackageName];
   if (!sourceDep) {
-    issues.push(`dependencies must include '${spec.sourceMcpPackageName}'`);
+    issues.push(`devDependencies must include '${spec.sourceMcpPackageName}'`);
   } else if (substitutedSourceDepExpected) {
     // Dry-run with substitution applied — accept a `file:./<...>.tgz`
     // form. Sanity-check that the filename references spec.version so
     // we still catch a stale-tarball drift.
     if (!sourceDep.startsWith('file:')) {
       issues.push(
-        `dry-run substitution active but dependencies['${spec.sourceMcpPackageName}'] is '${sourceDep}' — expected a 'file:./<...>.tgz' link`,
+        `dry-run substitution active but devDependencies['${spec.sourceMcpPackageName}'] is '${sourceDep}' — expected a 'file:./<...>.tgz' link`,
       );
     } else if (!sourceDep.includes(spec.version)) {
       issues.push(
-        `dry-run substituted dependencies['${spec.sourceMcpPackageName}']='${sourceDep}' does not reference spec.version='${spec.version}'`,
+        `dry-run substituted devDependencies['${spec.sourceMcpPackageName}']='${sourceDep}' does not reference spec.version='${spec.version}'`,
       );
     }
   } else if (sourceDep !== spec.version) {
     issues.push(
-      `dependencies['${spec.sourceMcpPackageName}'] must pin version '${spec.version}', got '${sourceDep}'`,
+      `devDependencies['${spec.sourceMcpPackageName}'] must pin version '${spec.version}', got '${sourceDep}'`,
     );
   }
-  if (!pkg.dependencies?.['@modelcontextprotocol/sdk']) {
-    issues.push("dependencies must include '@modelcontextprotocol/sdk'");
+  if (!pkg.devDependencies?.['@modelcontextprotocol/sdk']) {
+    issues.push("devDependencies must include '@modelcontextprotocol/sdk'");
   }
   if (!pkg.peerDependencies?.['n8n-workflow']) {
     issues.push("peerDependencies must include 'n8n-workflow'");

@@ -1,0 +1,11 @@
+// Standalone MCP server bootstrap — bundled by tsup into dist/mcp-server.js.
+//
+// The n8n node ({{className}}.node.ts) spawns this per execute() call,
+// passing credentials via process.env. Each spawn is an isolated process
+// so process.env is read fresh — no cross-execution credential bleed.
+//
+// tsup bundles {{sourceMcpPackageName}} and @modelcontextprotocol/sdk
+// into dist/mcp-server.js so it is fully self-contained at n8n runtime.
+
+// eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
+require('{{sourceMcpPackageName}}/{{mcpBinRelPath}}');

@@ -15,31 +15,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import * as path from 'node:path';
 
-// Resolve the source MCP's bin entry once at module load. We rely on
-// `<sourceMcpPackageName>/package.json#bin` being present (it is for every
-// MCP the g-digital pipeline publishes); without that we'd have to fall
-// back to `dist/server.js` by convention.
-function resolveMcpBinPath(): string {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const pkg = require('{{sourceMcpPackageName}}/package.json') as {
-    bin?: string | Record<string, string>;
-  };
-  let relBin: string | undefined;
-  if (typeof pkg.bin === 'string') {
-    relBin = pkg.bin;
-  } else if (pkg.bin && typeof pkg.bin === 'object') {
-    const first = Object.values(pkg.bin)[0];
-    if (typeof first === 'string') relBin = first;
-  }
-  if (!relBin) {
-    throw new Error(
-      "{{sourceMcpPackageName}}'s package.json has no #bin entry — cannot determine the MCP server script to spawn.",
-    );
-  }
-  // require.resolve for an absolute-style "<pkg>/<sub>" works in CJS.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  return require.resolve(path.posix.join('{{sourceMcpPackageName}}', relBin));
-}
+// Absolute path to dist/mcp-server.js — the bundled MCP server emitted
+// by tsup. It contains {{sourceMcpPackageName}} + @modelcontextprotocol/sdk
+// inlined, so no node_modules lookup is needed at n8n runtime.
+// Resolved once at module load; each execute() spawns a fresh process
+// with per-call credentials in env (no cross-execution credential bleed).
+const MCP_SERVER_PATH = path.join(__dirname, '..', '..', 'mcp-server.js');
 
 export class {{className}} implements INodeType {
   description: INodeTypeDescription = {
@@ -126,10 +107,9 @@ export class {{className}} implements INodeType {
       if (typeof value === 'string') env[key] = value;
     }
 
-    const binPath = resolveMcpBinPath();
     const transport = new StdioClientTransport({
       command: process.execPath,
-      args: [binPath],
+      args: [MCP_SERVER_PATH],
       env,
     });
     const client = new Client(
