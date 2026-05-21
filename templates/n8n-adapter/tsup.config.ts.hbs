@@ -2,14 +2,13 @@ import { defineConfig } from 'tsup';
 
 export default defineConfig([
   {
-    // n8n node bundle: node class + credentials + barrel index.
+    // n8n node bundle: node class + credentials (NOT index — see config below).
     // Bundles @modelcontextprotocol/sdk (client-side) so no node_modules
     // are needed at n8n runtime. n8n-workflow stays external (peer dep).
     // Icon PNGs are handled by the `copyfiles` step in the build script.
     entry: {
       'nodes/{{className}}/{{className}}.node': 'nodes/{{className}}/{{className}}.node.ts',
       'credentials/{{credentialClassName}}.credentials': 'credentials/{{credentialClassName}}.credentials.ts',
-      index: 'index.ts',
     },
     format: ['cjs'],
     target: 'node18',
@@ -19,6 +18,19 @@ export default defineConfig([
     splitting: false,
     dts: false,
     external: ['n8n-workflow'],
+  },
+  {
+    // Barrel index: transpile-only (no bundling) so index.ts's re-exports
+    // are left as require() calls that resolve to the CJS files built above.
+    // Must NOT be in the same esbuild build as the node/credentials entries —
+    // esbuild externalizes cross-entry imports, emitting bare
+    // require('./….node') which Node.js misinterprets as a native addon.
+    entry: { index: 'index.ts' },
+    format: ['cjs'],
+    target: 'node18',
+    outDir: 'dist',
+    bundle: false,
+    dts: false,
   },
   {
     // Standalone MCP server: spawned per execute() by the n8n node with
