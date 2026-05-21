@@ -17,6 +17,7 @@ function baseSpec(): N8nNodeSpec {
     credentialParamName: 'eadFactoryApi',
     sourceRepoUrl: 'https://github.com/g/x',
     author: 'g-digital by Garrigues',
+    mcpBinRelPath: 'dist/cli.js',
     operations: [
       {
         name: 'get_evidence',
