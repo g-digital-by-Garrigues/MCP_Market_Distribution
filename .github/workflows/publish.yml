@@ -82,7 +82,6 @@ on:
         required: false
         type: boolean
         default: false
-    secrets: inherit
 
 # `cancel-in-progress: false` is deliberate: a publish in flight must not be
 # pre-empted by a follow-up tag — we'd rather queue and process serially per
