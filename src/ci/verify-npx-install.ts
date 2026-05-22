@@ -64,7 +64,11 @@ export async function runNpxVerification(
     };
   }
 
-  const pkg = `${distribution.npm_package_name}@${opts.version}`;
+  const rawName = distribution.npm_package_name;
+  const fullPackageName = rawName.startsWith('@')
+    ? rawName
+    : `${distribution.npm_scope}/${rawName}`;
+  const pkg = `${fullPackageName}@${opts.version}`;
 
   const harness = await runInspectorHarness({
     command: 'npx',
