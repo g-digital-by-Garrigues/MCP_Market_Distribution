@@ -83,6 +83,22 @@
       "target_url": "https://github.com/chatmcp/mcpso/issues/2463",
       "version_published": "1.0.0"
     },
+    "n8n": {
+      "attempts": [
+        {
+          "at": "2026-05-22T09:11:56.339Z",
+          "attempt": 1,
+          "duration_ms": 15494,
+          "pipeline_run_id": "26278896799-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-enterprise-suite/v/1.0.0"
+        }
+      ],
+      "last_attempt_at": "2026-05-22T09:11:56.339Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-enterprise-suite/v/1.0.0",
+      "version_published": "1.0.0"
+    },
     "npm": {
       "attempts": [
         {
@@ -116,6 +132,6 @@
       "version_published": "1.0.0"
     }
   },
-  "updated_at": "2026-05-22T08:50:57.098Z",
+  "updated_at": "2026-05-22T09:11:56.339Z",
   "version": "1.0.0"
 }
