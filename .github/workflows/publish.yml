@@ -47,6 +47,43 @@ on:
         type: boolean
         default: false
 
+  workflow_call:
+    # Called from each source MCP repo thin publish.yml wrapper.
+    # The calling workflow must grant id-token:write, contents:write,
+    # and pull-requests:write. All pipeline secrets (BOT_PAT, NPM_TOKEN,
+    # DOCKERHUB_*, SMITHERY_TOKEN, ANTHROPIC_API_KEY) must be org-level
+    # or per-repo secrets in the calling repo so secrets: inherit works.
+    inputs:
+      mcp_name:
+        description: "MCP name (kebab-case key in mcp-pipeline.yaml#mcps)"
+        required: true
+        type: string
+      version:
+        description: "Semver to publish (e.g., 1.0.0)"
+        required: true
+        type: string
+      step:
+        description: "target/phase: gate/publish/all or single target ID"
+        required: false
+        type: string
+        default: all
+      track:
+        description: "Track(s) to run: a / b / both"
+        required: false
+        type: string
+        default: both
+      bump:
+        description: "Explicit bump override (patch/minor/major or empty)"
+        required: false
+        type: string
+        default: ""
+      dry_run:
+        description: "Dry-run mode (skip actual publish actions)"
+        required: false
+        type: boolean
+        default: false
+    secrets: inherit
+
 # `cancel-in-progress: false` is deliberate: a publish in flight must not be
 # pre-empted by a follow-up tag — we'd rather queue and process serially per
 # (mcp_name, version) tuple. For tag pushes the group falls back to the tag
@@ -73,8 +110,11 @@ jobs:
       # Tag (v<version>) for real publishes; 'main' for dry-runs.
       repo_ref: ${{ steps.resolve-mcp-repo.outputs.repo_ref }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -189,8 +229,11 @@ jobs:
       RETRY_TRACK: ${{ inputs.track }}
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       # Required so read-ledger.ts can load skip_targets from the MCP's
       # .distribution.yaml (Phase C of v1.1 moved per-MCP fields out of
       # this repo's mcp-pipeline.yaml). Without this step, the loader
@@ -223,8 +266,11 @@ jobs:
     needs: setup
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -247,8 +293,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
 
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
@@ -293,8 +342,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
 
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
@@ -351,8 +403,11 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
       DOCKER_BUILDKIT: '1'
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
 
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
@@ -408,8 +463,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -550,8 +608,11 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
         with:
@@ -582,8 +643,11 @@ jobs:
       DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
         with:
@@ -630,8 +694,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
         with:
@@ -670,8 +737,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Publish via composite action
         id: publish
         uses: ./actions/publish-smithery
@@ -708,8 +778,11 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
         with:
@@ -747,8 +820,11 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
         with:
@@ -786,8 +862,11 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
         with:
@@ -822,8 +901,11 @@ jobs:
     env:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
 
       # Required so verify-npx-install.ts can load .distribution.yaml
       # to learn the npm package name to probe. Same fix pattern as
@@ -895,8 +977,11 @@ jobs:
       # Claude. The refine pass short-circuits when the key is absent.
       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
         with:
@@ -961,8 +1046,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Download adapter artifact
         uses: actions/download-artifact@v4
         with:
@@ -998,8 +1086,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Download adapter artifact
         uses: actions/download-artifact@v4
         with:
@@ -1034,8 +1125,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         # Layer 3 spawns the source MCP (dist/server.js) to roundtrip
         # each operation through tools/call, so we need the source tree
@@ -1106,8 +1200,11 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Download adapter artifact
         uses: actions/download-artifact@v4
         with:
@@ -1142,8 +1239,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Checkout MCP source
         uses: ./actions/checkout-mcp-source
         with:
@@ -1208,8 +1308,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Download bundle artifact
         uses: actions/download-artifact@v4
         with:
@@ -1245,8 +1348,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Download bundle artifact
         uses: actions/download-artifact@v4
         with:
@@ -1282,8 +1388,11 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
       - name: Download bundle artifact
         uses: actions/download-artifact@v4
         with:
@@ -1343,12 +1452,14 @@ jobs:
       VERSION: ${{ needs.setup.outputs.version }}
       WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
-      - name: Checkout
+      - name: Checkout pipeline
         uses: actions/checkout@v4
         with:
-          # We need full history so the commit-and-push step can rebase
-          # against any concurrent commits on main / the PR branch.
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
           fetch-depth: 0
+          # Cross-repo write access for release-report commit to pipeline main.
+          token: ${{ secrets.BOT_PAT }}
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -1461,9 +1572,9 @@ jobs:
           while [ "$attempt" -lt "$max_attempts" ]; do
             attempt=$((attempt + 1))
             echo "Attempt $attempt of $max_attempts..."
-            git fetch origin "${GITHUB_REF_NAME}"
+            git fetch origin main
             # Discards anything left in the tree from a prior loop iteration.
-            git reset --hard "origin/${GITHUB_REF_NAME}"
+            git reset --hard origin/main
             # Replay our render — overwrites whatever the upstream commit
             # had at the same path (intended: latest run's report wins).
             mkdir -p "$(dirname "$REPORT_PATH")"
@@ -1474,7 +1585,7 @@ jobs:
               exit 0
             fi
             git commit -m "docs(release): ${MCP_NAME} v${VERSION} release report"
-            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            if git push origin "HEAD:main"; then
               echo "Pushed on attempt $attempt."
               exit 0
             fi
