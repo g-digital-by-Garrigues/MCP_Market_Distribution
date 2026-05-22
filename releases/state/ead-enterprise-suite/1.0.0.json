@@ -1,0 +1,121 @@
+{
+  "mcp_name": "ead-enterprise-suite",
+  "started_at": "2026-05-22T08:50:57.098Z",
+  "status": "complete",
+  "targets": {
+    "cline": {
+      "attempts": [
+        {
+          "at": "2026-05-22T08:50:57.098Z",
+          "attempt": 1,
+          "duration_ms": 3799,
+          "pipeline_run_id": "26277930517-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/cline/mcp-marketplace/issues/1642"
+        }
+      ],
+      "last_attempt_at": "2026-05-22T08:50:57.098Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/cline/mcp-marketplace/issues/1642",
+      "version_published": "1.0.0"
+    },
+    "docker-hub": {
+      "attempts": [
+        {
+          "at": "2026-05-22T08:50:57.098Z",
+          "attempt": 1,
+          "duration_ms": 111285,
+          "pipeline_run_id": "26277930517-1",
+          "status": "succeeded",
+          "target_url": "https://hub.docker.com/r/gdigital/ead-enterprise-suite"
+        }
+      ],
+      "last_attempt_at": "2026-05-22T08:50:57.098Z",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/ead-enterprise-suite",
+      "version_published": "1.0.0"
+    },
+    "docker-mcp-catalog": {
+      "attempts": [
+        {
+          "at": "2026-05-22T08:50:57.098Z",
+          "attempt": 1,
+          "duration_ms": 5799,
+          "pipeline_run_id": "26277930517-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/docker/mcp-registry/pull/3762"
+        }
+      ],
+      "last_attempt_at": "2026-05-22T08:50:57.098Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/3762",
+      "version_published": "1.0.0"
+    },
+    "mcp-publisher": {
+      "attempts": [
+        {
+          "at": "2026-05-22T08:50:57.098Z",
+          "attempt": 1,
+          "duration_ms": 1385,
+          "pipeline_run_id": "26277930517-1",
+          "status": "skipped",
+          "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-enterprise-suite"
+        }
+      ],
+      "last_attempt_at": "2026-05-22T08:50:57.098Z",
+      "status": "skipped",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-enterprise-suite",
+      "version_published": "1.0.0"
+    },
+    "mcpso": {
+      "attempts": [
+        {
+          "at": "2026-05-22T08:50:57.098Z",
+          "attempt": 1,
+          "duration_ms": 2471,
+          "pipeline_run_id": "26277930517-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/chatmcp/mcpso/issues/2463"
+        }
+      ],
+      "last_attempt_at": "2026-05-22T08:50:57.098Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/chatmcp/mcpso/issues/2463",
+      "version_published": "1.0.0"
+    },
+    "npm": {
+      "attempts": [
+        {
+          "at": "2026-05-22T08:50:57.098Z",
+          "attempt": 1,
+          "duration_ms": 5016,
+          "pipeline_run_id": "26277930517-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-enterprise-suite/v/1.0.0"
+        }
+      ],
+      "last_attempt_at": "2026-05-22T08:50:57.098Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-enterprise-suite/v/1.0.0",
+      "version_published": "1.0.0"
+    },
+    "smithery": {
+      "attempts": [
+        {
+          "at": "2026-05-22T08:50:57.098Z",
+          "attempt": 1,
+          "duration_ms": 8852,
+          "pipeline_run_id": "26277930517-1",
+          "status": "succeeded",
+          "target_url": "https://smithery.ai/server/g-digital/ead-enterprise-suite"
+        }
+      ],
+      "last_attempt_at": "2026-05-22T08:50:57.098Z",
+      "status": "succeeded",
+      "target_url": "https://smithery.ai/server/g-digital/ead-enterprise-suite",
+      "version_published": "1.0.0"
+    }
+  },
+  "updated_at": "2026-05-22T08:50:57.098Z",
+  "version": "1.0.0"
+}
