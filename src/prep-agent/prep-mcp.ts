@@ -222,7 +222,7 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
   const installBlocks = await generateAllInstallBlocks({
     config: {
       reverse_dns_name: distribution.reverse_dns_name,
-      npm_package_name: distribution.npm_package_name,
+      npm_package_name: fullPackageName,
       credential_help_url: distribution.credential_help_url,
     },
     environmentVariables: envManifest.environmentVariables,
