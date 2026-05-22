@@ -168,7 +168,9 @@ function resolveRepoUrl(distribution: DistributionConfig, server: ServerJsonShap
   // distribution config doesn't carry the repo URL directly (that
   // lives in mcp-pipeline.yaml#repo_url, which this loader doesn't
   // expose). Best-effort fallback uses npm_package_name.
-  return `https://www.npmjs.com/package/${encodeURIComponent(distribution.npm_package_name)}`;
+  const rawName = distribution.npm_package_name;
+  const scopedName = rawName.startsWith('@') ? rawName : `${distribution.npm_scope}/${rawName}`;
+  return `https://www.npmjs.com/package/${encodeURIComponent(scopedName)}`;
 }
 
 export async function buildN8nNodeSpec(
@@ -247,9 +249,14 @@ export async function buildN8nNodeSpec(
   // dist/mcp-server.js). Same helper used by the inspector harness above.
   const mcpBinRelPath = await resolveMcpEntryRelPath(input.packageDir);
 
+  const rawMcpPkgName = distribution.npm_package_name;
+  const fullMcpPackageName = rawMcpPkgName.startsWith('@')
+    ? rawMcpPkgName
+    : `${distribution.npm_scope}/${rawMcpPkgName}`;
+
   const spec: N8nNodeSpec = {
     packageName: npmPackageName(distribution.npm_scope, distribution.n8n_adapter_target_name),
-    sourceMcpPackageName: distribution.npm_package_name,
+    sourceMcpPackageName: fullMcpPackageName,
     version: input.version,
     className,
     displayName: resourceLabel,
