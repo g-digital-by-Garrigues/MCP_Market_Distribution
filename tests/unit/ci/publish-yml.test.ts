@@ -305,11 +305,11 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(script).not.toContain('git pull --rebase');
     // The race-safe shape.
     expect(script).toContain('rendered_content=$(cat "$REPORT_PATH")');
-    expect(script).toContain('git fetch origin "${GITHUB_REF_NAME}"');
-    expect(script).toContain('git reset --hard "origin/${GITHUB_REF_NAME}"');
+    expect(script).toContain('git fetch origin main');
+    expect(script).toContain('git reset --hard origin/main');
     expect(script).toMatch(/printf .*"\$rendered_content".*> "\$REPORT_PATH"/);
     expect(script).toContain('max_attempts=5');
-    expect(script).toContain('git push origin "HEAD:${GITHUB_REF_NAME}"');
+    expect(script).toContain('git push origin "HEAD:main"');
   });
 
   it('npx-verification job runs checkout-mcp-source so verify-npx-install.ts can read .distribution.yaml', () => {
