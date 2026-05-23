@@ -14,7 +14,7 @@
 | mcp-publisher | ⏭ skipped | https://example.invalid/skipped/mcp-publisher | 0 |
 | mcpso | ⏭ skipped | https://example.invalid/skipped/mcpso | 0 |
 | n8n | ⏭ skipped | https://example.invalid/skipped/n8n | 0 |
-| npm | ❌ failed | https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-enterprise-suite/1.1.0 | 4397 |
+| npm | ❌ failed | https://example.invalid/dry-run/npm/%40g-digital%2Fmcp-ead-enterprise-suite/1.1.0 | 4434 |
 | smithery | ⏭ skipped | https://example.invalid/skipped/smithery | 0 |
 
 ## Failures
