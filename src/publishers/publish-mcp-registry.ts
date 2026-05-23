@@ -281,6 +281,28 @@ export async function publishMcpRegistry(
       isDryRun &&
       /NPM package .* not found.*status:\s*404/i.test(preflight.stderr);
 
+    // Idempotency during preflight: if the version is already in the registry,
+    // the --dry-run also returns 400 "cannot publish duplicate version". Treat
+    // this as skipped (same logic as the real-publish path below) so re-runs
+    // of a partially-failed release don't flip the report to red.
+    if (preflight.exitCode !== 0 && isDuplicateVersionError(preflight.stderr)) {
+      const duration = now() - started;
+      log.info('target.publish_skipped', {
+        ...baseEvent,
+        reason: 'version_already_in_registry',
+        stderr_excerpt: preflight.stderr.trim().slice(0, 400),
+      });
+      return validate({
+        target: 'mcp-publisher',
+        status: 'skipped',
+        target_url: registryUrl(reverseDnsName),
+        version_published: input.version,
+        duration_ms: duration,
+        attempts: probe.attempts + 1,
+        dry_run: isDryRun,
+      });
+    }
+
     if (!isPackageNotFoundInDryRun) {
       const duration = now() - started;
       // Surface the CLI output to OUR stderr so the workflow log shows the
