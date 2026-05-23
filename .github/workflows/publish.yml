@@ -682,7 +682,8 @@ jobs:
       && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_mcp_publisher == 'true'
       && (needs.publish-npm.result == 'skipped'
-          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'skipped'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -768,7 +769,8 @@ jobs:
       && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_docker_mcp_catalog == 'true'
       && (needs.publish-npm.result == 'skipped'
-          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'skipped'))
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -810,7 +812,8 @@ jobs:
       && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_cline == 'true'
       && (needs.publish-npm.result == 'skipped'
-          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'skipped'))
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -852,7 +855,8 @@ jobs:
       && needs.track-a-layer-3.result == 'success'
       && needs.ledger-read.outputs.run_mcpso == 'true'
       && (needs.publish-npm.result == 'skipped'
-          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'skipped'))
     runs-on: ubuntu-latest
     outputs:
       result_json: ${{ steps.publish.outputs.result_json }}
@@ -1187,7 +1191,8 @@ jobs:
       && needs.ledger-read.outputs.run_n8n == 'true'
       && (needs.publish-npm.result == 'skipped'
           || needs.setup.outputs.dry_run == 'true'
-          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded'))
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'succeeded')
+          || contains(fromJson(needs.publish-npm.outputs.result_json || '{"status":"failed"}').status, 'skipped'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
