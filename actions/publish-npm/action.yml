@@ -36,6 +36,24 @@ runs:
         cache: pnpm
         registry-url: https://registry.npmjs.org/
 
+    - name: Ensure NODE_AUTH_TOKEN is non-empty for npm early-auth check
+      shell: bash
+      env:
+        NPM_TOKEN: ${{ env.NPM_TOKEN }}
+      run: |
+        # setup-node@v4 with registry-url writes $RUNNER_TEMP/.npmrc with
+        # _authToken=${NODE_AUTH_TOKEN}. When NODE_AUTH_TOKEN is empty (OIDC
+        # path — no NPM_TOKEN secret), npm fails with 404 on the early auth
+        # check before --provenance can swap in the real OIDC token for the
+        # PUT. Setting a non-empty placeholder satisfies the early check;
+        # npm publish --provenance then replaces it with the OIDC-derived
+        # token for the actual registry PUT.
+        if [ -z "${NPM_TOKEN:-}" ]; then
+          echo "NODE_AUTH_TOKEN=oidc-placeholder" >> "$GITHUB_ENV"
+        else
+          echo "NODE_AUTH_TOKEN=${NPM_TOKEN}" >> "$GITHUB_ENV"
+        fi
+
     - name: Install pipeline dependencies
       shell: bash
       run: pnpm install --frozen-lockfile

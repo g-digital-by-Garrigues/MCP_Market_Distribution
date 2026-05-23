@@ -405,7 +405,11 @@ function remediationForNpmFailure(stderr: string, name: string, version: string)
     return `Bump the version above ${version} and re-tag, OR if this re-run is intended to be idempotent, the version was already published — re-run /retry-publish?step=npm and the idempotency check will skip.`;
   }
   if (/OIDC|trusted publisher|provenance/i.test(stderr)) {
-    return `Visit https://www.npmjs.com/package/${name}/access and configure trusted publishing for repository g-digital-by-Garrigues/MCP_Market_Distribution + workflow publish.yml.`;
+    // GITHUB_REPOSITORY is the *calling* repo (e.g. EAD_Enterprise_Suite_MCP)
+    // when invoked via workflow_call — that is what the npm Trusted Publisher
+    // must be configured for, not MCP_Market_Distribution.
+    const callerRepo = process.env.GITHUB_REPOSITORY ?? 'g-digital-by-Garrigues/<mcp-source-repo>';
+    return `Visit https://www.npmjs.com/package/${name}/access and configure trusted publishing for repository ${callerRepo} + workflow publish.yml.`;
   }
   return `Check the npm publish output above, fix the underlying issue, then /retry-publish?step=npm.`;
 }
