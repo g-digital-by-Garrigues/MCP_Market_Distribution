@@ -356,7 +356,8 @@ function remediationForNpmFailure(stderr: string, name: string, version: string)
     return `Bump the source MCP version above ${version} and re-tag; the n8n adapter version tracks it 1:1 (FR32).`;
   }
   if (/OIDC|trusted publisher|provenance/i.test(stderr)) {
-    return `Bootstrap with NPM_TOKEN for the first publish of ${name}, then configure trusted publishing on npmjs.com at https://www.npmjs.com/package/${name}/access for subsequent releases.`;
+    const callerRepo = process.env.GITHUB_REPOSITORY ?? 'g-digital-by-Garrigues/<mcp-source-repo>';
+    return `Bootstrap with NPM_TOKEN for the first publish of ${name}, then configure trusted publishing on npmjs.com at https://www.npmjs.com/package/${name}/access for repository ${callerRepo} + workflow publish.yml.`;
   }
   return `Check the npm publish output above, fix the underlying issue, then /retry-publish?step=n8n.`;
 }
