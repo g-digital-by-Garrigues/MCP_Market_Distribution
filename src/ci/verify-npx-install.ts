@@ -87,13 +87,24 @@ export async function runNpxVerification(
   const errors: ErrorReport[] = [];
 
   if (harness.launch_error) {
-    errors.push(
-      publishError('npx_install_path', {
-        observation: `npx -y ${pkg} failed to launch: ${harness.launch_error}`,
-        cause: 'The published package could not be downloaded or executed via npx.',
-        action: `Verify the package's "bin" entry in pending-to-publish/${opts.mcpName}/package.json points at a node-executable file and that the file is included via package.json#files.`,
-      }),
-    );
+    // "Connection closed" (-32000) during launch can also occur when an
+    // auth-gated MCP exits cleanly during initialize — depending on timing
+    // the Inspector harness may report it as launch_error rather than
+    // initialize_error. Treat it the same way: per FR18 the pipeline cannot
+    // supply consumer credentials, so a Connection closed exit is expected,
+    // not a sign that the artifact is broken. Same rationale as the
+    // initialize_error branch below.
+    const isCredentialGatedExit =
+      /connection closed|-32000/i.test(harness.launch_error);
+    if (!isCredentialGatedExit) {
+      errors.push(
+        publishError('npx_install_path', {
+          observation: `npx -y ${pkg} failed to launch: ${harness.launch_error}`,
+          cause: 'The published package could not be downloaded or executed via npx.',
+          action: `Verify the package's "bin" entry in pending-to-publish/${opts.mcpName}/package.json points at a node-executable file and that the file is included via package.json#files.`,
+        }),
+      );
+    }
   } else {
     if (!harness.initialize_succeeded) {
       // "Connection closed" (-32000) during initialize means the server
