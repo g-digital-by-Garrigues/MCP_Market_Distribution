@@ -346,7 +346,7 @@ function classifyNpmFailure(stderr: string): string {
     return 'Transient network failure while contacting the npm registry.';
   }
   if (/OIDC|trusted publisher|provenance/i.test(stderr)) {
-    return 'npm OIDC/trusted-publisher rejected the request — for a brand-new n8n adapter package the trusted publisher must be configured via the npmjs.com UI before OIDC works.';
+    return 'npm OIDC/trusted-publisher rejected the request. Verify the trusted publisher is configured on npmjs.com for this exact (repo, workflow) pair.';
   }
   return 'npm publish failed for an unclassified reason — see stderr.';
 }
