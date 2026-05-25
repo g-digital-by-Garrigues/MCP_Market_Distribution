@@ -116,6 +116,21 @@ async function assertServerJsonExists(packageDir: string): Promise<void> {
   await fs.access(serverJsonPath);
 }
 
+// Read server.json#version. Used by the duplicate-version idempotency
+// check to distinguish genuine idempotency from a stale-clone bug
+// (where server.json declares a different version than the pipeline
+// is publishing — typically because the v<version> tag predates the
+// server.json bump, or /prep-mcp was skipped).
+async function readServerJsonVersion(packageDir: string): Promise<string | null> {
+  try {
+    const raw = await fs.readFile(path.join(packageDir, 'server.json'), 'utf8');
+    const parsed = JSON.parse(raw) as { version?: unknown };
+    return typeof parsed.version === 'string' ? parsed.version : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function publishMcpRegistry(
   input: PublishMcpRegistryInput,
   deps: PublishMcpRegistryDeps = {},
@@ -281,11 +296,59 @@ export async function publishMcpRegistry(
       isDryRun &&
       /NPM package .* not found.*status:\s*404/i.test(preflight.stderr);
 
-    // Idempotency during preflight: if the version is already in the registry,
-    // the --dry-run also returns 400 "cannot publish duplicate version". Treat
-    // this as skipped (same logic as the real-publish path below) so re-runs
-    // of a partially-failed release don't flip the report to red.
+    // "duplicate version" during preflight is ambiguous — we could be here
+    // for two distinct reasons:
+    //
+    //   (A) Genuine idempotency: the probe was slightly stale (cache,
+    //       race condition, propagation lag from a parallel pipeline) but
+    //       input.version really IS already in the registry. Treat as
+    //       skipped — re-runs of a partially-failed release shouldn't
+    //       flip the report to red.
+    //
+    //   (B) Stale clone: input.version is NOT in the registry (the probe
+    //       was correct — that's why we got past the present-and-equal
+    //       check at line 192), but server.json declares a DIFFERENT
+    //       version that IS in the registry. mcp-publisher sent that
+    //       stale version; the registry correctly rejected as duplicate.
+    //       This happens when the v<version> tag was created BEFORE
+    //       server.json was bumped, or /prep-mcp was skipped on a
+    //       manual bump (the exact bug that hit ead-enterprise-suite
+    //       v1.1.0 — the tag pointed at a commit where server.json
+    //       still declared 1.0.0).
+    //
+    // Distinguish (A) from (B) by reading server.json#version: if it
+    // matches input.version, we're in case (A) — silently skip. If it
+    // doesn't match, we're in case (B) — fail loudly with a clear
+    // diagnostic instead of silently masking the bug.
     if (preflight.exitCode !== 0 && isDuplicateVersionError(preflight.stderr)) {
+      const localVersion = await readServerJsonVersion(input.package_dir);
+      if (localVersion !== null && localVersion !== input.version) {
+        // Case (B): stale clone — fail loudly.
+        const duration = now() - started;
+        process.stderr.write(
+          `[publish-mcp-registry] STALE CLONE detected: server.json declares ${localVersion} but pipeline targets ${input.version}. Tag may predate server.json bump.\n`,
+        );
+        log.error('target.publish_failed', {
+          ...baseEvent,
+          reason: 'stale_server_json',
+          local_server_json_version: localVersion,
+        });
+        return validate({
+          target: 'mcp-publisher',
+          status: 'failed',
+          target_url: dryRunPlaceholderUrl('mcp-publisher', reverseDnsName, input.version),
+          version_published: null,
+          duration_ms: duration,
+          attempts: probe.attempts + 1,
+          dry_run: isDryRun,
+          error: {
+            message: `MCP Registry rejected as 'duplicate version' but local server.json declares ${localVersion} while pipeline targets ${input.version}.`,
+            cause: `The cloned source repo has a stale server.json — likely the v${input.version} tag was created BEFORE server.json was bumped, or /prep-mcp was not run on a manual version bump. mcp-publisher sent ${localVersion} (the stale value), which the registry correctly rejected as duplicate of an already-published release.`,
+            action: `Move the v${input.version} tag to a commit that has server.json#version = ${input.version}, OR open a PR to bump server.json + re-tag. Run /prep-mcp before tagging to regenerate all artifacts atomically.`,
+          },
+        });
+      }
+      // Case (A): genuine idempotency — the version really IS in the registry.
       const duration = now() - started;
       log.info('target.publish_skipped', {
         ...baseEvent,
