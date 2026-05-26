@@ -8,9 +8,11 @@ This document combines [Story 6.1](../../_bmad-output/planning-artifacts/epics.m
 
 In the v1.1 per-repo model, the pipeline (`MCP_Market_Distribution/publish.yml`) clones the source MCP at the `v<version>` tag at workflow time. **Whatever lives at that tag is what reaches every store.** If the tag points at a commit with stale artifacts, the pipeline ships the stale artifacts — silently, in some cases (see "Anti-patterns" below).
 
-The two failure modes we've already hit:
+The four failure modes we've already hit:
 - **Stale `server.json` at the tag**: the v1.1.0 tag was created after `package.json` was bumped but **before** `server.json` was bumped. The pipeline cloned a tag where `server.json` still said `1.0.0`; the MCP Official Registry correctly rejected the publish as a duplicate of the already-published v1.0.0; the pipeline silently marked it as `skipped`. Fixed in `publish-mcp-registry` (PR #139) by detecting the mismatch and failing loudly — but the operator-facing fix is **always run `/prep-mcp` before tagging** so this case never arises.
 - **Missing Trusted Publisher for n8n adapter package**: OIDC publish failed because `@g-digital/n8n-nodes-*` was created on npm but had no Trusted Publisher configured. Configure both the main MCP package AND its n8n adapter package — they're independent npm packages.
+- **Dockerfile / transport contract mismatch** (2026-05-26): EAD_Enterprise_Suite_MCP v1.2.0–1.2.2 and GoCertius_MCP v1.1.0–1.1.2 all failed Track A Layer 3. The Dockerfile (from `@suite/generator` template) declared `HEALTHCHECK CMD fetch http://localhost:8080/healthz` but did NOT set `ENV MCP_TRANSPORT=http`. `selectTransport()` defaults to stdio when the env is unset → port 8080 stays closed → HEALTHCHECK times out at 60s. ead-factory works because its Dockerfile bakes `ENV TRANSPORT=http`. Generator template fixed in `@suite/generator` PR #15. **The contract**: if your Dockerfile's HEALTHCHECK probes HTTP, your container MUST bake the transport env so the HTTP listener actually starts.
+- **Docker Hub anonymous pull rate-limit**: same 2026-05-26 incident. `docker build` failed at `[auth] library/node:pull token` because Layer 3 had no `docker/login-action` and the runner's shared IP had exhausted the anonymous quota. Fixed in pipeline PR #150 by authenticating before every L3 build using `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN`.
 
 ## Pre-release checklist
 
@@ -78,6 +80,8 @@ If either Trusted Publisher is missing or wrong, the npm step will fail with a 4
 
 ### 6. Create and push the tag — pointing at `main` HEAD
 
+**Canonical path is `git push`. Do not mix triggers.**
+
 ```bash
 git checkout main
 git pull
@@ -86,6 +90,8 @@ git push origin v<version>
 ```
 
 **The tag must be created from `main` AFTER the PR is merged.** A tag created before the merge will point at the pre-merge commit and the pipeline will clone stale artifacts.
+
+**Do not also fire `gh workflow run publish.yml ...` in the same release.** When GitHub Actions is healthy, both `gh api .../git/refs -X POST` AND `gh workflow run` produce a run each. The `concurrency` block in `publish.yml` (group `publish-<mcp>-<version>`, `cancel-in-progress: false`) serializes them so they never race, but the second run is wasted work and noise. Pick one trigger; the tag push is the canonical one. Use `workflow_dispatch` only for manual re-runs of an already-tagged release.
 
 If you created the tag too early, see "Recovery: fixing a tag that points at a stale commit" below.
 
@@ -131,6 +137,29 @@ These are things we've done that you should not do:
 - **Configuring the Trusted Publisher against `MCP_Market_Distribution`.** The OIDC token's `workflow_ref` is the caller (your source repo). Configure against the source MCP repo.
 - **Setting `NPM_TOKEN` permanently in the org.** Use OIDC. Restore `NPM_TOKEN` only for the bootstrap first-ever publish of a new package; remove it once the Trusted Publisher is configured.
 - **Force-moving published tags.** Bump to the next patch instead.
+- **Templating a Dockerfile without confirming it matches the source's transport defaults.** If `HEALTHCHECK` probes HTTP, the Dockerfile MUST bake the transport env (`ENV MCP_TRANSPORT=http` for generated MCPs, `ENV TRANSPORT=http` for ead-factory). Otherwise Layer 3 times out at 60s with the container never reaching `healthy`.
+- **Mixing trigger paths in the same release.** Either `git push origin <tag>` OR `gh workflow run publish.yml --ref main -f version=...` — not both. Both fire independently when GitHub Actions is healthy.
+- **Reflex retries when something fails.** After ~3 failed attempts on the same stage, stop and audit: read the gate output (cap is 2000 chars from the TAIL, so the real error IS there), compare against ead-factory's working setup, identify the contract you're violating. Iterating without diagnosis is how a 30-min release becomes a 4-hour debugging session.
+
+## If something goes wrong: where to look
+
+Common failure surfaces and the first thing to check:
+
+| Symptom | Likely cause | First thing to check |
+|---|---|---|
+| Setup job: "Remote branch v\<x.y.z\> not found" | Tag doesn't exist on GitHub | `git push origin v<version>` after merging the bump PR |
+| Setup job: unit tests fail | Pipeline changes broke existing tests OR pipeline ref isn't up to date | Check the failed test name; if it's in `tests/unit/`, fix the test in pipeline and re-merge |
+| Track A Layer 1: `hasMismatch: true` | `server.json#version` (or other artifact) doesn't match expected version | `/prep-mcp` wasn't run on the bump commit. Bump to next patch with full `/prep-mcp` regeneration |
+| Track A Layer 3: `docker build failed (exit 1): #2 [auth] library/node:pull token` | Docker Hub anon pull rate-limit hit; `docker/login-action` not configured | Verify `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN` org secrets exist; pipeline #150 added the login step in L3 |
+| Track A Layer 3: `ERR_PNPM_NO_LOCKFILE` | Dockerfile uses pnpm but project is npm | Rewrite Dockerfile to use `npm ci`. Long-term fix: PR to `@suite/generator` template |
+| Track A Layer 3: `Container did not reach 'healthy' within 60s` | Dockerfile HEALTHCHECK probes HTTP but `MCP_TRANSPORT` not set | Add `ENV MCP_TRANSPORT=http` (or `TRANSPORT=http` for ead-factory) to Dockerfile, bump patch, re-tag |
+| Any publisher: `401`/`403` | Missing secret OR wrong scope | Check the publisher's `cause`/`action` field; verify the named secret exists in the org and has the right scope (e.g. `SMITHERY_TOKEN` for `g-digital/*`, `BOT_PAT` with `public_repo`+`workflow`+`issues:write`) |
+| publish-npm: `E404` on a brand-new package | Trusted Publisher not yet configured (impossible before first publish) | First publish: temporarily set `NPM_TOKEN` org secret with `@g-digital/*` scope. After first publish, add Trusted Publisher entry on npmjs.com keyed to the source repo's `publish.yml`, then remove `NPM_TOKEN` |
+| publish-mcp-registry: `package-ownership verification failed: mcpName field missing in npm package` | `package.json` doesn't declare `mcpName` field matching `server.json#name` | Add `"mcpName": "io.github.g-digital-by-Garrigues/<name>"` to `package.json`, bump patch |
+
+Two reasons we keep hitting "L3 timeout / build failed":
+1. **Gate output was historically truncated to 200 chars** (the truncation cut off before the actual error). Pipeline #151/#153 widened to 2000 chars taken from the **tail** of stderr — the real error is in the gate's PR comment now. Read it first.
+2. **The Dockerfile template's contract with the source MCP's transport selection is not statically validated.** Pre-flight check for this is on the backlog (Phase 3 of the 2026-05-26 audit).
 
 ## See also
 
