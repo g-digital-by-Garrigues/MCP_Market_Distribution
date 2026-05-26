@@ -463,6 +463,20 @@ jobs:
       - name: Set up Docker Buildx (for BuildKit + layer caching)
         uses: docker/setup-buildx-action@v3
 
+      # Docker Hub anonymous pulls share a single rate-limit pool per public IP.
+      # GitHub Actions runners share IPs across many jobs, so anonymous `docker
+      # build` against an MCP Dockerfile that does `FROM node:*` started hitting
+      # `[auth] library/node:pull token for r.docker.io` failures on
+      # 2026-05-26 (EAD v1.2.1 + GoCertius v1.1.1 dispatches both failed here).
+      # Authenticated pulls have a much higher quota, so always log in before
+      # the build. Earlier ead-factory v1.0.x runs succeeded because the rate
+      # limit hadn't bitten yet — same pipeline code, harder constraint now.
+      - name: Log in to Docker Hub (authenticated pull avoids anon rate-limit)
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
