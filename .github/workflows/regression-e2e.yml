@@ -7,20 +7,21 @@ name: regression-e2e
 # release path, we catch it at review time — not at the next live tag
 # push.
 #
-# What this catches:
-#   ✓ publish.yml structural changes (job dependencies, `if:` conditions,
-#     env var routing, secrets visibility)
-#   ✓ Reusable-workflow contract changes (workflow_call inputs)
-#   ✓ Gate / publisher composite-action changes
+# What this catches (after merge, on the next live PR or via manual dispatch):
 #   ✓ Story 8.1 + 8.2 coherence checks against each MCP's current source
+#   ✓ Gate / publisher composite-action interaction with each MCP
+#   ✓ Idempotency behaviour across all 7 v1 stores
 #
 # What this does NOT catch (intentional limitation):
-#   ✗ TypeScript code changes inside src/. The `publish.yml` jobs use
-#     `actions/checkout@v4 with: ref: main` to fetch the pipeline code,
-#     so even when called from a PR they run against `main`'s TS. To
-#     catch TS regressions, rely on the unit-test suite + the next live
-#     pipeline run after merge. Parameterising the checkout `ref` to
-#     accept the PR branch is a future enhancement (backlog).
+#   ✗ Pipeline changes BEFORE merge. We use the cross-repo `@main`
+#     reference for the reusable workflow (the local `./` syntax causes
+#     GitHub startup_failure for reasons we have not isolated yet —
+#     see PR #143 + PR #144 debugging) so the regression sweep always
+#     runs against whatever publish.yml is on main. PR-pre-merge
+#     validation against the candidate pipeline code is therefore not
+#     possible with this workflow as-is; that's a future enhancement.
+#   ✗ TypeScript code changes inside src/: same reason. The unit-test
+#     suite covers these.
 #
 # Resource cost: a full dry-run touches 25+ jobs per MCP × 3 MCPs. Path
 # filters skip doc-only PRs so we don't burn CI on every README tweak.
@@ -61,7 +62,7 @@ permissions:
 jobs:
   ead-factory:
     name: Regression E2E — ead-factory
-    uses: ./.github/workflows/publish.yml
+    uses: g-digital-by-Garrigues/MCP_Market_Distribution/.github/workflows/publish.yml@main
     with:
       mcp_name: ead-factory
       # Pin a known-good current version. Re-pinning is a deliberate
@@ -77,7 +78,7 @@ jobs:
 
   ead-enterprise-suite:
     name: Regression E2E — ead-enterprise-suite
-    uses: ./.github/workflows/publish.yml
+    uses: g-digital-by-Garrigues/MCP_Market_Distribution/.github/workflows/publish.yml@main
     with:
       mcp_name: ead-enterprise-suite
       version: "1.1.1"
@@ -88,7 +89,7 @@ jobs:
 
   gocertius:
     name: Regression E2E — gocertius
-    uses: ./.github/workflows/publish.yml
+    uses: g-digital-by-Garrigues/MCP_Market_Distribution/.github/workflows/publish.yml@main
     with:
       mcp_name: gocertius
       version: "1.0.0"
