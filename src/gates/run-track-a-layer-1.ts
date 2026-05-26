@@ -8,6 +8,7 @@ import { Ajv2020 } from 'ajv/dist/2020.js';
 import { loadDistributionConfig } from '../distribution/load-distribution-config.js';
 import type { DistributionConfig } from '../schemas/distribution-config.schema.js';
 import { validateSourceFolder } from '../validators/validate-source-folder.js';
+import { validateVersionCoherence } from '../validators/validate-version-coherence.js';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
 
 const requireCjs = createRequire(import.meta.url);
@@ -47,6 +48,14 @@ export interface RunTrackALayer1Options {
   repoRoot: string;
   mcpName: string;
   pipelineRunId?: string;
+  /**
+   * Story 8.1: when provided, Layer 1 also runs the artifact version
+   * coherence check (package.json#version, server.json#version,
+   * smithery.yaml, install-blocks/*.md must all match expectedVersion).
+   * The workflow passes the pipeline's `input.version` here. Unit tests
+   * may omit it to test the legacy structural gate path in isolation.
+   */
+  expectedVersion?: string;
 }
 
 async function checkSource(
@@ -260,6 +269,34 @@ async function checkLicense(
   return { name: 'license', passed: true };
 }
 
+// Story 8.1: artifact version coherence gate.
+async function checkVersionCoherence(
+  mcpFolder: string,
+  mcpName: string,
+  expectedVersion: string,
+): Promise<CheckResult> {
+  const report = await validateVersionCoherence({ packageDir: mcpFolder, expectedVersion });
+  if (!report.hasMismatch) {
+    return { name: 'version-coherence', passed: true };
+  }
+  // Build a per-file remediation list. Each mismatched check carries its
+  // own found/expected pair — surface them all so the engineer doesn't
+  // play whack-a-mole across artifacts.
+  const lines = report.checks
+    .filter((c) => c.status === 'mismatch')
+    .map((c) => `${c.pathToVersion}: declares '${c.found}', pipeline expects '${expectedVersion}'`);
+  return {
+    name: 'version-coherence',
+    passed: false,
+    error: gateError('version_coherence', {
+      observation: `Artifact version mismatch — ${lines.length} file(s) declare a version different from the pipeline's input.version (${expectedVersion}): ${lines.join('; ')}.`,
+      cause: `The cloned tag points at a commit whose artifacts are not coherent with the requested publish version. Most likely the v${expectedVersion} tag was created BEFORE /prep-mcp regenerated the artifacts (or someone bumped only package.json by hand) — the exact bug that hit ead-enterprise-suite v1.1.0.`,
+      action: `Either move the v${expectedVersion} tag to a commit that has all artifacts at ${expectedVersion}, OR open a PR running /prep-mcp ${mcpName} ${expectedVersion} and re-tag from the merge. See docs/runbooks/release-checklist.md#recovery-fixing-a-tag-that-points-at-a-stale-commit.`,
+      source_path: report.mismatchedFiles.join(', '),
+    }),
+  };
+}
+
 export async function runTrackALayer1(
   opts: RunTrackALayer1Options,
 ): Promise<TrackALayer1Result> {
@@ -271,6 +308,9 @@ export async function runTrackALayer1(
   checks.push(await checkServerJson(mcpFolder));
   checks.push(await checkSmitheryYaml(mcpFolder));
   checks.push(await checkLicense(mcpFolder, distribution));
+  if (opts.expectedVersion !== undefined && opts.expectedVersion.length > 0) {
+    checks.push(await checkVersionCoherence(mcpFolder, opts.mcpName, opts.expectedVersion));
+  }
 
   const errors = checks.filter((c) => !c.passed).map((c) => c.error!);
   const passed = errors.length === 0;
@@ -289,13 +329,22 @@ export async function runTrackALayer1(
 async function main(): Promise<number> {
   const mcpName = process.argv[2];
   if (!mcpName || mcpName.startsWith('-')) {
-    process.stderr.write('Usage: tsx src/gates/run-track-a-layer-1.ts <mcp-name>\n');
+    process.stderr.write(
+      'Usage: tsx src/gates/run-track-a-layer-1.ts <mcp-name> [<expected-version>]\n',
+    );
     return 2;
   }
+  // Story 8.1: expectedVersion enables the artifact version coherence
+  // check. The CLI accepts it as argv[3] OR INPUT_VERSION env var (the
+  // workflow uses env to thread the value from setup outputs). When
+  // neither is provided, the legacy structural gate runs without the
+  // coherence check (used by some unit tests).
+  const expectedVersion = process.argv[3] ?? process.env.INPUT_VERSION ?? '';
   const result = await runTrackALayer1({
     repoRoot: process.cwd(),
     mcpName,
     pipelineRunId: process.env.PIPELINE_RUN_ID,
+    expectedVersion,
   });
   process.stdout.write(JSON.stringify(result, null, 2) + '\n');
   return result.passed ? 0 : 1;

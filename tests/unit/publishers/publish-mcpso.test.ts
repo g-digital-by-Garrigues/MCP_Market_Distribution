@@ -39,12 +39,12 @@ async function withRepoRoot(body: (repoRoot: string) => Promise<void>): Promise<
 describe('publishMcpSo', () => {
   beforeEach(() => silentLogger.info.mockClear());
 
-  it('happy path: opens an issue against chatmcp/mcp-directory with the canonical title', async () => {
+  it('happy path: opens an issue against chatmcp/mcpso with the canonical title', async () => {
     await withRepoRoot(async (repoRoot) => {
       const { exec, calls } = fakeExec(({ cmd, args }) => {
         if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') return { exitCode: 0, stdout: '[]' };
         if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'create') {
-          return { exitCode: 0, stdout: 'https://github.com/chatmcp/mcp-directory/issues/55\n' };
+          return { exitCode: 0, stdout: 'https://github.com/chatmcp/mcpso/issues/55\n' };
         }
         return { exitCode: 1, stderr: 'unexpected' };
       });
@@ -54,12 +54,12 @@ describe('publishMcpSo', () => {
       );
       expect(result.status).toBe('succeeded');
       expect(result.target).toBe('mcpso');
-      expect(result.target_url).toBe('https://github.com/chatmcp/mcp-directory/issues/55');
+      expect(result.target_url).toBe('https://github.com/chatmcp/mcpso/issues/55');
       const create = calls.find((c) => c.args[1] === 'create');
       expect(create?.args).toContain('--title');
       expect(create?.args).toContain('[Submission] ead-factory v1.0.0');
-      // The repo arg must be chatmcp/mcp-directory (NOT cline's repo).
-      expect(create?.args.find((_, i) => i > 0 && create?.args[i - 1] === '--repo')).toBe('chatmcp/mcp-directory');
+      // The repo arg must be chatmcp/mcpso (NOT cline's repo).
+      expect(create?.args.find((_, i) => i > 0 && create?.args[i - 1] === '--repo')).toBe('chatmcp/mcpso');
     });
   });
 
@@ -69,7 +69,7 @@ describe('publishMcpSo', () => {
         if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
           return {
             exitCode: 0,
-            stdout: JSON.stringify([{ number: 9, title: '[Submission] ead-factory v1.0.0', url: 'https://github.com/chatmcp/mcp-directory/issues/9' }]),
+            stdout: JSON.stringify([{ number: 9, title: '[Submission] ead-factory v1.0.0', url: 'https://github.com/chatmcp/mcpso/issues/9' }]),
           };
         }
         return { exitCode: 1, stderr: 'should not be called' };
@@ -79,7 +79,7 @@ describe('publishMcpSo', () => {
         { exec, logger: silentLogger, env: { BOT_PAT: 'pat' } },
       );
       expect(result.status).toBe('skipped');
-      expect(result.target_url).toBe('https://github.com/chatmcp/mcp-directory/issues/9');
+      expect(result.target_url).toBe('https://github.com/chatmcp/mcpso/issues/9');
     });
   });
 
@@ -91,7 +91,7 @@ describe('publishMcpSo', () => {
 
   it('close-stale: after creating new issue, closes older open submissions with Superseded comment', async () => {
     await withRepoRoot(async (repoRoot) => {
-      const newIssueUrl = 'https://github.com/chatmcp/mcp-directory/issues/777';
+      const newIssueUrl = 'https://github.com/chatmcp/mcpso/issues/777';
       const newIssueNumber = 777;
       let issueListCalls = 0;
       const { exec, calls } = fakeExec(({ cmd, args }) => {
@@ -157,7 +157,7 @@ describe('publishMcpSo', () => {
 
   it('close-stale: failures to comment or close DO NOT fail the publisher (best-effort)', async () => {
     await withRepoRoot(async (repoRoot) => {
-      const newIssueUrl = 'https://github.com/chatmcp/mcp-directory/issues/777';
+      const newIssueUrl = 'https://github.com/chatmcp/mcpso/issues/777';
       let issueListCalls = 0;
       const { exec } = fakeExec(({ cmd, args }) => {
         if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
@@ -188,7 +188,7 @@ describe('publishMcpSo', () => {
 
   it('close-stale: stale search failing DOES NOT fail the publisher', async () => {
     await withRepoRoot(async (repoRoot) => {
-      const newIssueUrl = 'https://github.com/chatmcp/mcp-directory/issues/777';
+      const newIssueUrl = 'https://github.com/chatmcp/mcpso/issues/777';
       let issueListCalls = 0;
       const { exec, calls } = fakeExec(({ cmd, args }) => {
         if (cmd === 'gh' && args[0] === 'issue' && args[1] === 'list') {
