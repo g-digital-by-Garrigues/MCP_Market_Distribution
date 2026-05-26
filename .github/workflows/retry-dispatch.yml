@@ -97,15 +97,25 @@ jobs:
             // the collaborators API rather than checking the comment's
             // 'author_association' because association is unreliable for
             // org members not in the repo's contributor list.
+            //
+            // The policy (which roles authorize, what the reply says)
+            // lives in src/slash-command/validate-author.ts so it can
+            // be unit-tested. We invoke it as a child process — same
+            // pattern as parseCommand above.
             const perm = await github.rest.repos.getCollaboratorPermissionLevel({
               owner: context.repo.owner,
               repo: context.repo.repo,
               username: COMMENTER,
             }).catch(() => null);
             const role = perm?.data?.permission ?? 'none';
-            if (role !== 'admin' && role !== 'write' && role !== 'maintain') {
-              await reply(`@${COMMENTER} you need write access to this repo to dispatch a retry. Current role: \`${role}\`.`);
-              core.notice('Unauthorized commenter; reply posted.');
+            const authRaw = execSync(
+              `pnpm tsx -e "import('./src/slash-command/validate-author.js').then(({validateAuthor})=>{console.log(JSON.stringify(validateAuthor(${JSON.stringify(role)}, ${JSON.stringify(COMMENTER)})))})"`,
+              { encoding: 'utf8' },
+            );
+            const auth = JSON.parse(authRaw.trim().split('\n').pop());
+            if (!auth.authorized) {
+              await reply(auth.unauthorizedReply);
+              core.notice(`Unauthorized commenter (role=${auth.role}); reply posted.`);
               return;
             }
 
