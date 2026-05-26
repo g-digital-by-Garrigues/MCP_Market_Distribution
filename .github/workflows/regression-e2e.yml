@@ -95,7 +95,11 @@ jobs:
     uses: g-digital-by-Garrigues/MCP_Market_Distribution/.github/workflows/publish.yml@main
     with:
       mcp_name: ead-enterprise-suite
-      version: "1.1.1"
+      # Pinned to match the current EAD_Enterprise_Suite_MCP@main version.
+      # The earlier pin of 1.1.1 stale-failed the coherence gate (Story 8.1) —
+      # which is exactly what Story 8.1 is supposed to do, but here it's
+      # noise. When the dev team next bumps + tags, update this pin too.
+      version: "1.0.0"
       step: all
       track: both
       dry_run: true
