@@ -35,6 +35,10 @@ on:
       - '_bmad/**'
       - '.gitignore'
       - 'LICENSE'
+  # Also exposed via workflow_dispatch so maintainers can run the
+  # regression sweep on demand (e.g., to verify a previous PR's effect
+  # before the next live release, or to debug regression-e2e itself).
+  workflow_dispatch:
 
 # Concurrency: cancel any prior regression run for the same PR — if the
 # PR author force-pushes, the stale run becomes uninteresting fast.
@@ -46,7 +50,13 @@ permissions:
   contents: write       # publish.yml's final-report needs this
   id-token: write       # publish.yml's OIDC publishers need this (even in dry-run)
   pull-requests: write  # publish.yml's PR comments need this
-  actions: write        # publish.yml dispatches downstream
+  # NOTE: `actions: write` is intentionally NOT requested here. GitHub
+  # Actions rejects pull_request workflows that request actions:write
+  # at workflow startup (startup_failure with no log). publish.yml's
+  # internal workflow_dispatch calls are not exercised in dry-run mode,
+  # so dropping this permission is safe for the regression-e2e use case.
+  # If a future dry-run path needs it, gate the relevant publish.yml
+  # step on `dry_run != 'true'` rather than re-adding the permission here.
 
 jobs:
   ead-factory:
