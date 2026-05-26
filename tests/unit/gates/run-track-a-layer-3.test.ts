@@ -32,6 +32,7 @@ async function seedMcpFolder(opts: {
   withBin?: boolean | string;
   withBinFile?: boolean;
   withDockerfile?: boolean;
+  dockerfileContent?: string;
 }): Promise<string> {
   const repoRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'layer-3-'));
   const folder = path.join(repoRoot, 'pending-to-publish', 'test-mcp');
@@ -53,11 +54,53 @@ async function seedMcpFolder(opts: {
     await fs.mkdir(path.join(folder, 'dist'), { recursive: true });
     await fs.writeFile(path.join(folder, 'dist', 'server.js'), '// stub\n', 'utf8');
   }
-  if (opts.withDockerfile) {
+  if (opts.dockerfileContent !== undefined) {
+    await fs.writeFile(path.join(folder, 'Dockerfile'), opts.dockerfileContent, 'utf8');
+  } else if (opts.withDockerfile) {
     await fs.writeFile(path.join(folder, 'Dockerfile'), 'FROM node:22-alpine\n', 'utf8');
   }
   return repoRoot;
 }
+
+const DOCKERFILE_HTTP_HEALTHCHECK_NO_TRANSPORT = `FROM node:22-slim
+USER nobody
+ENV PORT=8080
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \\
+  CMD node -e "fetch('http://localhost:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "dist/server.js"]
+`;
+
+const DOCKERFILE_HTTP_HEALTHCHECK_WITH_MCP_TRANSPORT = `FROM node:22-slim
+USER nobody
+ENV MCP_TRANSPORT=http
+ENV PORT=8080
+EXPOSE 8080
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \\
+  CMD node -e "fetch('http://localhost:8080/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+CMD ["node", "dist/server.js"]
+`;
+
+const DOCKERFILE_HTTP_HEALTHCHECK_WITH_TRANSPORT = `FROM node:22-alpine
+USER nobody
+ENV TRANSPORT=http
+ENV HTTP_PORT=3000
+EXPOSE 3000
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \\
+  CMD wget -qO- http://localhost:3000/health || exit 1
+CMD ["node", "dist/cli.js"]
+`;
+
+const DOCKERFILE_NON_HTTP_HEALTHCHECK = `FROM node:22-slim
+USER nobody
+HEALTHCHECK CMD pgrep -f "node dist/server.js" || exit 1
+CMD ["node", "dist/server.js"]
+`;
+
+const DOCKERFILE_NO_HEALTHCHECK = `FROM node:22-slim
+USER nobody
+CMD ["node", "dist/server.js"]
+`;
 
 describe('runTrackALayer3 (unit, exec is mocked)', () => {
   let repoRoot: string;
@@ -85,7 +128,12 @@ describe('runTrackALayer3 (unit, exec is mocked)', () => {
     expect(result.log.event).toBe('gate.layer_3_passed');
     expect(result.log.pipeline_run_id).toBe('run-9');
     expect(result.errors).toEqual([]);
-    expect(result.checks_run).toEqual(['npm_build', 'docker', 'npx_install']);
+    expect(result.checks_run).toEqual([
+      'npm_build',
+      'dockerfile_contract',
+      'docker',
+      'npx_install',
+    ]);
   });
 
   it('AC-mandated failure: TypeScript build error → observation truncates and carries canonical action', async () => {
@@ -219,5 +267,168 @@ describe('runTrackALayer3 (unit, exec is mocked)', () => {
       expect(err.layer).toBe(3);
       expect(err.target).toBeNull();
     }
+  });
+});
+
+describe('runTrackALayer3 — dockerfile_contract check', () => {
+  let repoRoot: string;
+  afterEach(async () => {
+    if (repoRoot) await fs.rm(repoRoot, { recursive: true, force: true });
+  });
+
+  // Tests below set skipNpxProbe so the run terminates at the contract check
+  // (or at docker if the contract passes and we fall through). docker exec is
+  // mocked to SUCCESS so the full pipeline runs to npx_install when applicable.
+
+  it('FAILS when HEALTHCHECK probes HTTP and no transport env is set', async () => {
+    repoRoot = await seedMcpFolder({
+      withBin: true,
+      withBinFile: true,
+      dockerfileContent: DOCKERFILE_HTTP_HEALTHCHECK_NO_TRANSPORT,
+    });
+    const exec = makeExec([
+      { match: /^docker /, result: SUCCESS },
+      { match: /^bash /, result: SUCCESS },
+    ]);
+    const result = await runTrackALayer3({
+      repoRoot,
+      mcpName: 'test-mcp',
+      skipNpxProbe: true,
+      exec,
+    });
+    expect(result.passed).toBe(false);
+    const contractError = result.errors.find((e) => e.check === 'dockerfile_contract');
+    expect(contractError).toBeDefined();
+    expect(contractError!.observation).toContain('HEALTHCHECK that probes HTTP');
+    expect(contractError!.observation).toContain('MCP_TRANSPORT=http');
+    expect(contractError!.action).toContain('Add `ENV MCP_TRANSPORT=http`');
+    // checks_run stops at dockerfile_contract — docker build was skipped
+    expect(result.checks_run).toEqual(['npm_build', 'dockerfile_contract']);
+    expect(errorReportSchema.safeParse(contractError).success).toBe(true);
+  });
+
+  it('PASSES when HEALTHCHECK probes HTTP and ENV MCP_TRANSPORT=http is set', async () => {
+    repoRoot = await seedMcpFolder({
+      withBin: true,
+      withBinFile: true,
+      dockerfileContent: DOCKERFILE_HTTP_HEALTHCHECK_WITH_MCP_TRANSPORT,
+    });
+    const packJson = JSON.stringify([{ files: [{ path: 'dist/server.js' }, { path: 'package.json' }] }]);
+    const exec = makeExec([
+      { match: /^docker /, result: SUCCESS },
+      { match: /^bash /, result: SUCCESS },
+      { match: /^npm pack/, result: { status: 0, stdout: packJson, stderr: '' } },
+    ]);
+    const result = await runTrackALayer3({
+      repoRoot,
+      mcpName: 'test-mcp',
+      exec,
+    });
+    expect(result.passed).toBe(true);
+    expect(result.checks_run).toContain('dockerfile_contract');
+    expect(result.errors).toEqual([]);
+  });
+
+  it('PASSES when HEALTHCHECK probes HTTP and ENV TRANSPORT=http is set (ead-factory convention)', async () => {
+    repoRoot = await seedMcpFolder({
+      withBin: true,
+      withBinFile: true,
+      dockerfileContent: DOCKERFILE_HTTP_HEALTHCHECK_WITH_TRANSPORT,
+    });
+    const packJson = JSON.stringify([{ files: [{ path: 'dist/server.js' }, { path: 'package.json' }] }]);
+    const exec = makeExec([
+      { match: /^docker /, result: SUCCESS },
+      { match: /^bash /, result: SUCCESS },
+      { match: /^npm pack/, result: { status: 0, stdout: packJson, stderr: '' } },
+    ]);
+    const result = await runTrackALayer3({
+      repoRoot,
+      mcpName: 'test-mcp',
+      exec,
+    });
+    expect(result.passed).toBe(true);
+  });
+
+  it('PASSES when HEALTHCHECK uses a non-HTTP probe (process check, custom script)', async () => {
+    repoRoot = await seedMcpFolder({
+      withBin: true,
+      withBinFile: true,
+      dockerfileContent: DOCKERFILE_NON_HTTP_HEALTHCHECK,
+    });
+    const packJson = JSON.stringify([{ files: [{ path: 'dist/server.js' }, { path: 'package.json' }] }]);
+    const exec = makeExec([
+      { match: /^docker /, result: SUCCESS },
+      { match: /^bash /, result: SUCCESS },
+      { match: /^npm pack/, result: { status: 0, stdout: packJson, stderr: '' } },
+    ]);
+    const result = await runTrackALayer3({
+      repoRoot,
+      mcpName: 'test-mcp',
+      exec,
+    });
+    expect(result.passed).toBe(true);
+  });
+
+  it('PASSES when Dockerfile has no HEALTHCHECK at all', async () => {
+    repoRoot = await seedMcpFolder({
+      withBin: true,
+      withBinFile: true,
+      dockerfileContent: DOCKERFILE_NO_HEALTHCHECK,
+    });
+    const packJson = JSON.stringify([{ files: [{ path: 'dist/server.js' }, { path: 'package.json' }] }]);
+    const exec = makeExec([
+      { match: /^docker /, result: SUCCESS },
+      { match: /^bash /, result: SUCCESS },
+      { match: /^npm pack/, result: { status: 0, stdout: packJson, stderr: '' } },
+    ]);
+    const result = await runTrackALayer3({
+      repoRoot,
+      mcpName: 'test-mcp',
+      exec,
+    });
+    expect(result.passed).toBe(true);
+  });
+
+  it('PASSES when there is no Dockerfile (delegates to checkDockerImage which has its own error)', async () => {
+    // This case: no Dockerfile at all. The contract check returns null (soft);
+    // checkDockerImage reports the missing-Dockerfile error with the more
+    // specific message it already had.
+    repoRoot = await seedMcpFolder({ withBin: true, withBinFile: true });
+    const exec = makeExec([
+      { match: /^docker /, result: SUCCESS },
+      { match: /^bash /, result: SUCCESS },
+    ]);
+    const result = await runTrackALayer3({
+      repoRoot,
+      mcpName: 'test-mcp',
+      skipNpxProbe: true,
+      exec,
+    });
+    expect(result.passed).toBe(false);
+    const contractError = result.errors.find((e) => e.check === 'dockerfile_contract');
+    expect(contractError).toBeUndefined();
+    const buildError = result.errors.find((e) => e.check === 'docker_build');
+    expect(buildError).toBeDefined();
+    expect(buildError!.observation).toContain('No Dockerfile present');
+  });
+
+  it('handles HEALTHCHECK with backslash line continuation (multi-line directive)', async () => {
+    // Same shape as EAD/GoCertius's actual Dockerfile: the HEALTHCHECK is
+    // declared as one directive but spread across two lines with `\`.
+    repoRoot = await seedMcpFolder({
+      withBin: true,
+      withBinFile: true,
+      dockerfileContent: DOCKERFILE_HTTP_HEALTHCHECK_NO_TRANSPORT, // already uses `\`
+    });
+    const exec = makeExec([], SUCCESS);
+    const result = await runTrackALayer3({
+      repoRoot,
+      mcpName: 'test-mcp',
+      skipNpxProbe: true,
+      exec,
+    });
+    expect(result.passed).toBe(false);
+    const contractError = result.errors.find((e) => e.check === 'dockerfile_contract');
+    expect(contractError).toBeDefined();
   });
 });
