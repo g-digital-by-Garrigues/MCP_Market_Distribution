@@ -194,6 +194,50 @@ jobs:
       - name: Verify the build still compiles on the runner
         run: pnpm run typecheck && pnpm run test
 
+      # Story 8.2: stale-tag pre-hoc detection. Clone the MCP source
+      # repo at the resolved repo_ref (the v<version> tag for real
+      # publishes, main for dry-runs) and verify that every artifact
+      # declaring a version (package.json, server.json, smithery.yaml,
+      # install-blocks) matches the pipeline's resolved version. Failing
+      # here short-circuits all downstream jobs before they consume CI
+      # minutes — the alternative (Layer 1 gate-time check from Story
+      # 8.1) catches the same bug but burns 2-3 minutes more. Both layers
+      # exist; this is the cheap early signal.
+      - name: Checkout MCP source (for version coherence check)
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ steps.resolve.outputs.mcp_name }}
+          repo_url: ${{ steps.resolve-mcp-repo.outputs.repo_url }}
+          repo_ref: ${{ steps.resolve-mcp-repo.outputs.repo_ref }}
+
+      - name: Verify artifact version coherence (Story 8.2 — stale-tag pre-hoc detection)
+        env:
+          MCP_NAME: ${{ steps.resolve.outputs.mcp_name }}
+          MCP_VERSION: ${{ steps.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/validators/validate-version-coherence.ts \
+            "pending-to-publish/$MCP_NAME" \
+            "$MCP_VERSION" \
+            > coherence.json || exit_code=$?
+          cat coherence.json
+          if [ "${exit_code:-0}" -ne 0 ]; then
+            {
+              echo "## ❌ Stale-tag pre-hoc check FAILED"
+              echo ""
+              echo "The cloned source at \`$MCP_VERSION\` declares one or more artifact versions that do not match the pipeline's resolved version."
+              echo ""
+              echo "**Mismatched files:**"
+              jq -r '.mismatchedFiles[] | "- `" + . + "`"' coherence.json
+              echo ""
+              echo "**Likely cause:** the v\`$MCP_VERSION\` tag was created BEFORE \`/prep-mcp\` regenerated the artifacts, or someone bumped only \`package.json\` by hand."
+              echo ""
+              echo "**Fix:** see [docs/runbooks/release-checklist.md#recovery-fixing-a-tag-that-points-at-a-stale-commit](docs/runbooks/release-checklist.md)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "✓ All artifact versions coherent at $MCP_VERSION."
+
   # ---------------------------------------------------------------------
   # Story 4.8: read the releases/state ledger so each publisher can be
   # skipped when this same (mcp, version) tuple already has it at
@@ -291,6 +335,7 @@ jobs:
     env:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
+      INPUT_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout pipeline
         uses: actions/checkout@v4

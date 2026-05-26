@@ -1,0 +1,88 @@
+name: regression-e2e
+
+# Story 8.3: E2E regression test for pipeline changes.
+#
+# On every PR to main, run a DRY-RUN publish flow against each of the 3
+# portfolio MCPs. If the pipeline change in the PR breaks any MCP's
+# release path, we catch it at review time — not at the next live tag
+# push.
+#
+# What this catches:
+#   ✓ publish.yml structural changes (job dependencies, `if:` conditions,
+#     env var routing, secrets visibility)
+#   ✓ Reusable-workflow contract changes (workflow_call inputs)
+#   ✓ Gate / publisher composite-action changes
+#   ✓ Story 8.1 + 8.2 coherence checks against each MCP's current source
+#
+# What this does NOT catch (intentional limitation):
+#   ✗ TypeScript code changes inside src/. The `publish.yml` jobs use
+#     `actions/checkout@v4 with: ref: main` to fetch the pipeline code,
+#     so even when called from a PR they run against `main`'s TS. To
+#     catch TS regressions, rely on the unit-test suite + the next live
+#     pipeline run after merge. Parameterising the checkout `ref` to
+#     accept the PR branch is a future enhancement (backlog).
+#
+# Resource cost: a full dry-run touches 25+ jobs per MCP × 3 MCPs. Path
+# filters skip doc-only PRs so we don't burn CI on every README tweak.
+
+on:
+  pull_request:
+    branches: [main]
+    paths-ignore:
+      - 'docs/**'
+      - '**/*.md'
+      - '_bmad-output/**'
+      - '_bmad/**'
+      - '.gitignore'
+      - 'LICENSE'
+
+# Concurrency: cancel any prior regression run for the same PR — if the
+# PR author force-pushes, the stale run becomes uninteresting fast.
+concurrency:
+  group: regression-e2e-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write       # publish.yml's final-report needs this
+  id-token: write       # publish.yml's OIDC publishers need this (even in dry-run)
+  pull-requests: write  # publish.yml's PR comments need this
+  actions: write        # publish.yml dispatches downstream
+
+jobs:
+  ead-factory:
+    name: Regression E2E — ead-factory
+    uses: ./.github/workflows/publish.yml
+    with:
+      mcp_name: ead-factory
+      # Pin a known-good current version. Re-pinning is a deliberate
+      # maintenance step when each MCP releases — the alternative
+      # (auto-detecting the latest version) adds complexity without a
+      # clear win. The dry-run is idempotent against an existing
+      # version, so a stale pin still works (just less informative).
+      version: "1.0.12"
+      step: all
+      track: both
+      dry_run: true
+    secrets: inherit
+
+  ead-enterprise-suite:
+    name: Regression E2E — ead-enterprise-suite
+    uses: ./.github/workflows/publish.yml
+    with:
+      mcp_name: ead-enterprise-suite
+      version: "1.1.1"
+      step: all
+      track: both
+      dry_run: true
+    secrets: inherit
+
+  gocertius:
+    name: Regression E2E — gocertius
+    uses: ./.github/workflows/publish.yml
+    with:
+      mcp_name: gocertius
+      version: "1.0.0"
+      step: all
+      track: both
+      dry_run: true
+    secrets: inherit
