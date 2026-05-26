@@ -55,14 +55,14 @@ function defaultExec(cmd: string, args: readonly string[], opts: { cwd: string }
 
 function trimTscError(stderr: string, stdout: string): string {
   const combined = `${stdout}\n${stderr}`.trim();
-  return combined.slice(0, TSC_OBSERVATION_CHARS);
+  return combined.slice(-TSC_OBSERVATION_CHARS);
 }
 
 async function checkNpmBuild(mcpFolder: string, exec: Exec): Promise<ErrorReport | null> {
   const install = exec('npm', ['install', '--no-audit', '--no-fund'], { cwd: mcpFolder });
   if (install.status !== 0) {
     return gateError('npm_install', {
-      observation: `npm install failed (exit ${install.status}): ${install.stderr.trim().slice(0, TSC_OBSERVATION_CHARS) || install.stdout.trim().slice(0, TSC_OBSERVATION_CHARS)}.`,
+      observation: `npm install failed (exit ${install.status}): ${install.stderr.trim().slice(-TSC_OBSERVATION_CHARS) || install.stdout.trim().slice(-TSC_OBSERVATION_CHARS)}.`,
       cause: 'Dependency installation failed on the runner.',
       action: 'Run `npm install` locally inside pending-to-publish/<mcp>/ to reproduce, fix the dependency or registry issue, then re-tag.',
     });
@@ -96,7 +96,7 @@ async function checkDockerImage(
   const build = exec('docker', ['build', '--tag', imageName, '.'], { cwd: mcpFolder });
   if (build.status !== 0) {
     return gateError('docker_build', {
-      observation: `docker build failed (exit ${build.status}): ${(build.stderr || build.stdout).trim().slice(0, TSC_OBSERVATION_CHARS)}.`,
+      observation: `docker build failed (exit ${build.status}): ${(build.stderr || build.stdout).trim().slice(-TSC_OBSERVATION_CHARS)}.`,
       cause: 'The Dockerfile produces a non-zero exit during image build.',
       action: 'Run `docker build .` locally inside the MCP folder to reproduce, fix the failing layer, then re-tag.',
     });
@@ -108,7 +108,7 @@ async function checkDockerImage(
   );
   if (run.status !== 0) {
     return gateError('docker_healthcheck', {
-      observation: `docker run failed to start the container (exit ${run.status}): ${(run.stderr || run.stdout).trim().slice(0, TSC_OBSERVATION_CHARS)}.`,
+      observation: `docker run failed to start the container (exit ${run.status}): ${(run.stderr || run.stdout).trim().slice(-TSC_OBSERVATION_CHARS)}.`,
       cause: 'The container exited immediately or could not start.',
       action: 'Run `docker run --rm <image>` locally to reproduce; check the ENTRYPOINT and the server bootstrap.',
     });
@@ -138,7 +138,7 @@ async function checkDockerImage(
     });
   }
   return gateError('docker_healthcheck', {
-    observation: `HEALTHCHECK wait script exited unexpectedly (status ${wait.status}): ${(wait.stderr || wait.stdout).trim().slice(0, TSC_OBSERVATION_CHARS)}.`,
+    observation: `HEALTHCHECK wait script exited unexpectedly (status ${wait.status}): ${(wait.stderr || wait.stdout).trim().slice(-TSC_OBSERVATION_CHARS)}.`,
     cause: 'The HEALTHCHECK probe could not be polled (Docker daemon issue?).',
     action: 'Verify Docker is running on the runner, then re-run.',
   });
@@ -186,7 +186,7 @@ async function checkNpxInstall(
   const pack = exec('npm', ['pack', '--dry-run', '--json'], { cwd: mcpFolder });
   if (pack.status !== 0) {
     return gateError('npx_install', {
-      observation: `npm pack --dry-run failed (exit ${pack.status}): ${(pack.stderr || pack.stdout).trim().slice(0, TSC_OBSERVATION_CHARS)}.`,
+      observation: `npm pack --dry-run failed (exit ${pack.status}): ${(pack.stderr || pack.stdout).trim().slice(-TSC_OBSERVATION_CHARS)}.`,
       cause: 'npm cannot build the tarball that the npm registry would receive on publish.',
       action: 'Run `npm pack --dry-run` locally to reproduce, fix the underlying packaging issue, then re-tag.',
     });
