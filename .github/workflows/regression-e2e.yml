@@ -14,14 +14,24 @@ name: regression-e2e
 #
 # What this does NOT catch (intentional limitation):
 #   ✗ Pipeline changes BEFORE merge. We use the cross-repo `@main`
-#     reference for the reusable workflow (the local `./` syntax causes
-#     GitHub startup_failure for reasons we have not isolated yet —
-#     see PR #143 + PR #144 debugging) so the regression sweep always
+#     reference for the reusable workflow so the regression sweep always
 #     runs against whatever publish.yml is on main. PR-pre-merge
 #     validation against the candidate pipeline code is therefore not
 #     possible with this workflow as-is; that's a future enhancement.
 #   ✗ TypeScript code changes inside src/: same reason. The unit-test
 #     suite covers these.
+#
+# Prerequisite (Settings → Actions → General → Actions permissions):
+#   MCP_Market_Distribution must be set to "Allow all actions and
+#   reusable workflows" (or the allowlist variant including actions/*,
+#   pnpm/action-setup@*, docker/*). The restrictive default ("Allow
+#   g-digital-by-Garrigues actions only") blocks publish.yml's standard
+#   actions when invoked from this repo's own context — startup_failure
+#   with the message "actions ... are not allowed in MCP_Market_Distribution".
+#   Source MCP repos already have the permissive setting, which is why
+#   their workflow_call to publish.yml works. Debugged across runs
+#   #26441851885, #26441985197, #26442070424, #26442134177 before the
+#   GitHub UI surfaced the actual error.
 #
 # Resource cost: a full dry-run touches 25+ jobs per MCP × 3 MCPs. Path
 # filters skip doc-only PRs so we don't burn CI on every README tweak.
