@@ -239,6 +239,136 @@ jobs:
           echo "✓ All artifact versions coherent at $MCP_VERSION."
 
   # ---------------------------------------------------------------------
+  # Pre-flight (Phase 3 of the 2026-05-26 audit, b2 of the post-mortem).
+  #
+  # Validate every secret/auth the pipeline depends on BEFORE we spend ~25
+  # min running L1→L2→L3→publishers. If something is missing/wrong, fail
+  # in <30s with a clear message naming the secret and what to fix.
+  #
+  # The bugs this prevents:
+  #   - Missing DOCKERHUB_USERNAME/TOKEN → L3 docker build fails at pull
+  #     auth ~10 min in (this happened on EAD v1.2.0 2026-05-26 — bot user
+  #     was scoped to "Selected repositories" that didn't include EAD).
+  #   - BOT_PAT expired/missing public_repo scope → publish-cline /
+  #     publish-mcpso / publish-docker-mcp-catalog fail after 20+ min.
+  #   - SMITHERY_TOKEN absent → publish-smithery fails after 25+ min.
+  #
+  # Skipped on dry-run (the pipeline doesn't touch external auth in dry-
+  # run mode). Gate for track-a-layer-1 only — everything else is
+  # transitively blocked through L1→L2→L3 chain.
+  # ---------------------------------------------------------------------
+
+  preflight:
+    name: Pre-flight (verify required secrets + external auth)
+    needs: setup
+    if: needs.setup.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Docker Hub credentials present + login works
+        env:
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DOCKERHUB_USERNAME}" ] || [ -z "${DOCKERHUB_TOKEN}" ]; then
+            {
+              echo "## ❌ Pre-flight FAILED — Docker Hub secrets missing"
+              echo ""
+              echo "Required org secrets: \`DOCKERHUB_USERNAME\`, \`DOCKERHUB_TOKEN\`."
+              echo ""
+              echo "**Fix:** add both at https://github.com/organizations/g-digital-by-Garrigues/settings/secrets/actions"
+              echo "and grant access to this source MCP repo (Repository access → All repositories, or add this repo explicitly)."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::DOCKERHUB_USERNAME or DOCKERHUB_TOKEN secret missing/empty"
+            exit 1
+          fi
+          if ! echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin >/dev/null 2>&1; then
+            {
+              echo "## ❌ Pre-flight FAILED — Docker Hub login rejected"
+              echo ""
+              echo "DOCKERHUB_USERNAME=\`$DOCKERHUB_USERNAME\` could not authenticate."
+              echo ""
+              echo "**Fix:** verify the token at https://hub.docker.com/settings/security has \"Read, Write, Delete\" scope on the target namespace, then update the \`DOCKERHUB_TOKEN\` org secret."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::docker login failed for $DOCKERHUB_USERNAME"
+            exit 1
+          fi
+          echo "✓ Docker Hub: $DOCKERHUB_USERNAME authenticated"
+
+      - name: BOT_PAT present with required scopes
+        env:
+          BOT_PAT: ${{ secrets.BOT_PAT }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BOT_PAT}" ]; then
+            {
+              echo "## ❌ Pre-flight FAILED — BOT_PAT missing"
+              echo ""
+              echo "Required for: orphan-branch ledger commits, Cline/mcp.so issue submission, Docker MCP Catalog PR submission."
+              echo ""
+              echo "**Fix:** create a fine-grained PAT on the bot account with scopes \`public_repo\`, \`workflow\`, and store as \`BOT_PAT\` org secret."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::BOT_PAT secret missing/empty"
+            exit 1
+          fi
+          headers=$(curl -sI -H "Authorization: Bearer $BOT_PAT" https://api.github.com/user)
+          if ! echo "$headers" | grep -qi '^HTTP/.* 200'; then
+            status=$(echo "$headers" | head -1)
+            {
+              echo "## ❌ Pre-flight FAILED — BOT_PAT rejected by GitHub API"
+              echo ""
+              echo "Response: \`$status\`"
+              echo ""
+              echo "**Fix:** the token is expired or revoked. Rotate per docs/runbooks/bot-pat-rotation.md."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::error::BOT_PAT GitHub API returned non-200"
+            exit 1
+          fi
+          scopes_line=$(echo "$headers" | grep -i '^x-oauth-scopes:' || true)
+          if ! echo "$scopes_line" | grep -qE '\b(repo|public_repo)\b'; then
+            {
+              echo "## ⚠️ Pre-flight WARNING — BOT_PAT may lack \`public_repo\` scope"
+              echo ""
+              echo "Returned scopes: \`$scopes_line\`"
+              echo ""
+              echo "Cline / mcp.so / Docker MCP Catalog publishers need \`public_repo\` (or \`repo\`) to file issues / open PRs. Fine-grained tokens may report empty scopes here even when permissions are correctly granted on the target repos — this warning is informational, not blocking."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::BOT_PAT scopes header doesn't include repo/public_repo (may be a fine-grained PAT — non-blocking)"
+          fi
+          echo "✓ BOT_PAT: authenticated to GitHub API"
+
+      - name: SMITHERY_TOKEN present
+        env:
+          SMITHERY_TOKEN: ${{ secrets.SMITHERY_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${SMITHERY_TOKEN}" ]; then
+            {
+              echo "## ⚠️ Pre-flight WARNING — SMITHERY_TOKEN missing"
+              echo ""
+              echo "publish-smithery will fail unless Smithery is in this MCP's \`.distribution.yaml#skip_targets\`."
+              echo ""
+              echo "**Fix:** mint a Smithery API key with publish scope on \`g-digital/*\` at https://smithery.ai/settings/api-keys, store as \`SMITHERY_TOKEN\` org secret."
+            } >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::SMITHERY_TOKEN missing — Smithery publish will fail unless explicitly skipped"
+          else
+            echo "✓ SMITHERY_TOKEN: present (scope/validity tested at publish time)"
+          fi
+
+      - name: Summary
+        if: success()
+        run: |
+          {
+            echo "## ✓ Pre-flight passed"
+            echo ""
+            echo "- Docker Hub: authenticated"
+            echo "- BOT_PAT: valid"
+            echo "- SMITHERY_TOKEN: present (or skipped if not needed)"
+            echo ""
+            echo "Pipeline will proceed to gates + publishers."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # ---------------------------------------------------------------------
   # Story 4.8: read the releases/state ledger so each publisher can be
   # skipped when this same (mcp, version) tuple already has it at
   # status='succeeded'. Output: per-target run_<id> = 'true' | 'false'.
@@ -330,7 +460,12 @@ jobs:
 
   track-a-layer-1:
     name: Track A — Layer 1 (static validation)
-    needs: setup
+    # Gate on preflight as well as setup — preflight is the bottleneck for
+    # the whole pipeline; if it fails the gates and publishers all skip
+    # transitively (L2 needs L1, L3 needs L2, publishers need L3).
+    # In dry-run, preflight is skipped (always() lets this job still run).
+    needs: [setup, preflight]
+    if: always() && needs.setup.result == 'success' && (needs.preflight.result == 'success' || needs.preflight.result == 'skipped')
     runs-on: ubuntu-latest
     env:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
