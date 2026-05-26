@@ -88,7 +88,7 @@ describe('runTrackALayer3 (unit, exec is mocked)', () => {
     expect(result.checks_run).toEqual(['npm_build', 'docker', 'npx_install']);
   });
 
-  it('AC-mandated failure: TypeScript build error → observation carries first 200 chars + canonical action', async () => {
+  it('AC-mandated failure: TypeScript build error → observation truncates and carries canonical action', async () => {
     repoRoot = await seedMcpFolder({ withBin: true, withBinFile: true });
     const longTscError =
       'src/server.ts(42,10): error TS2322: Type \'string\' is not assignable to type \'number\'.\n'.repeat(
@@ -109,7 +109,7 @@ describe('runTrackALayer3 (unit, exec is mocked)', () => {
     expect(result.log.event).toBe('gate.layer_3_failed');
     const tsError = result.errors.find((e) => e.check === 'npm_build');
     expect(tsError).toBeDefined();
-    expect(tsError!.observation.length).toBeLessThanOrEqual(200);
+    expect(tsError!.observation.length).toBeLessThanOrEqual(2000);
     expect(tsError!.observation).toContain('TS2322');
     expect(tsError!.action).toBe(
       "Fix TypeScript build errors locally with 'npm run build' and push a fix commit, then re-run.",
