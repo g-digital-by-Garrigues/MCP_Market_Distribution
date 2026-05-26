@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
 
-const TSC_OBSERVATION_CHARS = 200;
+const TSC_OBSERVATION_CHARS = 2000;
 const DOCKER_HEALTHCHECK_TIMEOUT_S = 60;
 
 function gateError(check: string, fields: Omit<ErrorReport, 'stage' | 'layer' | 'target' | 'check'>): ErrorReport {
