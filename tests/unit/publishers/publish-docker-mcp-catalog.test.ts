@@ -31,6 +31,10 @@ const TEMPLATES = {
   'server.yaml.hbs': 'name: {{mcp_name}}\nimage: {{docker_image_name}}:{{version}}\n',
   'tools.json.hbs': '{"tools": []}\n',
   'readme.md.hbs': '# {{mcp_name}}\n',
+  // Minimal synthetic pr-body for tests that don't care about its content.
+  // The dedicated "PR body — official template" describe block below seeds
+  // the real shipping template explicitly to assert its contents.
+  'pr-body.hbs': '## MCP Server Information\n\n**Server Name:** {{mcp_name}}\n**Repository URL:** {{repo_url}}\n**Brief Description:** {{description}}\n',
 };
 
 interface RepoRootOverrides {

@@ -1,35 +1,44 @@
-# {{mcp_name}}
+### GitHub Repository URL
+
+{{repo_url}}
+
+### Logo Image
 
 ![logo]({{logo_url}})
 
-**{{description}}**
+### Installation Testing
 
-## Installation
+- [x] I have tested that Cline can successfully set up this server using only the README.md and/or llms-install.md file
+- [x] The server is stable and ready for public use
 
-```bash
-npx -y {{npm_package_name}}@{{version}}
+### Additional Information
+
+{{description}}
+
+**For Cline users — `cline_mcp_settings.json` block to install via npx:**
+
+```json
+{
+  "mcpServers": {
+    "{{mcp_name}}": {
+      "command": "npx",
+      "args": ["-y", "{{npm_package_name}}"],
+      "env": {
+{{#each environment_variables}}
+        "{{name}}": "<your-{{name}}>"{{#unless @last}},{{/unless}}
+{{/each}}
+      }
+    }
+  }
+}
 ```
 
-OR via Docker:
+Alternative install via Docker:
 
 ```bash
 docker run --rm -it --env-file .env {{docker_image_name}}:{{version}}
 ```
 
-## Repository
+**Repository status:** {{license}} license · v{{version}} just shipped · published on npm (with OIDC provenance), Docker Hub, MCP Official Registry, Smithery, and n8n community node. Maintained by g-digital by Garrigues (legal-tech / digital-trust vendor; J&A Garrigues, S.L.P.).
 
-{{repo_url}}
-
-## License
-
-{{license}}
-
-## Required environment variables
-
-{{#each environment_variables}}
-- `{{name}}` — {{description}}
-{{/each}}
-
----
-
-Submitted by g-digital by Garrigues' MCP Distribution Pipeline (run `{{pipeline_run_id}}`).
+<!-- pipeline-run-id: {{pipeline_run_id}} -->
