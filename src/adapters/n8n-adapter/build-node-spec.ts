@@ -142,22 +142,34 @@ function buildCredentials(server: ServerJsonShape): N8nCredentialField[] {
 const SOURCED_RE = /\/\/ Sourced from operation: \S+ \((\w+) ([^)]+)\)/;
 const N8N_HTTP_RE = /\/\/ n8n-http: (\w+) (.+)/;
 
+interface ToolHttpInfo {
+  httpMethod: string;
+  httpUrlTemplate: string;
+  customAnnotation: boolean;
+  isStub?: boolean;
+  stubSuffix?: string;
+}
+
 async function readToolHttpInfo(
   packageDir: string,
   toolName: string,
-): Promise<{ httpMethod: string; httpUrlTemplate: string; customAnnotation: boolean }> {
+): Promise<ToolHttpInfo> {
   const toolFile = path.join(packageDir, 'src', 'tools', `${toolName}.ts`);
   try {
     const content = await fs.readFile(toolFile, 'utf8');
     const headerLines = content.split('\n').slice(0, 8).join('\n');
     const sourced = SOURCED_RE.exec(headerLines);
-    if (sourced) return { httpMethod: sourced[1], httpUrlTemplate: sourced[2].trim(), customAnnotation: false };
+    if (sourced?.[1] && sourced?.[2]) {
+      return { httpMethod: sourced[1], httpUrlTemplate: sourced[2].trim(), customAnnotation: false, stubSuffix: '' };
+    }
     const manual = N8N_HTTP_RE.exec(headerLines);
-    if (manual) return { httpMethod: manual[1], httpUrlTemplate: manual[2].trim(), customAnnotation: true };
+    if (manual?.[1] && manual?.[2]) {
+      return { httpMethod: manual[1], httpUrlTemplate: manual[2].trim(), customAnnotation: true, stubSuffix: '' };
+    }
   } catch {
     // File not found or unreadable — fall through to STUB
   }
-  return { httpMethod: 'STUB', httpUrlTemplate: '', customAnnotation: true, isStub: true };
+  return { httpMethod: 'STUB', httpUrlTemplate: '', customAnnotation: true, isStub: true, stubSuffix: ', stub: true' };
 }
 
 function buildOperation(tool: InspectorToolEntry): {
@@ -265,12 +277,12 @@ export async function buildN8nNodeSpec(
       ...op,
       httpMethod: httpInfo.httpMethod,
       httpUrlTemplate: httpInfo.httpUrlTemplate,
-      ...(httpInfo.customAnnotation ? { customAnnotation: true } : {}),
+      customAnnotation: httpInfo.customAnnotation,
       ...(httpInfo.isStub ? { isStub: true } : {}),
       // stubSuffix is a pre-rendered string used in the Handlebars template to
       // avoid nested {{#if}} inside {{#each}} (which triggers Handlebars v4's
       // standalone-stripping quirk). See node.ts.hbs OPERATION_META section.
-      stubSuffix: httpInfo.isStub ? ', stub: true' : '',
+      stubSuffix: httpInfo.stubSuffix ?? '',
     });
     unsupportedNotes.push(...notes);
   }

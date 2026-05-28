@@ -28,6 +28,8 @@ function sampleSpec(): N8nNodeSpec {
         name: 'get_widget',
         displayName: 'Get Widget',
         description: 'Fetch a widget by id.',
+        httpMethod: 'GET',
+        httpUrlTemplate: '/widgets/{widget_id}',
         properties: [
           {
             name: 'widget_id',
@@ -43,6 +45,8 @@ function sampleSpec(): N8nNodeSpec {
         name: 'list_widgets',
         displayName: 'List Widgets',
         description: 'List widgets.',
+        httpMethod: 'GET',
+        httpUrlTemplate: '/widgets',
         properties: [],
       },
     ],
