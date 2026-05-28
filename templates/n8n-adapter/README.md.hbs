@@ -12,6 +12,25 @@ npm install {{packageName}}
 
 Then restart n8n. The node will appear in the Nodes panel under "{{displayName}}".
 
+## Using with n8n AI Agent
+
+For AI-driven automation, configure an **n8n AI Agent node** with the following system prompt. It covers all lifecycle workflows: evidence creation, certified notifications, signature processes, dossier certification, and certified chats.
+
+**→ Full system prompt and workflow guide:** [`@g-digital/n8n-agent-system-prompt`](https://www.npmjs.com/package/@g-digital/mcp-gocertius) — see the `docs/n8n-agent-workflows/gocertius-ead-system-prompt.md` in [MCP_Market_Distribution](https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution/blob/main/docs/n8n-agent-workflows/gocertius-ead-system-prompt.md).
+
+### Quick system prompt snippet
+
+Paste this into your AI Agent node's **System Message**:
+
+```
+You are a Digital Trust assistant using the {{displayName}} n8n connector.
+UUID generation: generate UUID v4 for all `id` fields you must supply.
+IDs from responses: never invent path parameters — always use values returned by previous tool calls.
+Async operations: after evidence_seal, dossier_certify, signature activation, and chat certification — poll the corresponding list/status tool until the terminal state is reached before proceeding.
+File uploads: when a tool returns uploadFileUrl or url, PUT the file bytes there with a separate HTTP Request node before calling the next step.
+See the full lifecycle guide at: https://github.com/g-digital-by-Garrigues/MCP_Market_Distribution/blob/main/docs/n8n-agent-workflows/gocertius-ead-system-prompt.md
+```
+
 ## Operations
 
 | Operation | Description |
