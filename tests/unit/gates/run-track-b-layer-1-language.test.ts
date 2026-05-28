@@ -27,7 +27,6 @@ function baseSpec(): N8nNodeSpec {
     mcpBinRelPath: 'dist/cli.js',
     operations: [{ name: 'do_thing', displayName: 'Do Thing', description: 'Does the thing.', properties: [] }],
     credentials: [{ envName: 'API_KEY', displayName: 'API Key', description: 'API key.', isSecret: true }],
-    icon: undefined,
   };
 }
 
@@ -102,7 +101,7 @@ describe('checkLanguage — Track B Layer 1 language regression-guard', () => {
 
   it('fails when operation description contains Spanish (mixed-language)', async () => {
     const spec = baseSpec();
-    spec.operations[0].description = 'Creates a firma request with provided participants.';
+    spec.operations[0]!.description = 'Creates a firma request with provided participants.';
     dir = await seedNodeDir({});
     const result = await runTrackBLayer1({ mcpName: 'test', nodeDir: dir, spec });
     const langCheck = result.checks.find((c) => c.name === 'language');
@@ -112,7 +111,7 @@ describe('checkLanguage — Track B Layer 1 language regression-guard', () => {
 
   it('fails when credential description contains Spanish keyword', async () => {
     const spec = baseSpec();
-    spec.credentials[0].description = 'API key para el sistema de notificacion.';
+    spec.credentials[0]!.description = 'API key para el sistema de notificacion.';
     dir = await seedNodeDir({});
     const result = await runTrackBLayer1({ mcpName: 'test', nodeDir: dir, spec });
     const langCheck = result.checks.find((c) => c.name === 'language');
