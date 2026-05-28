@@ -37,8 +37,6 @@ function specForMultiTool(): N8nNodeSpec {
         name: 'get_widget',
         displayName: 'Get Widget',
         description: '',
-          httpMethod: 'GET',
-          httpUrlTemplate: '/test',
         httpMethod: 'GET',
         httpUrlTemplate: '/widgets/{widget_id}',
         properties: [
@@ -56,8 +54,6 @@ function specForMultiTool(): N8nNodeSpec {
         name: 'list_widgets',
         displayName: 'List Widgets',
         description: '',
-          httpMethod: 'GET',
-          httpUrlTemplate: '/test',
         httpMethod: 'GET',
         httpUrlTemplate: '/widgets',
         properties: [
@@ -101,8 +97,6 @@ describe('Track B — Layer 3 (per-operation smoke)', () => {
           displayName: 'Do Thing',
           description: '',
           httpMethod: 'GET',
-          httpUrlTemplate: '/test',
-          httpMethod: 'GET',
           httpUrlTemplate: '/things/{id}',
           properties: [
             {
@@ -137,8 +131,6 @@ describe('Track B — Layer 3 (per-operation smoke)', () => {
           name: 'pollable_tool',
           displayName: 'Pollable Tool',
           description: '',
-          httpMethod: 'GET',
-          httpUrlTemplate: '/test',
           properties: [
             {
               name: 'id',
@@ -174,8 +166,6 @@ describe('Track B — Layer 3 (per-operation smoke)', () => {
           name: 'drifted_tool',
           displayName: 'Drifted Tool',
           description: '',
-          httpMethod: 'GET',
-          httpUrlTemplate: '/test',
           properties: [],
         },
       ],

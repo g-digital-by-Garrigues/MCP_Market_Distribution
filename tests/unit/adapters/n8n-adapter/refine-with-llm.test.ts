@@ -19,22 +19,8 @@ function baseSpec(): N8nNodeSpec {
     author: 'g-digital by Garrigues',
     authStyle: 'email-password',
     operations: [
-      {
-        name: 'get_evidence',
-        displayName: 'Get Evidence',
-        description: '',
-          httpMethod: 'GET',
-          httpUrlTemplate: '/test',
-        properties: [],
-      },
-      {
-        name: 'create_signature_request',
-        displayName: 'Create Signature Request',
-        description: '',
-          httpMethod: 'GET',
-          httpUrlTemplate: '/test',
-        properties: [],
-      },
+      { name: 'get_evidence', displayName: 'Get Evidence', description: '', httpMethod: 'GET', httpUrlTemplate: '/evidence/{id}', properties: [] },
+      { name: 'create_signature_request', displayName: 'Create Signature Request', description: '', httpMethod: 'POST', httpUrlTemplate: '/signature-requests', properties: [] },
     ],
     credentials: [
       { envName: 'OKTA_CLIENT_ID', displayName: 'Okta Client Id', isSecret: false },
@@ -126,8 +112,8 @@ describe('refineWithLlm', () => {
     const fetchImpl = mockSuccessResponse({
       nodeDescription: 'd',
       operations: [
-        { name: 'get_evidence', displayName: 'New', description: 'new' },
-        { name: 'create_signature_request', displayName: 'X', description: 'y' },
+        { name: 'get_evidence', displayName: 'New', description: 'new', httpMethod: 'GET', httpUrlTemplate: '/evidence/{id}', properties: [] },
+        { name: 'create_signature_request', displayName: 'X', description: 'y', httpMethod: 'POST', httpUrlTemplate: '/signature-requests', properties: [] },
       ],
       credentials: [
         { envName: 'OKTA_CLIENT_ID', displayName: 'A' },
@@ -184,7 +170,7 @@ describe('refineWithLlm', () => {
     const fetchImpl = mockSuccessResponse({
       nodeDescription: 'd',
       operations: [
-        { name: 'get_evidence' /* missing displayName */ },
+        { name: 'get_evidence', displayName: '', description: '', httpMethod: 'GET', httpUrlTemplate: '/evidence/{id}', properties: [] /* missing displayName test */ },
       ],
       credentials: [],
     });
