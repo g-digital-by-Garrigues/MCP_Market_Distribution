@@ -134,8 +134,10 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       // Approach B: zero runtime deps (n8n Verified). Source MCP + SDK
       // are bundled by tsup and live in devDependencies.
       expect(Object.keys(pkg.dependencies)).toEqual([]);
-      expect(pkg.devDependencies['@g-digital/mcp-multi-tool']).toBe('1.0.0');
-      expect(pkg.devDependencies['@modelcontextprotocol/sdk']).toBeDefined();
+      // REST-direct: source MCP no longer bundled in devDeps (Epic 12)
+      expect(pkg.devDependencies['@g-digital/mcp-multi-tool']).toBeUndefined();
+      // REST-direct: SDK no longer bundled in devDeps (Epic 12)
+      expect(pkg.devDependencies['@modelcontextprotocol/sdk']).toBeUndefined();
       expect(pkg.n8n.nodes).toEqual(['dist/nodes/MultiTool/MultiTool.node.js']);
       expect(pkg.n8n.credentials).toEqual(['dist/credentials/MultiToolApi.credentials.js']);
 

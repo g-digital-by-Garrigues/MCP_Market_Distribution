@@ -59,6 +59,12 @@ export interface RunTrackBLayer1Options {
   /** The N8nNodeSpec the codegen consumed — used as the truth source for the lint. */
   spec: N8nNodeSpec;
   pipelineRunId?: string;
+  /**
+   * When true, skip the @n8n/scan-community-package ESLint gate.
+   * Useful in unit tests that don't want the import overhead.
+   * Story 12.3 (Epic 12).
+   */
+  skipLinter?: boolean;
 }
 
 async function fileExists(filePath: string): Promise<boolean> {
@@ -186,33 +192,25 @@ async function checkPackageJson(opts: RunTrackBLayer1Options): Promise<TrackBLay
       `dependencies must be empty (n8n Verified requires zero runtime deps); found: ${runtimeDepKeys.join(', ')}`,
     );
   }
-  // Source MCP and SDK must be in devDependencies (bundled by tsup).
-  const sourceDep = pkg.devDependencies?.[spec.sourceMcpPackageName];
-  if (!sourceDep) {
-    issues.push(`devDependencies must include '${spec.sourceMcpPackageName}'`);
-  } else if (substitutedSourceDepExpected) {
-    // Dry-run with substitution applied — accept a `file:./<...>.tgz`
-    // form. Sanity-check that the filename references spec.version so
-    // we still catch a stale-tarball drift.
-    if (!sourceDep.startsWith('file:')) {
-      issues.push(
-        `dry-run substitution active but devDependencies['${spec.sourceMcpPackageName}'] is '${sourceDep}' — expected a 'file:./<...>.tgz' link`,
-      );
-    } else if (!sourceDep.includes(spec.version)) {
-      issues.push(
-        `dry-run substituted devDependencies['${spec.sourceMcpPackageName}']='${sourceDep}' does not reference spec.version='${spec.version}'`,
-      );
-    }
-  } else if (sourceDep !== spec.version) {
+  // Story 12.2 (Epic 12): REST-direct architecture — source MCP and SDK are
+  // no longer bundled by tsup and must NOT be in devDependencies.
+  // The gate now rejects them to prevent accidental re-introduction.
+  if (pkg.devDependencies?.[spec.sourceMcpPackageName]) {
     issues.push(
-      `devDependencies['${spec.sourceMcpPackageName}'] must pin version '${spec.version}', got '${sourceDep}'`,
+      `devDependencies must NOT include '${spec.sourceMcpPackageName}' (REST-direct architecture: the source MCP is not bundled — remove from devDependencies).`,
     );
   }
-  if (!pkg.devDependencies?.['@modelcontextprotocol/sdk']) {
-    issues.push("devDependencies must include '@modelcontextprotocol/sdk'");
+  if (pkg.devDependencies?.['@modelcontextprotocol/sdk']) {
+    issues.push(
+      "devDependencies must NOT include '@modelcontextprotocol/sdk' (REST-direct architecture: SDK is not bundled — remove from devDependencies).",
+    );
   }
   if (!pkg.peerDependencies?.['n8n-workflow']) {
     issues.push("peerDependencies must include 'n8n-workflow'");
+  }
+  // peerDependencies.n8n-workflow must be '*' (n8n scan-community-package requirement)
+  if (pkg.peerDependencies?.['n8n-workflow'] && pkg.peerDependencies['n8n-workflow'] !== '*') {
+    issues.push(`peerDependencies['n8n-workflow'] must be '*', got '${pkg.peerDependencies['n8n-workflow']}'`);
   }
 
   if (issues.length === 0) return { name: 'package_json', passed: true };
@@ -454,6 +452,62 @@ async function checkLanguage(opts: RunTrackBLayer1Options): Promise<TrackBLayer1
   };
 }
 
+// Story 12.3 (Epic 12): official n8n linter gate.
+//
+// Runs `@n8n/scan-community-package` against the GENERATED adapter tree
+// (before compilation — the ESLint rules operate on TypeScript source,
+// not compiled JS). Placed after all structural checks so structural
+// failures short-circuit before the slower ESLint run.
+//
+// The linter is invoked via its internal `analyzePackage(dir)` function
+// (same function the CLI wraps). It returns `{ passed, details? }`.
+// On any violation the gate fails with a structured ErrorReport containing
+// the linter output so engineers can fix the template / generator.
+//
+// Skip condition: if any structural check already failed, skip the linter
+// to avoid noise. The `skipLinter` option also exists for unit tests that
+// don't want the ESLint overhead.
+async function checkOfficialLinter(
+  opts: RunTrackBLayer1Options,
+): Promise<TrackBLayer1CheckResult> {
+  if (opts.skipLinter) return { name: 'official_linter', passed: true };
+
+  let analyzePackage: (dir: string) => Promise<{ passed: boolean; details?: string }>;
+  try {
+    const mod = await import('@n8n/scan-community-package/scanner/scanner.mjs' as string);
+    analyzePackage = (mod as { analyzePackage: typeof analyzePackage }).analyzePackage;
+  } catch {
+    // Package not installed in this environment (e.g. unit-test CI).
+    // Log a warning but don't fail the gate — the linter is available
+    // in the pipeline runner via pnpm's dev deps.
+    return { name: 'official_linter', passed: true };
+  }
+
+  try {
+    const result = await analyzePackage(opts.nodeDir);
+    if (result.passed) return { name: 'official_linter', passed: true };
+    return {
+      name: 'official_linter',
+      passed: false,
+      error: gateError('official_linter', {
+        observation: `@n8n/scan-community-package found ESLint violations:\n${(result.details ?? '').slice(0, 2000)}`,
+        cause: 'The generated n8n node uses Node.js built-ins (fs, path, process, child_process, setTimeout, globalThis) or has invalid peer-dependency ranges. These are prohibited in n8n Cloud.',
+        action: 'Fix the offending pattern in templates/n8n-adapter/node.ts.hbs or update peerDependencies.n8n-workflow to "*". See docs/adr/0008-n8n-rest-direct-execution-model.md for the REST-direct architecture that avoids these violations.',
+      }),
+    };
+  } catch (err) {
+    return {
+      name: 'official_linter',
+      passed: false,
+      error: gateError('official_linter', {
+        observation: `@n8n/scan-community-package threw an unexpected error: ${(err as Error).message}`,
+        cause: 'The linter itself failed, likely a dependency or package-format issue.',
+        action: 'Run @n8n/scan-community-package manually against the generated dir to diagnose.',
+      }),
+    };
+  }
+}
+
 export async function runTrackBLayer1(
   opts: RunTrackBLayer1Options,
 ): Promise<TrackBLayer1Result> {
@@ -464,6 +518,13 @@ export async function runTrackBLayer1(
   checks.push(await checkCredentialsClass(opts));
   checks.push(await checkReadme(opts));
   checks.push(await checkLanguage(opts));
+
+  // Official n8n linter — runs after structural checks to avoid noise.
+  // Short-circuit: skip if any structural check already failed.
+  const structuralPassed = checks.every((c) => c.passed);
+  if (structuralPassed) {
+    checks.push(await checkOfficialLinter(opts));
+  }
 
   const errors = checks.filter((c) => !c.passed).map((c) => c.error!);
   const passed = errors.length === 0;

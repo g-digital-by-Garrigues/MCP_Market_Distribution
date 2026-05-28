@@ -36,6 +36,11 @@ let helpersRegistered = false;
 function registerHelpers(): void {
   if (helpersRegistered) return;
   Handlebars.registerHelper('json', (value: unknown) => new Handlebars.SafeString(JSON.stringify(value)));
+  // Story 12.2 (Epic 12): 'eq' helper for authStyle comparisons in node.ts.hbs
+  Handlebars.registerHelper('eq', (a: unknown, b: unknown) => a === b);
+  // 'safe' helper: returns a SafeString so the value is NOT HTML-escaped.
+  // Used for pre-rendered string fragments like stubSuffix (', stub: true' or '').
+  Handlebars.registerHelper('safe', (value: unknown) => new Handlebars.SafeString(String(value ?? '')));
   helpersRegistered = true;
 }
 
@@ -47,7 +52,8 @@ interface CompiledTemplates {
   index: HandlebarsTemplateDelegate<unknown>;
   node: HandlebarsTemplateDelegate<unknown>;
   credentials: HandlebarsTemplateDelegate<unknown>;
-  mcpServerEntry: HandlebarsTemplateDelegate<unknown>;
+  // mcp-server-entry.ts.hbs removed in Story 12.2 (Epic 12):
+  // REST-direct architecture no longer bundles the MCP subprocess.
 }
 
 let cachedTemplates: CompiledTemplates | null = null;
@@ -60,7 +66,7 @@ async function loadTemplate(name: string): Promise<HandlebarsTemplateDelegate<un
 async function loadTemplates(): Promise<CompiledTemplates> {
   registerHelpers();
   if (cachedTemplates) return cachedTemplates;
-  const [packageJson, tsconfig, tsupConfig, readme, index, node, credentials, mcpServerEntry] = await Promise.all([
+  const [packageJson, tsconfig, tsupConfig, readme, index, node, credentials] = await Promise.all([
     loadTemplate('package.json.hbs'),
     loadTemplate('tsconfig.json.hbs'),
     loadTemplate('tsup.config.ts.hbs'),
@@ -68,9 +74,8 @@ async function loadTemplates(): Promise<CompiledTemplates> {
     loadTemplate('index.ts.hbs'),
     loadTemplate('node.ts.hbs'),
     loadTemplate('credentials.ts.hbs'),
-    loadTemplate('mcp-server-entry.ts.hbs'),
   ]);
-  cachedTemplates = { packageJson, tsconfig, tsupConfig, readme, index, node, credentials, mcpServerEntry };
+  cachedTemplates = { packageJson, tsconfig, tsupConfig, readme, index, node, credentials };
   return cachedTemplates;
 }
 
@@ -109,7 +114,6 @@ export async function generateN8nNode(opts: GenerateN8nNodeOptions): Promise<Gen
     { rel: 'package.json', content: tpl.packageJson(spec) },
     { rel: 'tsconfig.json', content: tpl.tsconfig(spec) },
     { rel: 'tsup.config.ts', content: tpl.tsupConfig(spec) },
-    { rel: 'mcp-server-entry.ts', content: tpl.mcpServerEntry(spec) },
     { rel: 'README.md', content: tpl.readme(spec) },
     { rel: 'index.ts', content: tpl.index(spec) },
     {
