@@ -131,6 +131,8 @@ describe('Track B — Layer 3 (per-operation smoke)', () => {
           name: 'pollable_tool',
           displayName: 'Pollable Tool',
           description: '',
+          httpMethod: 'GET',
+          httpUrlTemplate: '/pollable/{id}',
           properties: [
             {
               name: 'id',
@@ -166,6 +168,8 @@ describe('Track B — Layer 3 (per-operation smoke)', () => {
           name: 'drifted_tool',
           displayName: 'Drifted Tool',
           description: '',
+          httpMethod: 'GET',
+          httpUrlTemplate: '/drifted/{id}',
           properties: [],
         },
       ],
