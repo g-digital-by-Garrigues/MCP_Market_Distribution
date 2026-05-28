@@ -8,11 +8,21 @@ This document combines [Story 6.1](../../_bmad-output/planning-artifacts/epics.m
 
 In the v1.1 per-repo model, the pipeline (`MCP_Market_Distribution/publish.yml`) clones the source MCP at the `v<version>` tag at workflow time. **Whatever lives at that tag is what reaches every store.** If the tag points at a commit with stale artifacts, the pipeline ships the stale artifacts — silently, in some cases (see "Anti-patterns" below).
 
-The four failure modes we've already hit:
+The six failure modes we've already hit:
 - **Stale `server.json` at the tag**: the v1.1.0 tag was created after `package.json` was bumped but **before** `server.json` was bumped. The pipeline cloned a tag where `server.json` still said `1.0.0`; the MCP Official Registry correctly rejected the publish as a duplicate of the already-published v1.0.0; the pipeline silently marked it as `skipped`. Fixed in `publish-mcp-registry` (PR #139) by detecting the mismatch and failing loudly — but the operator-facing fix is **always run `/prep-mcp` before tagging** so this case never arises.
 - **Missing Trusted Publisher for n8n adapter package**: OIDC publish failed because `@g-digital/n8n-nodes-*` was created on npm but had no Trusted Publisher configured. Configure both the main MCP package AND its n8n adapter package — they're independent npm packages.
 - **Dockerfile / transport contract mismatch** (2026-05-26): EAD_Enterprise_Suite_MCP v1.2.0–1.2.2 and GoCertius_MCP v1.1.0–1.1.2 all failed Track A Layer 3. The Dockerfile (from `@suite/generator` template) declared `HEALTHCHECK CMD fetch http://localhost:8080/healthz` but did NOT set `ENV MCP_TRANSPORT=http`. `selectTransport()` defaults to stdio when the env is unset → port 8080 stays closed → HEALTHCHECK times out at 60s. ead-factory works because its Dockerfile bakes `ENV TRANSPORT=http`. Generator template fixed in `@suite/generator` PR #15. **The contract**: if your Dockerfile's HEALTHCHECK probes HTTP, your container MUST bake the transport env so the HTTP listener actually starts.
 - **Docker Hub anonymous pull rate-limit**: same 2026-05-26 incident. `docker build` failed at `[auth] library/node:pull token` because Layer 3 had no `docker/login-action` and the runner's shared IP had exhausted the anonymous quota. Fixed in pipeline PR #150 by authenticating before every L3 build using `DOCKERHUB_USERNAME` + `DOCKERHUB_TOKEN`.
+- **n8n adapter template/src changes not verified locally** (2026-05-28, Epic 12): PRs #161-#167 each had TypeScript errors (`ts2739`, `TS2345`, build failures) not caught locally because `pnpm vitest run` doesn't typecheck — only `tsc` in CI does. 7 hotfix rounds resulted. **The contract**: after any change to `templates/n8n-adapter/` or `src/adapters/n8n-adapter/`, always verify locally before pushing:
+  ```bash
+  # 1. Generate the adapter for a real MCP (requires built MCP dist):
+  pnpm tsx src/adapters/n8n-adapter/run-adapter-build.ts <mcp_name> <version> <package_dir> /tmp/adapter-check
+  # 2. Typecheck the generated TypeScript:
+  cd /tmp/adapter-check && npm install --silent && npx tsc --noEmit
+  # 3. Build with tsup (catches tsup config errors like missing entry files):
+  npm run build
+  # All three must succeed before pushing.
+  ```
 
 ## Pre-release checklist
 
