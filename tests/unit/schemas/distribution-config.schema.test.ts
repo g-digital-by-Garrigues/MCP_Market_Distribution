@@ -131,4 +131,36 @@ describe('distributionConfigSchema — invalid fixtures', () => {
     const result = distributionConfigSchema.safeParse({ ...validConfig, distribution_schema_version: 2 });
     expect(result.success).toBe(false);
   });
+
+  // Story 11.3 (Epic 11): n8n connector display-name + description overrides.
+  it('accepts valid n8n_connector_display_name and n8n_connector_description', () => {
+    const result = distributionConfigSchema.safeParse({
+      ...validConfig,
+      n8n_connector_display_name: 'EAD Factory',
+      n8n_connector_description:
+        'EAD Factory connector for n8n — Digital Trust services from EAD Trust. 9 operations.',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.n8n_connector_display_name).toBe('EAD Factory');
+      expect(result.data.n8n_connector_description).toContain('EAD Factory connector for n8n');
+    }
+  });
+
+  it('accepts config without n8n_connector_display_name and n8n_connector_description (both optional)', () => {
+    const result = distributionConfigSchema.safeParse(validConfig);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.n8n_connector_display_name).toBeUndefined();
+      expect(result.data.n8n_connector_description).toBeUndefined();
+    }
+  });
+
+  it('rejects n8n_connector_display_name as empty string', () => {
+    const result = distributionConfigSchema.safeParse({
+      ...validConfig,
+      n8n_connector_display_name: '',
+    });
+    expect(result.success).toBe(false);
+  });
 });
