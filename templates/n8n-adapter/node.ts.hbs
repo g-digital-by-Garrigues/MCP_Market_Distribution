@@ -131,7 +131,7 @@ export class {{className}} implements INodeType {
       const isBodyless = meta.method === 'GET' || meta.method === 'DELETE';
       if (isBodyless && Object.keys(body).length > 0) {
         const qs = new URLSearchParams(
-          Object.entries(body).map(([k, v]) => [k, String(v)]),
+          Object.entries(body).map(([k, v]) => [k, String(v)] as [string, string]),
         );
         url = `${url}?${qs.toString()}`;
       }
