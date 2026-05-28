@@ -21,12 +21,14 @@ function sampleSpec(): N8nNodeSpec {
     credentialParamName: 'multiToolApi',
     sourceRepoUrl: 'https://github.com/test/test-mcp',
     author: 'g-digital by Garrigues',
-    mcpBinRelPath: 'dist/cli.js',
+    authStyle: 'email-password',
     operations: [
       {
         name: 'get_widget',
         displayName: 'Get Widget',
         description: 'Fetch a widget by id.',
+        httpMethod: 'GET',
+        httpUrlTemplate: '/widgets/{widget_id}',
         properties: [
           {
             name: 'widget_id',
@@ -43,6 +45,8 @@ function sampleSpec(): N8nNodeSpec {
         name: 'list_widgets',
         displayName: 'List Widgets',
         description: 'List widgets.',
+        httpMethod: 'GET',
+        httpUrlTemplate: '/widgets',
         properties: [
           {
             name: 'page_size',
@@ -97,10 +101,10 @@ describe('generateN8nNode', () => {
     // The list is locale-sorted so uppercase 'README.md' lands between
     // 'package.json' and 'tsconfig.json' (not first as ASCII would have
     // it). Test assertion follows the actual locale-aware ordering.
+    // mcp-server-entry.ts removed in Story 12.2 (Epic 12) — REST-direct architecture
     expect(result.filesWritten.sort((a, b) => a.localeCompare(b))).toEqual([
       'credentials/MultiToolApi.credentials.ts',
       'index.ts',
-      'mcp-server-entry.ts',
       'nodes/MultiTool/MultiTool.node.ts',
       'package.json',
       'README.md',
@@ -172,22 +176,27 @@ describe('generateN8nNode', () => {
     expect(pkg.devDependencies.copyfiles).toBeDefined();
   });
 
-  it('package.json has zero runtime deps (n8n Verified) and source MCP + SDK in devDependencies (Approach B)', async () => {
+  it('package.json has zero runtime deps (n8n Verified) and no source-MCP devDep (REST-direct, Epic 12)', async () => {
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const pkg = JSON.parse(await fs.readFile(path.join(outputDir, 'package.json'), 'utf8')) as {
       name: string;
       version: string;
       dependencies: Record<string, string>;
       devDependencies: Record<string, string>;
-      n8n: { credentials: string[]; nodes: string[] };
+      peerDependencies: Record<string, string>;
+      n8n: { credentials: string[]; nodes: string[]; strict: boolean };
     };
     expect(pkg.name).toBe('@g-digital/n8n-nodes-multi-tool');
     expect(pkg.version).toBe('1.0.0');
     // n8n Verified requires zero runtime dependencies.
     expect(Object.keys(pkg.dependencies)).toEqual([]);
-    // Source MCP + SDK are bundled by tsup — must be in devDependencies.
-    expect(pkg.devDependencies['@g-digital/mcp-multi-tool']).toBe('1.0.0');
-    expect(pkg.devDependencies['@modelcontextprotocol/sdk']).toBeDefined();
+    // REST-direct: source MCP + SDK are no longer bundled; no devDep for them.
+    expect(pkg.devDependencies['@g-digital/mcp-multi-tool']).toBeUndefined();
+    expect(pkg.devDependencies['@modelcontextprotocol/sdk']).toBeUndefined();
+    // peerDependencies.n8n-workflow must be '*' (n8n verified requirement, Epic 12 Story 12.2)
+    expect(pkg.peerDependencies['n8n-workflow']).toBe('*');
+    // n8n.strict required by the n8n-nodes-starter scaffold (Story 11.3)
+    expect(pkg.n8n.strict).toBe(true);
     expect(pkg.n8n.nodes).toEqual(['dist/nodes/MultiTool/MultiTool.node.js']);
     expect(pkg.n8n.credentials).toEqual(['dist/credentials/MultiToolApi.credentials.js']);
   });
@@ -215,43 +224,35 @@ describe('generateN8nNode', () => {
     expect(node).toContain("'list_widgets': ['page_size', 'sort']");
   });
 
-  it("node.ts inherits process.env before applying credentials so NODE_EXTRA_CA_CERTS reaches the spawned MCP (corp TLS regression)", async () => {
-    // Without process.env propagation the spawned source MCP runs with
-    // ONLY the credential fields as env, so any HTTPS call from inside
-    // the MCP fails on corp TLS-inspected networks with "self-signed
-    // certificate in certificate chain". Discovered while testing
-    // create_signature_request against EAD Factory in n8n self-hosted
-    // behind PaloAlto + GarriguesRootCA inspection.
+  it("node.ts REST-direct: uses fetch() for auth, no process.env, no spawned subprocess (Epic 12 REST-direct)", async () => {
+    // REST-direct architecture (ADR 0008): the node calls /session or
+    // OKTA_TOKEN_URL directly via fetch(), then calls the REST API.
+    // There is no subprocess spawn, no process.env propagation.
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const node = await fs.readFile(
       path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
       'utf8',
     );
-    // process.env loop must precede the credentials loop so credentials
-    // shadow any host env collisions (this is the contract; without it,
-    // a leaky env var would override the user's credential value).
-    const envLoopIdx = node.indexOf('for (const [k, v] of Object.entries(process.env))');
-    const credLoopIdx = node.indexOf('for (const key of Object.keys(credentials))');
-    expect(envLoopIdx).toBeGreaterThan(-1);
-    expect(credLoopIdx).toBeGreaterThan(-1);
-    expect(envLoopIdx).toBeLessThan(credLoopIdx);
+    // Auth via fetch() to /session endpoint (email-password authStyle)
+    expect(node).toContain("fetch(`${baseUrl}/session`");
+    // No subprocess / MCP spawn
+    expect(node).not.toContain('StdioClientTransport');
+    expect(node).not.toContain('child_process');
+    expect(node).not.toContain('process.env');
+    // OPERATION_META table present
+    expect(node).toContain('OPERATION_META');
   });
 
-  it('node.ts imports IDataObject from n8n-workflow and casts the MCP response to it (TS2322 regression #26043958622)', async () => {
-    // Layer 2 compile gate caught a TS2322 in dry-run #26043958622:
-    // `Record<string, unknown>` is not assignable to n8n-workflow's
-    // IDataObject. The generator now imports IDataObject and casts the
-    // callTool response through `as unknown as IDataObject` so n8n
-    // accepts the data into INodeExecutionData.json.
+  it('node.ts imports IDataObject from n8n-workflow and uses it for the API response (REST-direct, Epic 12)', async () => {
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const node = await fs.readFile(
       path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
       'utf8',
     );
-    // Import added to the n8n-workflow line.
+    // IDataObject import still present (REST-direct uses it for out.push)
     expect(node).toMatch(/import\s*\{[\s\S]*?IDataObject[\s\S]*?\}\s*from\s*'n8n-workflow'/);
-    // Cast lands on the callTool response, NOT the old Record form.
-    expect(node).toContain('as unknown as IDataObject');
+    // REST-direct casts the fetch response to IDataObject
+    expect(node).toContain('as IDataObject');
     expect(node).not.toContain('as Record<string, unknown>');
   });
 
@@ -284,13 +285,13 @@ describe('generateN8nNode', () => {
     expect(node).toContain("categories: ['AI', 'Langchain']");
   });
 
-  it('package.json peer-deps n8n-workflow >=1.79.0 (the version that ships usableAsTool — Story 5.8)', async () => {
+  it('package.json peer-deps n8n-workflow is "*" (n8n Verified requirement per scan-community-package, Epic 12)', async () => {
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const pkg = JSON.parse(await fs.readFile(path.join(outputDir, 'package.json'), 'utf8')) as {
       peerDependencies: Record<string, string>;
       devDependencies: Record<string, string>;
     };
-    expect(pkg.peerDependencies['n8n-workflow']).toBe('>=1.79.0');
+    expect(pkg.peerDependencies['n8n-workflow']).toBe('*');
     // devDep also bumped so `tsc` sees the `usableAsTool` field on
     // INodeTypeDescription — older typings don't expose it.
     expect(pkg.devDependencies['n8n-workflow']).toBe('^1.79.0');

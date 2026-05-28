@@ -31,7 +31,7 @@ function specForMultiTool(): N8nNodeSpec {
     credentialParamName: 'multiToolApi',
     sourceRepoUrl: 'https://github.com/test/test-mcp',
     author: 'g-digital by Garrigues',
-    mcpBinRelPath: 'dist/cli.js',
+    authStyle: 'email-password',
     operations: [
       {
         name: 'get_widget',

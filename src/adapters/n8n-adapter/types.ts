@@ -72,6 +72,37 @@ export interface N8nOperationSpec {
   description: string;
   /** Properties scoped to this operation (already tagged with showForOperation=name). */
   properties: N8nProperty[];
+  /**
+   * HTTP method for the REST-direct call (e.g. 'GET', 'POST').
+   * Extracted from the `// Sourced from operation:` comment in the
+   * source MCP's `src/tools/<tool>.ts`. 'STUB' means the tool is
+   * custom/handwritten and lacks an annotation — it will throw a
+   * "use self-hosted" error at runtime.
+   * Story 12.2 (Epic 12): REST-direct architecture per ADR 0008.
+   */
+  httpMethod: string;
+  /**
+   * URL template for the REST call, e.g. `/case-files/{caseFileId}`.
+   * Path parameters are replaced by matching input property names.
+   * Empty string when httpMethod === 'STUB'.
+   */
+  httpUrlTemplate: string;
+  /**
+   * True when the URL was annotated via `// n8n-http:` comment (custom
+   * tool) rather than auto-extracted from `// Sourced from operation:`.
+   */
+  customAnnotation?: boolean;
+  /**
+   * True when neither comment was found — the generated node will throw
+   * a "use self-hosted" error if this operation is invoked in n8n Cloud.
+   */
+  isStub?: boolean;
+  /**
+   * Pre-rendered suffix for the Handlebars template (avoids nested
+   * {{#if}} inside {{#each}} which triggers Handlebars standalone-
+   * stripping quirks in v4). Either `', stub: true'` or `''`.
+   */
+  stubSuffix?: string;
 }
 
 export interface N8nCredentialField {
@@ -94,9 +125,8 @@ export interface N8nNodeSpec {
   packageName: string;
   /**
    * npm package name of the SOURCE MCP (e.g. `@g-digital/mcp-ead-factory`).
-   * The generated n8n node declares this as a runtime dependency and
-   * spawns it from node_modules at execute() time — keeps the n8n node
-   * working in environments without npx + network at workflow time.
+   * Retained for README generation and provenance; no longer bundled
+   * into the n8n node (REST-direct architecture per ADR 0008).
    */
   sourceMcpPackageName: string;
   /** Version aligned with the source MCP's version (FR32). */
@@ -141,11 +171,13 @@ export interface N8nNodeSpec {
    */
   iconBundled?: boolean;
   /**
-   * Relative path of the source MCP's CLI entry within its package,
-   * derived from `package.json#bin` (e.g. `dist/cli.js`). The
-   * `mcp-server-entry.ts` template uses this to require the CLI
-   * bootstrap; tsup traces and bundles the dep tree at adapter
-   * build time so `dist/mcp-server.js` is self-contained at runtime.
+   * Authentication style for the REST-direct execute() body.
+   * 'email-password' → POST /session with email+password → Bearer JWT.
+   * 'okta-client-credentials' → POST OKTA_TOKEN_URL with
+   *   grant_type=client_credentials → Bearer access_token.
+   * Detected from the credential fields: presence of OKTA_TOKEN_URL
+   * → 'okta-client-credentials', otherwise 'email-password'.
+   * Story 12.2 (Epic 12): REST-direct architecture per ADR 0008.
    */
-  mcpBinRelPath: string;
+  authStyle: 'email-password' | 'okta-client-credentials';
 }

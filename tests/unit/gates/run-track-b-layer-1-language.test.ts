@@ -24,7 +24,7 @@ function baseSpec(): N8nNodeSpec {
     credentialParamName: 'testApi',
     sourceRepoUrl: 'https://github.com/test/test',
     author: 'g-digital by Garrigues',
-    mcpBinRelPath: 'dist/cli.js',
+    authStyle: 'email-password',
     operations: [{ name: 'do_thing', displayName: 'Do Thing', description: 'Does the thing.', properties: [] }],
     credentials: [{ envName: 'API_KEY', displayName: 'API Key', description: 'API key.', isSecret: true }],
   };

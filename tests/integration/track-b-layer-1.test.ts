@@ -22,7 +22,7 @@ function sampleSpec(): N8nNodeSpec {
     credentialParamName: 'multiToolApi',
     sourceRepoUrl: 'https://github.com/test/test-mcp',
     author: 'g-digital by Garrigues',
-    mcpBinRelPath: 'dist/cli.js',
+    authStyle: 'email-password',
     operations: [
       {
         name: 'get_widget',
@@ -86,37 +86,33 @@ describe('Track B — Layer 1 (structural lint)', () => {
     expect(layoutError!.target).toBe('n8n');
   });
 
-  it('fails package_json when the source MCP dep is not pinned to spec.version', async () => {
+  // Story 12.2 (Epic 12): REST-direct architecture — new gate behaviors
+  it('fails package_json when source-MCP appears in devDependencies (REST-direct: not bundled)', async () => {
     const spec = sampleSpec();
     await generateN8nNode({ spec, outputDir: nodeDir });
-    // Corrupt the package.json's source-MCP dep version (in devDependencies — Approach B).
     const pkgPath = path.join(nodeDir, 'package.json');
     const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
       devDependencies: Record<string, string>;
     };
-    pkg.devDependencies[spec.sourceMcpPackageName] = '0.0.1';
+    // Simulate old-architecture artifact: source MCP accidentally in devDeps
+    pkg.devDependencies[spec.sourceMcpPackageName] = '1.0.0';
     await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
     const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
     expect(result.passed).toBe(false);
     const pkgError = result.errors.find((e) => e.check === 'package_json');
     expect(pkgError).toBeDefined();
-    expect(pkgError!.observation).toContain('pin version');
+    expect(pkgError!.observation).toContain('must NOT include');
+    expect(pkgError!.observation).toContain(spec.sourceMcpPackageName);
   });
 
   it('accepts a file:./<tarball>.tgz source-MCP dep when .adapter-build.json signals dry-run substitution', async () => {
-    // Regression for run #26042508342: in dry-run mode,
-    // run-adapter-build.ts rewrites the source-MCP dep to a local
-    // tarball file: URL; Layer 1 must recognise this as a legitimate
-    // form (and only flag drift if dry_run / source_substituted are
-    // false in the build summary).
+    // Regression guard: dry-run mode previously rewrote the source-MCP
+    // dep to a file: URL. In REST-direct, this path should no longer
+    // exist — the gate should PASS if no source-MCP dep is present at all
+    // (which is what the generator now produces).
     const spec = sampleSpec();
     await generateN8nNode({ spec, outputDir: nodeDir });
-    const pkgPath = path.join(nodeDir, 'package.json');
-    const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
-      devDependencies: Record<string, string>;
-    };
-    pkg.devDependencies[spec.sourceMcpPackageName] = `file:./g-digital-mcp-multi-tool-${spec.version}.tgz`;
-    await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
+    // Don't inject any sourceMcpPackageName dep — the generator no longer adds it.
     await fs.writeFile(
       path.join(nodeDir, '.adapter-build.json'),
       JSON.stringify({ dry_run: true, source_substituted: true }),
@@ -124,41 +120,6 @@ describe('Track B — Layer 1 (structural lint)', () => {
     const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
     expect(result.passed).toBe(true);
     expect(result.errors).toEqual([]);
-  });
-
-  it('still flags a file:./<tarball>.tgz dep when the tarball filename does not reference spec.version', async () => {
-    const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
-    const pkgPath = path.join(nodeDir, 'package.json');
-    const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
-      devDependencies: Record<string, string>;
-    };
-    pkg.devDependencies[spec.sourceMcpPackageName] = `file:./stale-0.0.1.tgz`;
-    await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
-    await fs.writeFile(
-      path.join(nodeDir, '.adapter-build.json'),
-      JSON.stringify({ dry_run: true, source_substituted: true }),
-    );
-    const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
-    expect(result.passed).toBe(false);
-    const pkgError = result.errors.find((e) => e.check === 'package_json');
-    expect(pkgError!.observation).toContain(`does not reference spec.version='${spec.version}'`);
-  });
-
-  it("still flags a file:./<tarball>.tgz dep when NOT in dry-run mode (real publishes must use semver pin)", async () => {
-    const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
-    const pkgPath = path.join(nodeDir, 'package.json');
-    const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
-      devDependencies: Record<string, string>;
-    };
-    pkg.devDependencies[spec.sourceMcpPackageName] = `file:./g-digital-mcp-multi-tool-${spec.version}.tgz`;
-    await fs.writeFile(pkgPath, JSON.stringify(pkg, null, 2));
-    // .adapter-build.json absent → defaults to "expect semver pin".
-    const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
-    expect(result.passed).toBe(false);
-    const pkgError = result.errors.find((e) => e.check === 'package_json');
-    expect(pkgError!.observation).toContain('pin version');
   });
 
   it("fails node_class when the usableAsTool flag is missing (Story 5.8 regression)", async () => {
