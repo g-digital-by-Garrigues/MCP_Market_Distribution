@@ -259,8 +259,15 @@ export async function buildN8nNodeSpec(
     sourceMcpPackageName: fullMcpPackageName,
     version: input.version,
     className,
-    displayName: resourceLabel,
-    description: server.description ?? `n8n community node for the ${resourceLabel} MCP.`,
+    // Per-MCP overrides (Story 11.3): .distribution.yaml may supply
+    // n8n_connector_display_name / n8n_connector_description to avoid the
+    // generic TitleCase fallback ("Ead Factory" → "EAD Factory") and to
+    // ensure the description uses connector framing ("EAD Factory connector
+    // for n8n") rather than the default "n8n community node for ... MCP".
+    displayName: distribution.n8n_connector_display_name ?? resourceLabel,
+    description: distribution.n8n_connector_description
+      ?? server.description
+      ?? `${distribution.n8n_connector_display_name ?? resourceLabel} connector for n8n.`,
     nodeName: input.mcpName,
     paramName,
     resourceDisplayName: resourceLabel,

@@ -373,6 +373,87 @@ async function checkReadme(opts: RunTrackBLayer1Options): Promise<TrackBLayer1Ch
   };
 }
 
+// Story 11.4 (Epic 11): language regression-guard.
+//
+// n8n's Verified Community Node program requires English-only content in all
+// UI-visible strings. Our pre-audit (2026-05-27) found zero Spanish content in
+// the 3 published packages, but a future upstream API update or generator change
+// could silently re-introduce Spanish-origin strings. This check catches the
+// regression at Track B Layer 1 (gate time, ~1s) before an OIDC-attested
+// package reaches npm and then n8n's verified review queue.
+//
+// Checks:
+//   - package.json#description: no Spanish accentuated chars, no known Spanish keywords
+//   - package.json#keywords: same (catches drift from "digital-trust" → "evidencia")
+//   - README.md first paragraph (lines 1-5): no Spanish content
+//   - spec.operations[].description: each operation description
+//   - spec.credentials[].description: each credential description
+//
+// The regex covers: (1) Spanish-only chars [áéíóúñÁÉÍÓÚÑ¿¡], (2) high-signal
+// Spanish keywords that would never appear in legitimate English MCP tool
+// descriptions (evidencia, expediente, firma/firmante, notificación,
+// notificacion, expediente). The keyword list is intentionally short to avoid
+// false positives on English words that superficially overlap.
+
+const SPANISH_CHAR_RE = /[áéíóúñÁÉÍÓÚÑ¿¡]/;
+const SPANISH_KEYWORD_RE =
+  /\b(evidencia|expediente|firmante|firmamos|firma\b|notificación|notificacion|dossier de)\b/i;
+
+function hasSpanish(s: string): boolean {
+  return SPANISH_CHAR_RE.test(s) || SPANISH_KEYWORD_RE.test(s);
+}
+
+async function checkLanguage(opts: RunTrackBLayer1Options): Promise<TrackBLayer1CheckResult> {
+  const { nodeDir, spec } = opts;
+  const violations: string[] = [];
+
+  // Check package.json description + keywords
+  try {
+    const pkgRaw = await fs.readFile(path.join(nodeDir, 'package.json'), 'utf8');
+    const pkg = JSON.parse(pkgRaw) as { description?: string; keywords?: string[] };
+    if (pkg.description && hasSpanish(pkg.description)) {
+      violations.push(`package.json#description: "${pkg.description.slice(0, 80)}"`);
+    }
+    for (const kw of pkg.keywords ?? []) {
+      if (hasSpanish(kw)) violations.push(`package.json#keywords: "${kw}"`);
+    }
+  } catch { /* file issues caught by checkFileLayout */ }
+
+  // Check README.md first paragraph (first 5 non-empty lines)
+  try {
+    const readme = await fs.readFile(path.join(nodeDir, 'README.md'), 'utf8');
+    const firstLines = readme.split('\n').filter((l) => l.trim().length > 0).slice(0, 5).join(' ');
+    if (hasSpanish(firstLines)) {
+      violations.push(`README.md first paragraph: "${firstLines.slice(0, 120)}"`);
+    }
+  } catch { /* README absence caught by checkReadme */ }
+
+  // Check operation descriptions
+  for (const op of spec.operations) {
+    if (op.description && hasSpanish(op.description)) {
+      violations.push(`operation '${op.name}' description: "${op.description.slice(0, 80)}"`);
+    }
+  }
+
+  // Check credential descriptions
+  for (const cred of spec.credentials) {
+    if (cred.description && hasSpanish(cred.description)) {
+      violations.push(`credential '${cred.envName}' description: "${cred.description.slice(0, 80)}"`);
+    }
+  }
+
+  if (violations.length === 0) return { name: 'language', passed: true };
+  return {
+    name: 'language',
+    passed: false,
+    error: gateError('language', {
+      observation: `Spanish-language content detected in generated n8n adapter (${violations.length} violation(s)): ${violations.slice(0, 3).join('; ')}${violations.length > 3 ? ` (+ ${violations.length - 3} more)` : ''}.`,
+      cause: 'n8n Verified Community Node program requires English-only content. A Spanish-origin tool description or keyword likely came from the upstream MCP source or the @suite/generator template.',
+      action: 'Fix the Spanish strings at their source-of-truth (source MCP repo or @suite/generator template), NOT here. Then re-publish the source MCP and re-run the pipeline.',
+    }),
+  };
+}
+
 export async function runTrackBLayer1(
   opts: RunTrackBLayer1Options,
 ): Promise<TrackBLayer1Result> {
@@ -382,6 +463,7 @@ export async function runTrackBLayer1(
   checks.push(await checkNodeClass(opts));
   checks.push(await checkCredentialsClass(opts));
   checks.push(await checkReadme(opts));
+  checks.push(await checkLanguage(opts));
 
   const errors = checks.filter((c) => !c.passed).map((c) => c.error!);
   const passed = errors.length === 0;

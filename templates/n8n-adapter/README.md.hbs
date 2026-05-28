@@ -1,8 +1,8 @@
-# {{displayName}} (n8n community node)
+# {{displayName}} — n8n connector
 
-> Auto-generated from [{{sourceMcpPackageName}}]({{sourceRepoUrl}}) by the g-digital MCP distribution pipeline. Do not edit by hand — re-generate the next time the MCP is published.
+> {{description}}
 
-This n8n community node wraps the `{{sourceMcpPackageName}}` MCP so its tools are usable as steps inside an n8n workflow. Each MCP tool maps to one **operation** on this node.
+Install this connector and use {{displayName}} operations as steps inside any n8n workflow. Each operation maps to one capability of the underlying {{displayName}} platform.
 
 ## Install (self-hosted n8n)
 
@@ -28,11 +28,9 @@ This node requires a "{{displayName}} API" credential with the following fields:
 {{#each credentials}}| `{{this.envName}}` | {{#if this.description}}{{this.description}}{{else}}—{{/if}} | {{#if this.isSecret}}yes{{else}}no{{/if}} |
 {{/each}}
 
-The credential values are passed as environment variables to the spawned `{{sourceMcpPackageName}}` process at execute() time.
-
 ## Use as an AI Agent tool
 
-This node is flagged `usableAsTool: true`, so any n8n AI Agent (n8n ≥ 1.79.0) can consume it dynamically: drag it into the workflow and wire its main output to an AI Agent's "Tool" input. The LLM picks which operation to invoke and what arguments to pass based on the operation descriptions above and each property's hint text.
+This node is flagged `usableAsTool: true`, so any n8n AI Agent (n8n ≥ 1.79.0) can consume it dynamically: drag it into the workflow and wire its main output to an AI Agent's "Tool" input.
 
 For best results pair with an AI Agent node running **V2** — V3 has a known empty-tool-response bug in some recent n8n versions (see [n8n issue #26202](https://github.com/n8n-io/n8n/issues/26202)).
 

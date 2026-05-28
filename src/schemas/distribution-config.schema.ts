@@ -99,6 +99,17 @@ export const distributionConfigSchema = z
           "git_tag_prefix must contain only letters, digits, '.', '_' or '-' (e.g., 'v' or 'ead-factory-v')",
       })
       .optional(),
+    // Story 11.3 (Epic 11): override the auto-derived displayName and
+    // description for the generated n8n adapter package. The auto-derived
+    // displayName is TitleCase of n8n_adapter_target_name (e.g.
+    // "ead-factory" → "Ead Factory"), which is undesirable for brands with
+    // initialisms ("EAD Factory", "EAD Enterprise Suite"). These fields also
+    // enforce connector framing ("EAD Factory connector for n8n") instead of
+    // the default "n8n community node for ... MCP" fallback — required for
+    // n8n Verified Community Node submission (framing rejects packages that
+    // look like MCP proxy layers rather than first-party connectors).
+    n8n_connector_display_name: z.string().min(1).optional(),
+    n8n_connector_description: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((data, ctx) => {
