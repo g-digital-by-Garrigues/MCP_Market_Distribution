@@ -23,7 +23,7 @@ function baseSpec(): N8nNodeSpec {
     credentialClassName: 'TestApi',
     credentialParamName: 'testApi',
     sourceRepoUrl: 'https://github.com/test/test',
-    author: 'g-digital by Garrigues',
+    author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     authStyle: 'email-password',
     defaultApiBaseUrl: '',
     operations: [{ name: 'do_thing', displayName: 'Do Thing', description: 'Does the thing.', httpMethod: 'GET', httpUrlTemplate: '/things/{id}', properties: [] }],

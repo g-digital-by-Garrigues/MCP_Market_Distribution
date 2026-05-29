@@ -20,7 +20,7 @@ function sampleSpec(): N8nNodeSpec {
     credentialClassName: 'MultiToolApi',
     credentialParamName: 'multiToolApi',
     sourceRepoUrl: 'https://github.com/test/test-mcp',
-    author: 'g-digital by Garrigues',
+    author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     authStyle: 'email-password',
     defaultApiBaseUrl: '',
     operations: [

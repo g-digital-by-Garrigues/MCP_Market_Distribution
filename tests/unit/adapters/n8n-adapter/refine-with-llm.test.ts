@@ -16,7 +16,7 @@ function baseSpec(): N8nNodeSpec {
     credentialClassName: 'EadFactoryApi',
     credentialParamName: 'eadFactoryApi',
     sourceRepoUrl: 'https://github.com/g/x',
-    author: 'g-digital by Garrigues',
+    author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     authStyle: 'email-password',
     defaultApiBaseUrl: '',
     operations: [
