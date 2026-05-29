@@ -44,6 +44,7 @@ This node requires a "{{displayName}} API" credential with the following fields:
 
 | Field | Description | Secret? |
 |---|---|---|
+| `API Base URL` | Base URL of the {{displayName}} REST API.{{#if defaultApiBaseUrl}} Production default: `{{defaultApiBaseUrl}}`{{/if}} Leave blank only if you know your environment uses a different endpoint. | no |
 {{#each credentials}}| `{{this.envName}}` | {{#if this.description}}{{this.description}}{{else}}—{{/if}} | {{#if this.isSecret}}yes{{else}}no{{/if}} |
 {{/each}}
 
