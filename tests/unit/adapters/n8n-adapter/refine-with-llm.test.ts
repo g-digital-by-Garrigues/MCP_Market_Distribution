@@ -18,6 +18,7 @@ function baseSpec(): N8nNodeSpec {
     sourceRepoUrl: 'https://github.com/g/x',
     author: 'g-digital by Garrigues',
     authStyle: 'email-password',
+    defaultApiBaseUrl: '',
     operations: [
       { name: 'get_evidence', displayName: 'Get Evidence', description: '', httpMethod: 'GET', httpUrlTemplate: '/evidence/{id}', properties: [] },
       { name: 'create_signature_request', displayName: 'Create Signature Request', description: '', httpMethod: 'POST', httpUrlTemplate: '/signature-requests', properties: [] },

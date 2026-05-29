@@ -23,6 +23,7 @@ function sampleSpec(): N8nNodeSpec {
     sourceRepoUrl: 'https://github.com/test/test-mcp',
     author: 'g-digital by Garrigues',
     authStyle: 'email-password',
+    defaultApiBaseUrl: '',
     operations: [
       {
         name: 'get_widget',

@@ -171,6 +171,14 @@ export interface N8nNodeSpec {
    */
   iconBundled?: boolean;
   /**
+   * Default (production) API base URL, extracted from the source MCP's
+   * session_login.ts fallback value. Used as the default in the credential
+   * form so n8n users connecting to production don't need to fill it in.
+   * Empty string when the source MCP has no extractable default (e.g.
+   * Okta-only adapters where the base URL is environment-specific).
+   */
+  defaultApiBaseUrl: string;
+  /**
    * Authentication style for the REST-direct execute() body.
    * 'email-password' → POST /session with email+password → Bearer JWT.
    * 'okta-client-credentials' → POST OKTA_TOKEN_URL with
