@@ -147,22 +147,27 @@ export class {{className}} implements INodeType {
 
         const isBodyless = meta.method === 'GET' || meta.method === 'DELETE';
         if (isBodyless && Object.keys(body).length > 0) {
-          // Flatten nested objects into bracket-notation query params.
-          // e.g. { filter: { ownerId: 'uuid' }, page: { size: 20 } }
-          //   → filter[ownerId]=uuid&page[size]=20
-          const flattenQs = (obj: Record<string, unknown>, prefix = ''): Array<[string, string]> => {
+          // GoCertius uses OpenAPI form+explode serialization for object query params:
+          // object properties are flattened directly into the query string WITHOUT
+          // the parent parameter name as prefix.
+          // e.g. { page: { number: 1, size: 20 }, filter: { ownerId: 'uuid' } }
+          //   → number=1&size=20&ownerId=uuid  (NOT page[number]=1)
+          const flattenQs = (obj: IDataObject): Array<[string, string]> => {
             const pairs: Array<[string, string]> = [];
             for (const [k, v] of Object.entries(obj)) {
               if (v === null || v === undefined || v === '') continue;
-              const key = prefix ? `${prefix}[${k}]` : k;
               if (typeof v === 'object' && !Array.isArray(v)) {
-                // Skip empty objects (e.g. default {} for filter/order/page)
                 if (Object.keys(v as object).length === 0) continue;
-                pairs.push(...flattenQs(v as IDataObject, key));
+                // Form+explode: merge properties without the parent key prefix
+                for (const [pk, pv] of Object.entries(v as IDataObject)) {
+                  if (pv !== null && pv !== undefined && pv !== '') {
+                    pairs.push([pk, String(pv)]);
+                  }
+                }
               } else if (Array.isArray(v)) {
-                for (const item of v) pairs.push([`${key}[]`, String(item)]);
+                for (const item of v) pairs.push([`${k}[]`, String(item)]);
               } else {
-                pairs.push([key, String(v)]);
+                pairs.push([k, String(v)]);
               }
             }
             return pairs;
