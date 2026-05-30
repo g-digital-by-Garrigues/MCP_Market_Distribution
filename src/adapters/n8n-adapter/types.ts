@@ -157,6 +157,13 @@ export interface N8nNodeSpec {
    */
   sourceRepoUrl: string;
   /**
+   * URL where users can sign up / obtain credentials for this service.
+   * Extracted from the first https URL found in server.json env var descriptions.
+   * Shown in the README credentials section and credential field descriptions.
+   * Empty string when no URL is found.
+   */
+  credentialAcquisitionUrl: string;
+  /**
    * Author block for the generated package.json.
    * Object format avoids the no-template-placeholders linter rule that flags
    * "Name <email>" angle-bracket syntax as an unresolved placeholder.

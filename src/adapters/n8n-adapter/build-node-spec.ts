@@ -338,6 +338,14 @@ export async function buildN8nNodeSpec(
     credentialClassName,
     credentialParamName,
     sourceRepoUrl: resolveRepoUrl(distribution, server),
+    credentialAcquisitionUrl: (() => {
+      const urlRe = /https?:\/\/[^\s)]+/;
+      for (const v of server.packages?.[0]?.environmentVariables ?? []) {
+        const m = urlRe.exec(v.description ?? '');
+        if (m) return m[0];
+      }
+      return '';
+    })(),
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     defaultApiBaseUrl,
     // authStyle: detect from credential fields — OKTA_TOKEN_URL presence → client_credentials
