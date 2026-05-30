@@ -214,8 +214,12 @@ export class {{className}} implements INodeType {
           );
         }
 
-        // 204 No Content → return empty object
-        const json = apiRes.status === 204 ? {} : await apiRes.json() as IDataObject;
+        // 204 No Content or empty body → return empty object
+        const contentLength = apiRes.headers.get('content-length');
+        const hasBody = apiRes.status !== 204 && contentLength !== '0';
+        const json: IDataObject = hasBody
+          ? await apiRes.json().catch(() => ({})) as IDataObject
+          : {};
         // session_info: inject userId decoded from JWT sub claim so callers
         // don't need a separate step to obtain the userId required by most operations.
         if (operation === 'session_info' && bearer) {
