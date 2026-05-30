@@ -31,7 +31,6 @@ export class {{className}} implements INodeType {
         displayName: 'Operation',
         name: 'operation',
         type: 'options',
-        noDataExpression: true,
         options: [
 {{#each operations}}          {
             name: {{json this.displayName}},
@@ -128,6 +127,14 @@ export class {{className}} implements INodeType {
             body[propName] = val;
           }
         }
+        // Substitute any remaining {placeholder} patterns from credentials
+        // (e.g. {email} in session_info which has no input params)
+        for (const [credKey, credVal] of Object.entries(creds)) {
+          const placeholder = `{${credKey}}`;
+          if (url.includes(placeholder) && credVal) {
+            url = url.replace(placeholder, encodeURIComponent(String(credVal)));
+          }
+        }
 
         const isBodyless = meta.method === 'GET' || meta.method === 'DELETE';
         if (isBodyless && Object.keys(body).length > 0) {
@@ -156,7 +163,22 @@ export class {{className}} implements INodeType {
         }
 
         // 204 No Content → return empty object
-        const json = apiRes.status === 204 ? {} : await apiRes.json();
+        const json = apiRes.status === 204 ? {} : await apiRes.json() as IDataObject;
+        // session_info: inject userId decoded from JWT sub claim so callers
+        // don't need a separate step to obtain the userId required by most operations.
+        if (operation === 'session_info' && bearer) {
+          try {
+            const parts = bearer.split('.');
+            if (parts.length === 3) {
+              const pad = (s: string) => s + '='.repeat((4 - s.length % 4) % 4);
+              const payload = JSON.parse(Buffer.from(pad(parts[1] ?? ''), 'base64').toString('utf8')) as Record<string, unknown>;
+              const sub = payload.sub ?? payload.userId ?? payload.user_id;
+              if (sub && !(json as Record<string, unknown>).userId) {
+                (json as Record<string, unknown>).userId = sub;
+              }
+            }
+          } catch { /* ignore decode errors */ }
+        }
         out.push({ json: json as IDataObject });
       } catch (error) {
         if (this.continueOnFail()) {
