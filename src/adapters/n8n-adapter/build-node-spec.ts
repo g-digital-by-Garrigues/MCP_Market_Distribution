@@ -187,6 +187,20 @@ async function readToolHttpInfo(
   return { httpMethod: 'STUB', httpUrlTemplate: '', customAnnotation: true, isStub: true, stubSuffix: ', stub: true' };
 }
 
+// Known sensible defaults for GoCertius/EAD field names.
+// Applied after jsonSchemaToProperties so enum defaults show in the n8n UI.
+const FIELD_DEFAULTS: Record<string, { default: string | number | boolean; description?: string }> = {
+  // id: auto-generated in execute() — UI shows empty with guidance
+  id: { default: '', description: 'UUID v4 identifier. Leave empty — the node generates it automatically.' },
+  language: { default: 'es_ES' },
+  evidenceType: { default: 'FILE' },
+  custodyType: { default: 'INTERNAL' },
+  service: { default: 'Telegram' },
+  validityFrom: { default: '', description: 'ISO 8601 datetime (e.g. 2026-01-01T00:00:00.000Z). Leave empty — defaults to now.' },
+  validityTo: { default: '', description: 'ISO 8601 datetime. Leave empty — defaults to 1 year from now.' },
+  useCaseId: { default: '', description: 'UUID of the use case. Find your useCaseId by calling case_file_list and reading useCaseId from any existing case file.' },
+};
+
 function buildOperation(tool: InspectorToolEntry): {
   op: Omit<N8nOperationSpec, 'httpMethod' | 'httpUrlTemplate' | 'customAnnotation'>;
   notes: string[];
@@ -195,12 +209,22 @@ function buildOperation(tool: InspectorToolEntry): {
     tool.inputSchema as ToolInputSchema | null,
     { operationName: tool.name },
   );
+  // Apply known defaults so the n8n UI shows sensible pre-filled values
+  const patchedProperties = properties.map((p) => {
+    const patch = FIELD_DEFAULTS[p.name];
+    if (!patch) return p;
+    return {
+      ...p,
+      ...(p.default === '' || p.default === null ? { default: patch.default } : {}),
+      ...(patch.description && !p.description ? { description: patch.description } : {}),
+    };
+  });
   return {
     op: {
       name: tool.name,
       displayName: toTitleCase(tool.name.replace(/_/g, '-')),
       description: tool.description ?? '',
-      properties,
+      properties: patchedProperties,
     },
     notes: unsupportedNotes,
   };
