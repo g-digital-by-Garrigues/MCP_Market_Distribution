@@ -3,6 +3,7 @@
 // Architecture: REST-direct (Epic 12 ADR 0008) — pure fetch(), no MCP subprocess.
 // Operations: {{#each operations}}{{this.name}}{{#unless @last}}, {{/unless}}{{/each}}
 
+import { randomUUID } from 'node:crypto';
 import {
   IDataObject,
   IExecuteFunctions,
@@ -143,6 +144,22 @@ export class {{className}} implements INodeType {
           if (url.includes(placeholder) && creds[credKey]) {
             url = url.replace(placeholder, encodeURIComponent(String(creds[credKey])));
           }
+        }
+
+        // --- Smart defaults for common fields ---
+        // Auto-generate UUID v4 for 'id' field in create operations
+        if ('id' in body && (body.id === '' || body.id === null || body.id === undefined)) {
+          body.id = randomUUID();
+        }
+        // validityFrom: default to now (ISO 8601)
+        if ('validityFrom' in body && (body.validityFrom === '' || body.validityFrom === null || body.validityFrom === undefined)) {
+          body.validityFrom = new Date().toISOString();
+        }
+        // validityTo: default to 1 year from now
+        if ('validityTo' in body && (body.validityTo === '' || body.validityTo === null || body.validityTo === undefined)) {
+          const oneYearLater = new Date();
+          oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
+          body.validityTo = oneYearLater.toISOString();
         }
 
         const isBodyless = meta.method === 'GET' || meta.method === 'DELETE';
