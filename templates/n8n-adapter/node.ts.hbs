@@ -127,12 +127,20 @@ export class {{className}} implements INodeType {
             body[propName] = val;
           }
         }
-        // Substitute any remaining {placeholder} patterns from credentials
-        // (e.g. {email} in session_info which has no input params)
+        // Substitute any remaining {placeholder} patterns from credentials.
+        // First try exact credential key names, then common API→credential aliases
+        // (e.g. {email} in session_info maps to credential field MCP_AUTH_EMAIL).
+        const credAliases: Record<string, string> = { email: 'MCP_AUTH_EMAIL' };
         for (const [credKey, credVal] of Object.entries(creds)) {
           const placeholder = `{${credKey}}`;
           if (url.includes(placeholder) && credVal) {
             url = url.replace(placeholder, encodeURIComponent(String(credVal)));
+          }
+        }
+        for (const [alias, credKey] of Object.entries(credAliases)) {
+          const placeholder = `{${alias}}`;
+          if (url.includes(placeholder) && creds[credKey]) {
+            url = url.replace(placeholder, encodeURIComponent(String(creds[credKey])));
           }
         }
 
