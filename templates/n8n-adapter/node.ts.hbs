@@ -100,63 +100,71 @@ export class {{className}} implements INodeType {
 
     // --- Per-item REST calls ---
     for (let i = 0; i < items.length; i++) {
-      const operation = this.getNodeParameter('operation', i) as string;
-      const meta = OPERATION_META[operation];
-      if (!meta) {
-        throw new NodeOperationError(this.getNode(), `Unknown operation: ${operation}`, { itemIndex: i });
-      }
-      if (meta.stub) {
-        throw new NodeOperationError(
-          this.getNode(),
-          `Operation '${operation}' requires n8n self-hosted with the @g-digital/mcp-* package. It is not available in n8n Cloud via this connector.`,
-          { itemIndex: i },
-        );
-      }
-
-      // Replace URL path params {paramName} from input; remaining args → body/query
-      let url = `${baseUrl}${meta.urlTemplate}`;
-      const propsForOp = OPERATION_PROPERTY_NAMES[operation] ?? [];
-      const body: Record<string, unknown> = {};
-      for (const propName of propsForOp) {
-        const val = this.getNodeParameter(propName, i);
-        if (val === '' || val === null || val === undefined) continue;
-        const placeholder = `{${propName}}`;
-        if (url.includes(placeholder)) {
-          url = url.replace(placeholder, encodeURIComponent(String(val)));
-        } else {
-          body[propName] = val;
+      try {
+        const operation = this.getNodeParameter('operation', i) as string;
+        const meta = OPERATION_META[operation];
+        if (!meta) {
+          throw new NodeOperationError(this.getNode(), `Unknown operation: ${operation}`, { itemIndex: i });
         }
+        if (meta.stub) {
+          throw new NodeOperationError(
+            this.getNode(),
+            `Operation '${operation}' requires n8n self-hosted with the @g-digital/mcp-* package. It is not available in n8n Cloud via this connector.`,
+            { itemIndex: i },
+          );
+        }
+
+        // Replace URL path params {paramName} from input; remaining args → body/query
+        let url = `${baseUrl}${meta.urlTemplate}`;
+        const propsForOp = OPERATION_PROPERTY_NAMES[operation] ?? [];
+        const body: Record<string, unknown> = {};
+        for (const propName of propsForOp) {
+          const val = this.getNodeParameter(propName, i);
+          if (val === '' || val === null || val === undefined) continue;
+          const placeholder = `{${propName}}`;
+          if (url.includes(placeholder)) {
+            url = url.replace(placeholder, encodeURIComponent(String(val)));
+          } else {
+            body[propName] = val;
+          }
+        }
+
+        const isBodyless = meta.method === 'GET' || meta.method === 'DELETE';
+        if (isBodyless && Object.keys(body).length > 0) {
+          const qs = new URLSearchParams(
+            Object.entries(body).map(([k, v]) => [k, String(v)] as [string, string]),
+          );
+          url = `${url}?${qs.toString()}`;
+        }
+
+        const apiRes = await fetch(url, {
+          method: meta.method,
+          headers: {
+            Authorization: `Bearer ${bearer}`,
+            ...(isBodyless ? {} : { 'Content-Type': 'application/json' }),
+          },
+          ...(isBodyless ? {} : { body: JSON.stringify(body) }),
+        });
+
+        if (!apiRes.ok) {
+          const errText = await apiRes.text().catch(() => '');
+          throw new NodeOperationError(
+            this.getNode(),
+            `${operation} failed: HTTP ${apiRes.status}${errText ? ` — ${errText.slice(0, 200)}` : ''}`,
+            { itemIndex: i },
+          );
+        }
+
+        // 204 No Content → return empty object
+        const json = apiRes.status === 204 ? {} : await apiRes.json();
+        out.push({ json: json as IDataObject });
+      } catch (error) {
+        if (this.continueOnFail()) {
+          out.push({ json: this.getInputData(i)[0].json, error: error as NodeOperationError });
+          continue;
+        }
+        throw error;
       }
-
-      const isBodyless = meta.method === 'GET' || meta.method === 'DELETE';
-      if (isBodyless && Object.keys(body).length > 0) {
-        const qs = new URLSearchParams(
-          Object.entries(body).map(([k, v]) => [k, String(v)] as [string, string]),
-        );
-        url = `${url}?${qs.toString()}`;
-      }
-
-      const apiRes = await fetch(url, {
-        method: meta.method,
-        headers: {
-          Authorization: `Bearer ${bearer}`,
-          ...(isBodyless ? {} : { 'Content-Type': 'application/json' }),
-        },
-        ...(isBodyless ? {} : { body: JSON.stringify(body) }),
-      });
-
-      if (!apiRes.ok) {
-        const errText = await apiRes.text().catch(() => '');
-        throw new NodeOperationError(
-          this.getNode(),
-          `${operation} failed: HTTP ${apiRes.status}${errText ? ` — ${errText.slice(0, 200)}` : ''}`,
-          { itemIndex: i },
-        );
-      }
-
-      // 204 No Content → return empty object
-      const json = apiRes.status === 204 ? {} : await apiRes.json();
-      out.push({ json: json as IDataObject });
     }
 
     return [out];

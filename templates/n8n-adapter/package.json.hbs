@@ -17,7 +17,7 @@
   ],
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsup && copyfiles -u 0 \"nodes/**/*.png\" dist",
+    "build": "tsup && copyfiles -u 0 \"nodes/**/*.png\" \"nodes/**/*.json\" dist",
     "lint": "eslint nodes credentials --ext .ts",
     "prepublishOnly": "npm run build"
   },

@@ -52,6 +52,7 @@ interface CompiledTemplates {
   index: HandlebarsTemplateDelegate<unknown>;
   node: HandlebarsTemplateDelegate<unknown>;
   credentials: HandlebarsTemplateDelegate<unknown>;
+  nodeJson: HandlebarsTemplateDelegate<unknown>;
   // mcp-server-entry.ts.hbs removed in Story 12.2 (Epic 12):
   // REST-direct architecture no longer bundles the MCP subprocess.
 }
@@ -66,7 +67,7 @@ async function loadTemplate(name: string): Promise<HandlebarsTemplateDelegate<un
 async function loadTemplates(): Promise<CompiledTemplates> {
   registerHelpers();
   if (cachedTemplates) return cachedTemplates;
-  const [packageJson, tsconfig, tsupConfig, readme, index, node, credentials] = await Promise.all([
+  const [packageJson, tsconfig, tsupConfig, readme, index, node, credentials, nodeJson] = await Promise.all([
     loadTemplate('package.json.hbs'),
     loadTemplate('tsconfig.json.hbs'),
     loadTemplate('tsup.config.ts.hbs'),
@@ -74,8 +75,9 @@ async function loadTemplates(): Promise<CompiledTemplates> {
     loadTemplate('index.ts.hbs'),
     loadTemplate('node.ts.hbs'),
     loadTemplate('credentials.ts.hbs'),
+    loadTemplate('node.json.hbs'),
   ]);
-  cachedTemplates = { packageJson, tsconfig, tsupConfig, readme, index, node, credentials };
+  cachedTemplates = { packageJson, tsconfig, tsupConfig, readme, index, node, credentials, nodeJson };
   return cachedTemplates;
 }
 
@@ -123,6 +125,10 @@ export async function generateN8nNode(opts: GenerateN8nNodeOptions): Promise<Gen
     {
       rel: path.posix.join('credentials', `${spec.credentialClassName}.credentials.ts`),
       content: tpl.credentials(spec),
+    },
+    {
+      rel: path.posix.join('nodes', spec.className, `${spec.className}.node.json`),
+      content: tpl.nodeJson(spec),
     },
   ];
 
