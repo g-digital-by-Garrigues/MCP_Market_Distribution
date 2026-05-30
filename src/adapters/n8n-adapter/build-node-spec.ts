@@ -338,7 +338,7 @@ export async function buildN8nNodeSpec(
     credentialClassName,
     credentialParamName,
     sourceRepoUrl: resolveRepoUrl(distribution, server),
-    author: 'g-digital by Garrigues <g-digital@garrigues.com>',
+    author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     defaultApiBaseUrl,
     // authStyle: detect from credential fields — OKTA_TOKEN_URL presence → client_credentials
     authStyle: credentials.some((c) => c.envName === 'OKTA_TOKEN_URL')

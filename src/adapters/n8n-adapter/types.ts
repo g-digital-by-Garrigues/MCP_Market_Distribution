@@ -157,9 +157,11 @@ export interface N8nNodeSpec {
    */
   sourceRepoUrl: string;
   /**
-   * Author block for the generated package.json. Defaults to "g-digital by Garrigues".
+   * Author block for the generated package.json.
+   * Object format avoids the no-template-placeholders linter rule that flags
+   * "Name <email>" angle-bracket syntax as an unresolved placeholder.
    */
-  author: string;
+  author: { name: string; email: string };
   /**
    * When set, the generator copies the source MCP's logo PNG into
    * `<output>/nodes/<className>/icon.png` and emits
