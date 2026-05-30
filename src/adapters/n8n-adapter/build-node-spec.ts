@@ -198,8 +198,8 @@ const FIELD_DEFAULTS: Record<string, { default: string | number | boolean; descr
   service: { default: 'Telegram' },
   validityFrom: { default: '', description: 'ISO 8601 datetime (e.g. 2026-01-01T00:00:00.000Z). Leave empty — defaults to now.' },
   validityTo: { default: '', description: 'ISO 8601 datetime. Leave empty — defaults to 1 year from now.' },
-  useCaseId: { default: '', description: 'UUID of the use case. Find your useCaseId by calling case_file_list and reading useCaseId from any existing case file.' },
-  description: { default: '', description: 'Required by the API — must not be empty. Enter a short text (e.g. "My case file").' },
+  useCaseId: { default: '063a016a-1d62-4b7b-a24f-7cf4d1d289bf', description: 'UUID of the use case. Default is the general GoCertius use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.' },
+  description: { default: '', description: 'Required by the API — must not be empty. Enter a short plain text (e.g. "My case file").' },
 };
 
 function buildOperation(tool: InspectorToolEntry): {
