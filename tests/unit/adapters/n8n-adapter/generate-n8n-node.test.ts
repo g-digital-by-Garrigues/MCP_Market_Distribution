@@ -107,6 +107,7 @@ describe('generateN8nNode', () => {
     expect(result.filesWritten.sort((a, b) => a.localeCompare(b))).toEqual([
       'credentials/MultiToolApi.credentials.ts',
       'index.ts',
+      'nodes/MultiTool/MultiTool.node.json',
       'nodes/MultiTool/MultiTool.node.ts',
       'package.json',
       'README.md',
