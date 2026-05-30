@@ -47,6 +47,8 @@ This node requires a "{{displayName}} API" credential with the following fields:
 | `API Base URL` | Base URL of the {{displayName}} REST API.{{#if defaultApiBaseUrl}} Production default: `{{defaultApiBaseUrl}}`{{/if}} Leave blank only if you know your environment uses a different endpoint. | no |
 {{#each credentials}}| `{{this.envName}}` | {{#if this.description}}{{this.description}}{{else}}—{{/if}} | {{#if this.isSecret}}yes{{else}}no{{/if}} |
 {{/each}}
+{{#if credentialAcquisitionUrl}}> **Need credentials?** Sign up or log in at [{{credentialAcquisitionUrl}}]({{credentialAcquisitionUrl}}).
+{{/if}}
 
 ## Use as an AI Agent tool
 

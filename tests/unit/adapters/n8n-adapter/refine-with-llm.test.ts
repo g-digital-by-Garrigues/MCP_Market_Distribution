@@ -19,6 +19,7 @@ function baseSpec(): N8nNodeSpec {
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     authStyle: 'email-password',
     defaultApiBaseUrl: '',
+    credentialAcquisitionUrl: '',
     operations: [
       { name: 'get_evidence', displayName: 'Get Evidence', description: '', httpMethod: 'GET', httpUrlTemplate: '/evidence/{id}', properties: [] },
       { name: 'create_signature_request', displayName: 'Create Signature Request', description: '', httpMethod: 'POST', httpUrlTemplate: '/signature-requests', properties: [] },

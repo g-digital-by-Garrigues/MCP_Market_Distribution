@@ -33,6 +33,7 @@ function specForMultiTool(): N8nNodeSpec {
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     authStyle: 'email-password',
     defaultApiBaseUrl: '',
+    credentialAcquisitionUrl: '',
     operations: [
       {
         name: 'get_widget',

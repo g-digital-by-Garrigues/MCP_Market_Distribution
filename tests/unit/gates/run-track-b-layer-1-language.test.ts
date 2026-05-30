@@ -26,6 +26,7 @@ function baseSpec(): N8nNodeSpec {
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     authStyle: 'email-password',
     defaultApiBaseUrl: '',
+    credentialAcquisitionUrl: '',
     operations: [{ name: 'do_thing', displayName: 'Do Thing', description: 'Does the thing.', httpMethod: 'GET', httpUrlTemplate: '/things/{id}', properties: [] }],
     credentials: [{ envName: 'API_KEY', displayName: 'API Key', description: 'API key.', isSecret: true }],
   };
