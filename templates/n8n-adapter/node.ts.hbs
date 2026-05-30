@@ -117,7 +117,7 @@ export class {{className}} implements INodeType {
         // Replace URL path params {paramName} from input; remaining args → body/query
         let url = `${baseUrl}${meta.urlTemplate}`;
         const propsForOp = OPERATION_PROPERTY_NAMES[operation] ?? [];
-        const body: Record<string, unknown> = {};
+        const body: IDataObject = {};
         for (const propName of propsForOp) {
           const val = this.getNodeParameter(propName, i);
           if (val === '' || val === null || val === undefined) continue;
