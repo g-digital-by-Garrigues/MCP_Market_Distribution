@@ -171,10 +171,10 @@ export class {{className}} implements INodeType {
             const parts = bearer.split('.');
             if (parts.length === 3) {
               const pad = (s: string) => s + '='.repeat((4 - s.length % 4) % 4);
-              const payload = JSON.parse(Buffer.from(pad(parts[1] ?? ''), 'base64').toString('utf8')) as Record<string, unknown>;
+              const payload = JSON.parse(Buffer.from(pad(parts[1] ?? ''), 'base64').toString('utf8')) as IDataObject;
               const sub = payload.sub ?? payload.userId ?? payload.user_id;
-              if (sub && !(json as Record<string, unknown>).userId) {
-                (json as Record<string, unknown>).userId = sub;
+              if (sub && !(json as IDataObject).userId) {
+                (json as IDataObject).userId = sub;
               }
             }
           } catch { /* ignore decode errors */ }
