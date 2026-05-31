@@ -118,8 +118,13 @@ export class {{className}} implements INodeType {
         let url = `${baseUrl}${meta.urlTemplate}`;
         const propsForOp = OPERATION_PROPERTY_NAMES[operation] ?? [];
         const body: IDataObject = {};
+        const isCreateOrAdd = operation.endsWith('_create') || operation.endsWith('_add');
         for (const propName of propsForOp) {
-          const val = this.getNodeParameter(propName, i);
+          let val = this.getNodeParameter(propName, i);
+          // Auto-generate UUID for 'id' in _create/_add BEFORE the skip check
+          if (propName === 'id' && isCreateOrAdd && (val === '' || val === null || val === undefined)) {
+            val = randomUUID();
+          }
           if (val === '' || val === null || val === undefined) continue;
           if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
           const placeholder = `{${propName}}`;
@@ -146,12 +151,7 @@ export class {{className}} implements INodeType {
           }
         }
 
-        // --- Smart defaults for common fields ---
-        // Auto-generate UUID v4 for 'id' field only in _create / _add operations
-        const isCreateOrAdd = operation.endsWith('_create') || operation.endsWith('_add');
-        if (isCreateOrAdd && 'id' in body && (body.id === '' || body.id === null || body.id === undefined)) {
-          body.id = randomUUID();
-        }
+        // --- Smart defaults for remaining body fields ---
         // validityFrom: default to now (ISO 8601)
         if ('validityFrom' in body && (body.validityFrom === '' || body.validityFrom === null || body.validityFrom === undefined)) {
           body.validityFrom = new Date().toISOString();
