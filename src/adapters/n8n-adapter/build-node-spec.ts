@@ -220,7 +220,12 @@ const PRODUCT_OVERRIDES: Record<string, Record<string, FieldPatch>> = {
       description: 'UUID of the use case. Default is the general GoCertius use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.',
     },
   },
-  // 'ead-enterprise-suite': useCaseId TBD — add once the default UUID is confirmed.
+  'ead-enterprise-suite': {
+    useCaseId: {
+      default: '063a016a-1d62-4b7b-a24f-7cf4d1d289bf',
+      description: 'UUID of the use case. Default is the general EAD Enterprise Suite use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.',
+    },
+  },
 };
 
 function buildOperation(tool: InspectorToolEntry, mcpName: string): {
