@@ -210,6 +210,11 @@ const FIELD_DEFAULTS: Record<string, FieldPatch> = {
   useCaseId: { default: '', description: 'UUID of the use case for this operation. Find it by calling case_file_list and reading useCaseId from any existing case file.' },
   description: { required: true, displayName: 'Item Description', description: 'Short plain-text description (e.g. "My case file"). Required by the API.' },
   reference: { description: 'Optional user-defined reference code (max 32 chars, e.g. "EXP-2026-001"). Do not use a UUID.' },
+  // 'content' in notification operations must be valid HTML — plain text will not render.
+  content: {
+    description: 'Must be valid HTML. Supported tags only: <p>, <strong>, <em>, <ul><li>, <ol><li>. No other tags or CSS. Example: <p>Your document is <strong>ready</strong> for review.</p>',
+    displayName: 'Content (HTML)',
+  },
 };
 
 // Product-specific overrides — applied on top of FIELD_DEFAULTS, keyed by mcpName.
