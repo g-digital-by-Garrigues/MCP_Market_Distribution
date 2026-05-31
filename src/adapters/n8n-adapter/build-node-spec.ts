@@ -189,7 +189,14 @@ async function readToolHttpInfo(
 
 // Known sensible defaults for GoCertius/EAD field names.
 // Applied after jsonSchemaToProperties so enum defaults show in the n8n UI.
-const FIELD_DEFAULTS: Record<string, { default: string | number | boolean; description?: string }> = {
+const FIELD_DEFAULTS: Record<string, {
+  default?: string | number | boolean;
+  description?: string;
+  /** Rename displayName to avoid n8n AI tool schema collisions (e.g. field named 'description'). */
+  displayName?: string;
+  /** Mark as required in the n8n UI when the API requires the field even if the JSON schema says optional. */
+  required?: boolean;
+}> = {
   // id: auto-generated in execute() — UI shows empty with guidance
   id: { default: '', description: 'UUID v4 identifier. Leave empty — the node generates it automatically.' },
   language: { default: 'es_ES' },
@@ -199,7 +206,12 @@ const FIELD_DEFAULTS: Record<string, { default: string | number | boolean; descr
   validityFrom: { default: '', description: 'ISO 8601 datetime (e.g. 2026-01-01T00:00:00.000Z). Leave empty — defaults to now.' },
   validityTo: { default: '', description: 'ISO 8601 datetime. Leave empty — defaults to 1 year from now.' },
   useCaseId: { default: '063a016a-1d62-4b7b-a24f-7cf4d1d289bf', description: 'UUID of the use case. Default is the general GoCertius use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.' },
-  description: { default: '', description: 'Required by the API — must not be empty. Enter a short plain text (e.g. "My case file").' },
+  // 'description' is required by the API despite the JSON schema marking it optional.
+  // Renamed displayName to avoid collision with n8n AI tool schema (field named 'description'
+  // conflicts with INodeProperties.description, preventing AI agents from filling it).
+  description: { required: true, displayName: 'Item Description', description: 'Short plain-text description (e.g. "My case file"). Required by the API.' },
+  // 'reference' is a user-defined code (e.g. "EXP-2026-001"), NOT a UUID.
+  reference: { description: 'Optional user-defined reference code (max 32 chars, e.g. "EXP-2026-001"). Do not use a UUID.' },
 };
 
 function buildOperation(tool: InspectorToolEntry): {
@@ -216,8 +228,10 @@ function buildOperation(tool: InspectorToolEntry): {
     if (!patch) return p;
     return {
       ...p,
-      ...(p.default === '' || p.default === null ? { default: patch.default } : {}),
-      ...(patch.description && !p.description ? { description: patch.description } : {}),
+      ...(patch.default !== undefined && (p.default === '' || p.default === null) ? { default: patch.default } : {}),
+      ...(patch.description ? { description: patch.description } : {}),
+      ...(patch.required !== undefined ? { required: patch.required } : {}),
+      ...(patch.displayName ? { displayName: patch.displayName } : {}),
     };
   });
   return {
