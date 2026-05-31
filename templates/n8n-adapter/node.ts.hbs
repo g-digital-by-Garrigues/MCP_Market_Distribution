@@ -119,11 +119,13 @@ export class {{className}} implements INodeType {
         const propsForOp = OPERATION_PROPERTY_NAMES[operation] ?? [];
         const body: IDataObject = {};
         const isCreateOrAdd = operation.endsWith('_create') || operation.endsWith('_add');
+        let generatedId: string | undefined;
         for (const propName of propsForOp) {
           let val = this.getNodeParameter(propName, i);
           // Auto-generate UUID for 'id' in _create/_add BEFORE the skip check
           if (propName === 'id' && isCreateOrAdd && (val === '' || val === null || val === undefined)) {
             val = randomUUID();
+            generatedId = val as string;
           }
           if (val === '' || val === null || val === undefined) continue;
           if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
@@ -220,6 +222,13 @@ export class {{className}} implements INodeType {
         const json: IDataObject = hasBody
           ? await apiRes.json().catch(() => ({})) as IDataObject
           : {};
+        // Inject auto-generated id with semantic field name so downstream nodes
+        // can reference it directly (e.g. $json.caseFileId, $json.chatId).
+        if (generatedId) {
+          const semanticId = AUTO_ID_OUTPUT_FIELD[operation];
+          if (semanticId && !json[semanticId]) json[semanticId] = generatedId;
+          if (!json['id']) json['id'] = generatedId;
+        }
         // session_info: inject userId decoded from JWT sub claim so callers
         // don't need a separate step to obtain the userId required by most operations.
         if (operation === 'session_info' && bearer) {
@@ -248,6 +257,26 @@ export class {{className}} implements INodeType {
     return [out];
   }
 }
+
+// Semantic output field name for auto-generated 'id' values.
+// When a _create/_add operation auto-generates a UUID for 'id', it is also
+// injected into the output under this field name so downstream nodes can
+// reference it with its domain-specific name (e.g. $json.caseFileId).
+const AUTO_ID_OUTPUT_FIELD: Record<string, string> = {
+  case_file_create: 'caseFileId',
+  evidence_create: 'evidenceId',
+  evidence_group_create: 'evidenceGroupId',
+  dossier_create: 'dossierId',
+  dossier_group_certify: 'dossierId',
+  notification_request_create: 'notificationRequestId',
+  notification_receiver_add: 'receiverId',
+  notification_document_add: 'documentId',
+  chat_create: 'chatId',
+  chat_certificate_create: 'certificateId',
+  signature_request_create: 'requestId',
+  signature_group_create: 'groupId',
+  signature_participant_create: 'signatoryId',
+};
 
 // HTTP metadata per operation — method + URL template.
 // 'stub: true' means the tool has no REST annotation and requires self-hosted n8n.
