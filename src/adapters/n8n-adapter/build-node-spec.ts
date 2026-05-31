@@ -189,15 +189,17 @@ async function readToolHttpInfo(
 
 // Known sensible defaults for GoCertius/EAD field names.
 // Applied after jsonSchemaToProperties so enum defaults show in the n8n UI.
-const FIELD_DEFAULTS: Record<string, {
+type FieldPatch = {
   default?: string | number | boolean;
   description?: string;
   /** Rename displayName to avoid n8n AI tool schema collisions (e.g. field named 'description'). */
   displayName?: string;
   /** Mark as required in the n8n UI when the API requires the field even if the JSON schema says optional. */
   required?: boolean;
-}> = {
-  // id: auto-generated in execute() — UI shows empty with guidance
+};
+
+// Generic defaults applied to all adapters.
+const FIELD_DEFAULTS: Record<string, FieldPatch> = {
   id: { default: '', description: 'UUID v4 identifier. Leave empty — the node generates it automatically.' },
   language: { default: 'es_ES' },
   evidenceType: { default: 'FILE' },
@@ -205,16 +207,23 @@ const FIELD_DEFAULTS: Record<string, {
   service: { default: 'Telegram' },
   validityFrom: { default: '', description: 'ISO 8601 datetime (e.g. 2026-01-01T00:00:00.000Z). Leave empty — defaults to now.' },
   validityTo: { default: '', description: 'ISO 8601 datetime. Leave empty — defaults to 1 year from now.' },
-  useCaseId: { default: '063a016a-1d62-4b7b-a24f-7cf4d1d289bf', description: 'UUID of the use case. Default is the general GoCertius use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.' },
-  // 'description' is required by the API despite the JSON schema marking it optional.
-  // Renamed displayName to avoid collision with n8n AI tool schema (field named 'description'
-  // conflicts with INodeProperties.description, preventing AI agents from filling it).
+  useCaseId: { default: '', description: 'UUID of the use case for this operation. Find it by calling case_file_list and reading useCaseId from any existing case file.' },
   description: { required: true, displayName: 'Item Description', description: 'Short plain-text description (e.g. "My case file"). Required by the API.' },
-  // 'reference' is a user-defined code (e.g. "EXP-2026-001"), NOT a UUID.
   reference: { description: 'Optional user-defined reference code (max 32 chars, e.g. "EXP-2026-001"). Do not use a UUID.' },
 };
 
-function buildOperation(tool: InspectorToolEntry): {
+// Product-specific overrides — applied on top of FIELD_DEFAULTS, keyed by mcpName.
+const PRODUCT_OVERRIDES: Record<string, Record<string, FieldPatch>> = {
+  'gocertius': {
+    useCaseId: {
+      default: '063a016a-1d62-4b7b-a24f-7cf4d1d289bf',
+      description: 'UUID of the use case. Default is the general GoCertius use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.',
+    },
+  },
+  // 'ead-enterprise-suite': useCaseId TBD — add once the default UUID is confirmed.
+};
+
+function buildOperation(tool: InspectorToolEntry, mcpName: string): {
   op: Omit<N8nOperationSpec, 'httpMethod' | 'httpUrlTemplate' | 'customAnnotation'>;
   notes: string[];
 } {
@@ -222,10 +231,11 @@ function buildOperation(tool: InspectorToolEntry): {
     tool.inputSchema as ToolInputSchema | null,
     { operationName: tool.name },
   );
+  const productOverrides = PRODUCT_OVERRIDES[mcpName] ?? {};
   // Apply known defaults so the n8n UI shows sensible pre-filled values
   const patchedProperties = properties.map((p) => {
-    const patch = FIELD_DEFAULTS[p.name];
-    if (!patch) return p;
+    const patch: FieldPatch = { ...FIELD_DEFAULTS[p.name], ...productOverrides[p.name] };
+    if (Object.keys(patch).length === 0) return p;
     return {
       ...p,
       ...(patch.default !== undefined && (p.default === '' || p.default === null) ? { default: patch.default } : {}),
@@ -325,7 +335,7 @@ export async function buildN8nNodeSpec(
   const unsupportedNotes: string[] = [];
   const operations: N8nOperationSpec[] = [];
   for (const tool of probe.tools_list) {
-    const { op, notes } = buildOperation(tool);
+    const { op, notes } = buildOperation(tool, input.mcpName);
     const httpInfo = await readToolHttpInfo(input.packageDir, tool.name);
     operations.push({
       ...op,
