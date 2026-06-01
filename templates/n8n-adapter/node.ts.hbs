@@ -224,6 +224,18 @@ export class {{className}} implements INodeType {
           if (semanticId && !json[semanticId]) json[semanticId] = generatedId;
           if (!json['id']) json['id'] = generatedId;
         }
+        // chat_certificate_get: when CERTIFIED, fetch documentUrl via a second call
+        if (operation === 'chat_certificate_get' && (json as IDataObject).status === 'CERTIFIED' && !json['documentUrl']) {
+          try {
+            const docUrlRes = await fetch(`${url}/document-url`, {
+              headers: { Authorization: `Bearer ${bearer}` },
+            });
+            if (docUrlRes.ok) {
+              const docData = await docUrlRes.json().catch(() => ({})) as IDataObject;
+              if (docData.documentUrl) (json as IDataObject).documentUrl = docData.documentUrl;
+            }
+          } catch { /* non-fatal */ }
+        }
         // session_info: inject userId decoded from JWT sub claim so callers
         // don't need a separate step to obtain the userId required by most operations.
         if (operation === 'session_info' && bearer) {
