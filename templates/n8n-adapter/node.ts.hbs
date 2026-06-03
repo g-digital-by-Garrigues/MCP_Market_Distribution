@@ -10,7 +10,6 @@ import {
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
-  JsonObject,
   NodeApiError,
   NodeOperationError,
 } from 'n8n-workflow';
@@ -81,7 +80,7 @@ export class {{className}} implements INodeType {
     });
     if (!tokenRes.ok) {
       const tokenErr = await tokenRes.json().catch(() => ({ message: `HTTP ${tokenRes.status}` }));
-      throw new NodeApiError(this.getNode(), tokenErr as JsonObject, { httpCode: String(tokenRes.status) });
+      throw new NodeApiError(this.getNode(), tokenErr, { httpCode: String(tokenRes.status) });
     }
     const tokenBody = await tokenRes.json() as { access_token?: string };
     const bearer = tokenBody.access_token ?? '';
@@ -96,7 +95,7 @@ export class {{className}} implements INodeType {
     });
     if (!loginRes.ok) {
       const loginErr = await loginRes.json().catch(() => ({ message: `HTTP ${loginRes.status}` }));
-      throw new NodeApiError(this.getNode(), loginErr as JsonObject, { httpCode: String(loginRes.status) });
+      throw new NodeApiError(this.getNode(), loginErr, { httpCode: String(loginRes.status) });
     }
     const loginBody = await loginRes.json() as { jwt?: string; token?: string; accessToken?: string };
     const bearer = loginBody.jwt ?? loginBody.token ?? loginBody.accessToken ?? '';
@@ -208,7 +207,7 @@ export class {{className}} implements INodeType {
 
         if (!apiRes.ok) {
           const errBody = await apiRes.json().catch(() => ({ message: `${operation} failed: HTTP ${apiRes.status}` }));
-          throw new NodeApiError(this.getNode(), errBody as JsonObject, {
+          throw new NodeApiError(this.getNode(), errBody, {
             httpCode: String(apiRes.status),
             itemIndex: i,
           });
