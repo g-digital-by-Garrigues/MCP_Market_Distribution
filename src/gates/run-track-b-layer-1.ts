@@ -312,8 +312,10 @@ async function checkCredentialsClass(opts: RunTrackBLayer1Options): Promise<Trac
     issues.push(`credential.name must be '${spec.credentialParamName}'`);
   }
   for (const cred of spec.credentials) {
-    if (!src.includes(`name: '${cred.envName}'`)) {
-      issues.push(`credential property is missing for env var '${cred.envName}'`);
+    // Check by propName (camelCase n8n field name) — env-var style names (envName)
+    // are intentionally renamed to camelCase per n8n UX guidelines.
+    if (!src.includes(`name: '${cred.propName}'`)) {
+      issues.push(`credential property is missing for env var '${cred.envName}' (expected propName '${cred.propName}')`);
     }
   }
   if (issues.length === 0) return { name: 'credentials', passed: true };
