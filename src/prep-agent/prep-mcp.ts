@@ -25,6 +25,7 @@ import { generateReadme } from '../generators/generate-readme.js';
 import { ensureSkillBundle } from '../generators/ensure-skill-bundle.js';
 import { createReleaseTag } from '../state/create-release-tag.js';
 import { safeStableStringify } from '../utils/stable-stringify.js';
+import { runAdapterBuild } from '../adapters/n8n-adapter/run-adapter-build.js';
 
 export interface PrepMcpOptions {
   mcpName: string;
@@ -257,6 +258,32 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
     const block = installBlocks[clientId];
     const bytes = await writeFileSafely(path.join(mcpFolder, rel), block.markdown);
     artifacts.push({ relativePath: rel.replace(/\\/g, '/'), bytes });
+  }
+
+  // Step 8b: generate n8n adapter source into n8n-node/ (when n8n is a target)
+  // This ensures each bump PR contains the TypeScript source that produces the
+  // published npm package, satisfying the n8n Creator Portal source-verifiability
+  // requirement (package.json#repository.directory = "n8n-node").
+  if (Array.isArray(distribution.track_b_targets) && distribution.track_b_targets.includes('n8n')) {
+    const adapterTmp = path.join(mcpFolder, '..', `.n8n-adapter-tmp-${mcpName}`);
+    try {
+      await runAdapterBuild({
+        mcpName,
+        version,
+        packageDir: mcpFolder,
+        outputDir: adapterTmp,
+        dryRun: false,
+        repoRoot,
+      });
+    } catch (err) {
+      // Non-fatal: log and continue — the MCP artifacts are still valid.
+      // The n8n-node/ directory will be absent from this bump.
+      process.stderr.write(
+        `[prep-mcp] Warning: n8n adapter generation failed — n8n-node/ will be absent from this bump. Error: ${(err as Error).message}\n`,
+      );
+    } finally {
+      await fs.rm(adapterTmp, { recursive: true, force: true }).catch(() => {});
+    }
   }
 
   // Step 9: commit
