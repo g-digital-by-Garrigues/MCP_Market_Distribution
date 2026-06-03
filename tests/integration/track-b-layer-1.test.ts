@@ -169,7 +169,8 @@ describe('Track B — Layer 1 (structural lint)', () => {
     await generateN8nNode({ spec, outputDir: nodeDir });
     const credPath = path.join(nodeDir, 'credentials', 'MultiToolApi.credentials.ts');
     const original = await fs.readFile(credPath, 'utf8');
-    const tampered = original.replace(/name: 'TEST_API_KEY'/, "name: 'WRONG_NAME'");
+    // Credential name is now propName (camelCase): TEST_API_KEY → testApiKey
+    const tampered = original.replace(/name: 'testApiKey'/, "name: 'WRONG_NAME'");
     await fs.writeFile(credPath, tampered);
     const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
     expect(result.passed).toBe(false);
