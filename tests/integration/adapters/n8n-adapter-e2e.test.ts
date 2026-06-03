@@ -173,7 +173,7 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       );
       expect(credsSrc).toContain('export class MultiToolApi implements ICredentialType');
       expect(credsSrc).toContain("name = 'multiToolApi'");
-      expect(credsSrc).toMatch(/name: 'TEST_API_KEY'[\s\S]+typeOptions: { password: true }/);
+      expect(credsSrc).toMatch(/name: 'testApiKey'[\s\S]+typeOptions: { password: true }/);
       expect(credsSrc).toContain("name: 'TEST_BASE_URL'");
 
       // ─ README has the operations + credentials tables ─
