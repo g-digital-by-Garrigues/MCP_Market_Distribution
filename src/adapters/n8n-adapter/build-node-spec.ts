@@ -119,17 +119,53 @@ async function readServerJson(packageDir: string): Promise<ServerJsonShape> {
   }
 }
 
+// Env-var fields from server.json that belong to the MCP server runtime and
+// are never read by the n8n REST-direct adapter. Shipping them in the n8n
+// credential form is confusing — users are asked to fill in fields that do nothing.
+const CREDENTIAL_FIELDS_TO_EXCLUDE = new Set([
+  'MCP_OPENID_CLIENT_ID',
+  'MCP_OPENID_ISSUER',
+  'MCP_OPENID_REFRESH_TOKEN',
+  'PORT',
+]);
+
+// Maps SCREAMING_SNAKE_CASE env-var names to camelCase n8n credential property
+// names. n8n convention requires camelCase; env-var style names are surfaced
+// to end users in error messages and the credential form.
+const CREDENTIAL_PROP_NAME_MAP: Record<string, string> = {
+  MCP_AUTH_EMAIL: 'email',
+  MCP_AUTH_PASSWORD: 'password',
+  OKTA_TOKEN_URL: 'oktaTokenUrl',
+  OKTA_CLIENT_ID: 'oktaClientId',
+  OKTA_CLIENT_SECRET: 'oktaClientSecret',
+  OKTA_SCOPE: 'oktaScope',
+  API_BASE_URL: 'apiBaseUrl',
+  SIGNATURE_API_BASE_URL: 'signatureApiBaseUrl',
+};
+
+function envToCamelCase(envName: string): string {
+  if (CREDENTIAL_PROP_NAME_MAP[envName]) return CREDENTIAL_PROP_NAME_MAP[envName];
+  // Generic fallback: MY_VAR_NAME → myVarName
+  return envName
+    .toLowerCase()
+    .replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+}
+
 function buildCredentials(server: ServerJsonShape): N8nCredentialField[] {
   const vars = server.packages?.[0]?.environmentVariables ?? [];
-  return vars.map((v) => {
-    const field: N8nCredentialField = {
-      envName: v.name,
-      displayName: toTitleCase(v.name.toLowerCase().replace(/_/g, '-')),
-      isSecret: v.isSecret === true,
-    };
-    if (v.description) field.description = v.description;
-    return field;
-  });
+  return vars
+    .filter((v) => !CREDENTIAL_FIELDS_TO_EXCLUDE.has(v.name))
+    .map((v) => {
+      const propName = envToCamelCase(v.name);
+      const field: N8nCredentialField = {
+        envName: v.name,
+        propName,
+        displayName: toTitleCase(v.name.toLowerCase().replace(/_/g, '-')),
+        isSecret: v.isSecret === true,
+      };
+      if (v.description) field.description = v.description;
+      return field;
+    });
 }
 
 // Story 12.2 (Epic 12): REST-direct architecture per ADR 0008.

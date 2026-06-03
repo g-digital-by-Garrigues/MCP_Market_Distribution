@@ -74,13 +74,13 @@ function sampleSpec(): N8nNodeSpec {
     ],
     credentials: [
       {
-        envName: 'TEST_API_KEY',
+        envName: 'TEST_API_KEY', propName: 'TEST_API_KEY',
         displayName: 'Test Api Key',
         isSecret: true,
         description: 'API key for the test backend.',
       },
       {
-        envName: 'TEST_BASE_URL',
+        envName: 'TEST_BASE_URL', propName: 'TEST_BASE_URL',
         displayName: 'Test Base Url',
         isSecret: false,
         description: 'Base URL of the test backend.',

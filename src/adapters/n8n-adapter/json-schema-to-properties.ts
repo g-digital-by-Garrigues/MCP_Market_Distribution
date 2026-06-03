@@ -77,11 +77,25 @@ export interface JsonSchemaToPropertiesResult {
   unsupportedNotes: string[];
 }
 
-function titleCase(snake: string): string {
-  return snake
-    .split('_')
-    .filter((s) => s.length > 0)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+// Common abbreviations that should be fully uppercased in display names.
+const DISPLAY_ABBREVS: ReadonlySet<string> = new Set([
+  'id', 'url', 'api', 'otp', 'wa', 'os', 'html', 'json', 'pdf', 'sms', 'uuid', 'uri',
+]);
+
+function titleCase(name: string): string {
+  // Split camelCase (e.g. caseFileId → case File Id) then also split on _ and -
+  const words = name
+    .replace(/([a-z])([A-Z])/g, '$1 $2')   // camelCase → words
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2') // handle consecutive caps: HTMLParser → HTML Parser
+    .split(/[_\- ]+/)
+    .filter((s) => s.length > 0);
+
+  return words
+    .map((word) => {
+      const lower = word.toLowerCase();
+      if (DISPLAY_ABBREVS.has(lower)) return word.toUpperCase();
+      return lower.charAt(0).toUpperCase() + lower.slice(1);
+    })
     .join(' ');
 }
 
