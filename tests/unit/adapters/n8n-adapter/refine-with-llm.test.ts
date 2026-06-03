@@ -72,12 +72,12 @@ describe('refineWithLlm', () => {
       ],
       credentials: [
         {
-          envName: 'OKTA_CLIENT_ID', propName: 'OKTA_CLIENT_ID',
+          envName: 'OKTA_CLIENT_ID',
           displayName: 'Okta Client ID',
           description: 'OAuth client id from Okta admin console.',
         },
         {
-          envName: 'OKTA_CLIENT_SECRET', propName: 'OKTA_CLIENT_SECRET',
+          envName: 'OKTA_CLIENT_SECRET',
           displayName: 'Okta Client Secret',
           description: 'OAuth client secret paired with the client id.',
         },

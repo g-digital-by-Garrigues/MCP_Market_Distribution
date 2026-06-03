@@ -20,7 +20,7 @@ describe('jsonSchemaToProperties', () => {
     expect(properties).toHaveLength(1);
     expect(properties[0]).toMatchObject({
       name: 'evidence_id',
-      displayName: 'Evidence Id',
+      displayName: 'Evidence ID',
       type: 'string',
       default: '',
       required: true,
