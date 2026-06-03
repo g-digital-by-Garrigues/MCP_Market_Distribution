@@ -108,6 +108,11 @@ export interface N8nOperationSpec {
 export interface N8nCredentialField {
   /** Env-var name as the MCP expects it (e.g., OKTA_CLIENT_ID). */
   envName: string;
+  /**
+   * camelCase property name used in the n8n credential form and in execute()
+   * (e.g. oktaClientId). n8n convention requires camelCase, not SCREAMING_SNAKE_CASE.
+   */
+  propName: string;
   /** Display name shown in n8n's credential editor. */
   displayName: string;
   /** Whether this field is a secret (renders masked, stored encrypted). */

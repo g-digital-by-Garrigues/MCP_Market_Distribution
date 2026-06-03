@@ -10,6 +10,8 @@ import {
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
+  JsonObject,
+  NodeApiError,
   NodeOperationError,
 } from 'n8n-workflow';
 
@@ -68,17 +70,18 @@ export class {{className}} implements INodeType {
 {{#if (eq authStyle 'okta-client-credentials')}}
     const tokenParams = new URLSearchParams({
       grant_type: 'client_credentials',
-      client_id: String(creds.OKTA_CLIENT_ID ?? ''),
-      client_secret: String(creds.OKTA_CLIENT_SECRET ?? ''),
-      scope: String(creds.OKTA_SCOPE ?? 'token'),
+      client_id: String(creds.oktaClientId ?? ''),
+      client_secret: String(creds.oktaClientSecret ?? ''),
+      scope: String(creds.oktaScope ?? 'token'),
     });
-    const tokenRes = await fetch(String(creds.OKTA_TOKEN_URL ?? ''), {
+    const tokenRes = await fetch(String(creds.oktaTokenUrl ?? ''), {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: tokenParams.toString(),
     });
     if (!tokenRes.ok) {
-      throw new NodeOperationError(this.getNode(), `Auth failed: HTTP ${tokenRes.status}. Check OKTA_TOKEN_URL, OKTA_CLIENT_ID, and OKTA_CLIENT_SECRET.`);
+      const tokenErr = await tokenRes.json().catch(() => ({ message: `HTTP ${tokenRes.status}` }));
+      throw new NodeApiError(this.getNode(), tokenErr as JsonObject, { httpCode: String(tokenRes.status) });
     }
     const tokenBody = await tokenRes.json() as { access_token?: string };
     const bearer = tokenBody.access_token ?? '';
@@ -87,12 +90,13 @@ export class {{className}} implements INodeType {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        email: creds.MCP_AUTH_EMAIL ?? creds.email ?? '',
-        password: creds.MCP_AUTH_PASSWORD ?? creds.password ?? '',
+        email: String(creds.email ?? ''),
+        password: String(creds.password ?? ''),
       }),
     });
     if (!loginRes.ok) {
-      throw new NodeOperationError(this.getNode(), `Auth failed: HTTP ${loginRes.status}. Check MCP_AUTH_EMAIL and MCP_AUTH_PASSWORD.`);
+      const loginErr = await loginRes.json().catch(() => ({ message: `HTTP ${loginRes.status}` }));
+      throw new NodeApiError(this.getNode(), loginErr as JsonObject, { httpCode: String(loginRes.status) });
     }
     const loginBody = await loginRes.json() as { jwt?: string; token?: string; accessToken?: string };
     const bearer = loginBody.jwt ?? loginBody.token ?? loginBody.accessToken ?? '';
@@ -138,8 +142,8 @@ export class {{className}} implements INodeType {
         }
         // Substitute any remaining {placeholder} patterns from credentials.
         // First try exact credential key names, then common API→credential aliases
-        // (e.g. {email} in session_info maps to credential field MCP_AUTH_EMAIL).
-        const credAliases: Record<string, string> = { email: 'MCP_AUTH_EMAIL' };
+        // (e.g. {email} in session_info maps to the 'email' credential field).
+        const credAliases: Record<string, string> = { email: 'email' };
         for (const [credKey, credVal] of Object.entries(creds)) {
           const placeholder = `{${credKey}}`;
           if (url.includes(placeholder) && credVal) {
@@ -203,12 +207,11 @@ export class {{className}} implements INodeType {
         });
 
         if (!apiRes.ok) {
-          const errText = await apiRes.text().catch(() => '');
-          throw new NodeOperationError(
-            this.getNode(),
-            `${operation} failed: HTTP ${apiRes.status}${errText ? ` — ${errText.slice(0, 200)}` : ''}`,
-            { itemIndex: i },
-          );
+          const errBody = await apiRes.json().catch(() => ({ message: `${operation} failed: HTTP ${apiRes.status}` }));
+          throw new NodeApiError(this.getNode(), errBody as JsonObject, {
+            httpCode: String(apiRes.status),
+            itemIndex: i,
+          });
         }
 
         // 204 No Content or empty body → return empty object
