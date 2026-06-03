@@ -118,8 +118,8 @@ describe('refineWithLlm', () => {
         { name: 'create_signature_request', displayName: 'X', description: 'y', httpMethod: 'POST', httpUrlTemplate: '/signature-requests', properties: [] },
       ],
       credentials: [
-        { envName: 'OKTA_CLIENT_ID', propName: 'OKTA_CLIENT_ID', displayName: 'A' },
-        { envName: 'OKTA_CLIENT_SECRET', propName: 'OKTA_CLIENT_SECRET', displayName: 'B' },
+        { envName: 'OKTA_CLIENT_ID', displayName: 'A' },
+        { envName: 'OKTA_CLIENT_SECRET', displayName: 'B' },
       ],
     });
     const result = await refineWithLlm({
@@ -146,8 +146,8 @@ describe('refineWithLlm', () => {
         { name: 'create_signature_request', displayName: 'Sign', description: 'desc2' },
       ],
       credentials: [
-        { envName: 'OKTA_CLIENT_ID', propName: 'OKTA_CLIENT_ID', displayName: 'Okta CID' },
-        { envName: 'OKTA_CLIENT_SECRET', propName: 'OKTA_CLIENT_SECRET', displayName: 'Okta CS' },
+        { envName: 'OKTA_CLIENT_ID', displayName: 'Okta CID' },
+        { envName: 'OKTA_CLIENT_SECRET', displayName: 'Okta CS' },
       ],
     };
     const fetchImpl = vi.fn().mockResolvedValue({
