@@ -174,7 +174,7 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       expect(credsSrc).toContain('export class MultiToolApi implements ICredentialType');
       expect(credsSrc).toContain("name = 'multiToolApi'");
       expect(credsSrc).toMatch(/name: 'testApiKey'[\s\S]+typeOptions: { password: true }/);
-      expect(credsSrc).toContain("name: 'TEST_BASE_URL'");
+      expect(credsSrc).toContain("name: 'testBaseUrl'");
 
       // ─ README has the operations + credentials tables ─
       const readme = await fs.readFile(path.join(outputDir, 'README.md'), 'utf8');
