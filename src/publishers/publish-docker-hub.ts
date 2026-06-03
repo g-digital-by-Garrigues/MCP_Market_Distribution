@@ -1,4 +1,6 @@
 import { spawn } from 'node:child_process';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 import process from 'node:process';
 
 import { dryRunEnabled } from '../ci/dry-run.js';
@@ -334,6 +336,11 @@ export async function publishDockerHub(
     digest,
   });
 
+  // Update Docker Hub metadata (description, categories, logo) — non-fatal
+  if (!isDryRun) {
+    await updateDockerHubMetadata(imageName, input.package_dir, log);
+  }
+
   const metadata: Record<string, unknown> = { image_name: imageName, tags: [input.version, 'latest'] };
   if (digest) metadata.digest = digest;
 
@@ -354,4 +361,95 @@ export async function publishDockerHub(
 function validate(output: PublisherOutput): PublisherOutput {
   publisherOutputSchema.parse(output);
   return output;
+}
+
+// Docker Hub categories for all g-digital MCP servers.
+const DOCKER_HUB_CATEGORIES = ['machine-learning-and-ai', 'security', 'api-management'];
+
+async function getDockerHubJwt(username: string, password: string): Promise<string | null> {
+  try {
+    const res = await fetch('https://hub.docker.com/v2/users/login/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json() as { token?: string };
+    return data.token ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Updates Docker Hub repository metadata after a successful push:
+ * - short description (from server.json#description)
+ * - full description / overview (from README.md)
+ * - categories: machine-learning-and-ai, security, api-management
+ * - repository icon (from assets/logo-400x400.png)
+ * Non-fatal: logs warnings on failure so publish still succeeds.
+ */
+async function updateDockerHubMetadata(
+  imageName: string,
+  packageDir: string,
+  log: Pick<typeof defaultLogger, 'info' | 'warn'>,
+): Promise<void> {
+  const parts = imageName.split('/');
+  const namespace = parts[0];
+  const repoName = parts[1];
+  if (!namespace || !repoName) return;
+
+  const username = process.env.DOCKERHUB_USERNAME?.trim();
+  const tokenSecret = process.env.DOCKERHUB_TOKEN?.trim();
+  if (!username || !tokenSecret) {
+    log.warn('docker_hub_metadata.skip', { reason: 'no DOCKERHUB_USERNAME or DOCKERHUB_TOKEN' });
+    return;
+  }
+  const jwt = await getDockerHubJwt(username, tokenSecret);
+  if (!jwt) {
+    log.warn('docker_hub_metadata.skip', { reason: 'login failed' });
+    return;
+  }
+
+  const baseUrl = `https://hub.docker.com/v2/repositories/${namespace}/${repoName}`;
+  const authHeaders = { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' };
+
+  // Short + full description
+  let shortDesc = '';
+  let fullDesc = '';
+  try { shortDesc = (JSON.parse(await fs.readFile(path.join(packageDir, 'server.json'), 'utf8')) as { description?: string }).description ?? ''; } catch { /* ok */ }
+  try { fullDesc = await fs.readFile(path.join(packageDir, 'README.md'), 'utf8'); } catch { /* ok */ }
+
+  if (shortDesc || fullDesc) {
+    const r = await fetch(`${baseUrl}/`, {
+      method: 'PATCH',
+      headers: authHeaders,
+      body: JSON.stringify({ description: shortDesc, full_description: fullDesc }),
+    }).catch(() => null);
+    if (r?.ok) log.info('docker_hub_metadata.description_updated', { repo: imageName });
+    else log.warn('docker_hub_metadata.description_failed', { status: r?.status });
+  }
+
+  // Categories
+  const catRes = await fetch(`${baseUrl}/categories/`, {
+    method: 'POST',
+    headers: authHeaders,
+    body: JSON.stringify({ categories: DOCKER_HUB_CATEGORIES.map(slug => ({ slug })) }),
+  }).catch(() => null);
+  if (catRes?.ok) log.info('docker_hub_metadata.categories_updated', { categories: DOCKER_HUB_CATEGORIES });
+  else log.warn('docker_hub_metadata.categories_failed', { status: catRes?.status });
+
+  // Logo upload (multipart)
+  try {
+    const logoBytes = await fs.readFile(path.join(packageDir, 'assets', 'logo-400x400.png'));
+    const form = new FormData();
+    form.append('image', new Blob([logoBytes], { type: 'image/png' }), 'logo.png');
+    const logoRes = await fetch(`${baseUrl}/icon/`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${jwt}` },
+      body: form,
+    }).catch(() => null);
+    if (logoRes?.ok) log.info('docker_hub_metadata.logo_updated', { repo: imageName });
+    else log.warn('docker_hub_metadata.logo_failed', { status: logoRes?.status });
+  } catch { /* logo missing or upload failed — non-fatal */ }
 }
