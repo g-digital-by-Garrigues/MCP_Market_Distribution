@@ -167,3 +167,45 @@ export async function generateN8nNode(opts: GenerateN8nNodeOptions): Promise<Gen
 
   return { filesWritten };
 }
+
+/**
+ * Copies the generated TypeScript source files from outputDir into
+ * <packageDir>/n8n-node/ so that the source MCP repository contains
+ * the exact TypeScript that produced the published npm package.
+ *
+ * This satisfies the n8n Creator Portal source-verifiability requirement:
+ * npm view <pkg> repository must resolve to a repo whose source tree builds
+ * the published package. The package.json.hbs sets "directory": "n8n-node"
+ * on the repository field to point reviewers at this subdirectory.
+ *
+ * Files copied: all .ts, .json (non-dist), and source assets.
+ * Files excluded: dist/, node_modules/, *.js, .spec.json.
+ */
+export async function copyN8nNodeSource(outputDir: string, packageDir: string): Promise<void> {
+  const targetDir = path.join(packageDir, 'n8n-node');
+  await fs.rm(targetDir, { recursive: true, force: true });
+  await fs.mkdir(targetDir, { recursive: true });
+
+  // Walk outputDir and copy source files (no compiled output)
+  async function copyDir(src: string, dest: string): Promise<void> {
+    const entries = await fs.readdir(src, { withFileTypes: true });
+    for (const entry of entries) {
+      const srcPath = path.join(src, entry.name);
+      const destPath = path.join(dest, entry.name);
+      // Skip compiled output and dependencies
+      if (['dist', 'node_modules', '.adapter-build.json', '.spec.json'].includes(entry.name)) continue;
+      if (entry.isDirectory()) {
+        await fs.mkdir(destPath, { recursive: true });
+        await copyDir(srcPath, destPath);
+      } else if (entry.isFile()) {
+        // Copy TypeScript source, JSON config, and asset files — not compiled JS/maps
+        const ext = path.extname(entry.name);
+        if (['.ts', '.json', '.png', '.svg', '.md'].includes(ext) && !entry.name.endsWith('.js')) {
+          await fs.copyFile(srcPath, destPath);
+        }
+      }
+    }
+  }
+
+  await copyDir(outputDir, targetDir);
+}

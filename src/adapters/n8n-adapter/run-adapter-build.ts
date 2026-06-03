@@ -4,7 +4,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { buildN8nNodeSpec } from './build-node-spec.js';
 import { refineWithLlm } from './refine-with-llm.js';
-import { generateN8nNode } from './generate-n8n-node.js';
+import { generateN8nNode, copyN8nNodeSource } from './generate-n8n-node.js';
 import { loadDistributionConfig } from '../../distribution/load-distribution-config.js';
 
 // Story 5.6b: orchestrator CLI that the publish.yml `generate-n8n-adapter`
@@ -159,6 +159,12 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
     outputDir,
     ...(sourceLogoAbsPath ? { sourceLogoAbsPath } : {}),
   });
+
+  // Copy the generated TypeScript source into <packageDir>/n8n-node/ so the
+  // source MCP repository contains the exact .ts that produced the published
+  // npm package. This satisfies the n8n Creator Portal source-verifiability
+  // requirement (package.json#repository.directory = "n8n-node").
+  await copyN8nNodeSource(outputDir, packageDir);
 
   // Drop the spec next to the generated tree so Layer 1 (lint) has its
   // truth source without re-running buildN8nNodeSpec.
