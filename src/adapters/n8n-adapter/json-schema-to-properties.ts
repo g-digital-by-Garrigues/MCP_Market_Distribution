@@ -114,9 +114,22 @@ function defaultForType(type: N8nProperty['type'], options?: N8nPropertyOption[]
   }
 }
 
+// BCP-47 locale codes used in EAD/GoCertius APIs mapped to human-readable names.
+// titleCase('en_GB') → 'En GB' which is wrong; this map takes priority.
+const LOCALE_DISPLAY_NAMES: Readonly<Record<string, string>> = {
+  en_GB: 'English (UK)',
+  en_US: 'English (US)',
+  es_ES: 'Spanish (Spain)',
+  pt_PT: 'Portuguese (Portugal)',
+  fr_FR: 'French (France)',
+  de_DE: 'German (Germany)',
+  it_IT: 'Italian (Italy)',
+  ca_ES: 'Catalan (Spain)',
+};
+
 function buildEnumOptions(values: readonly (string | number)[]): N8nPropertyOption[] {
   return values.map((v) => ({
-    name: typeof v === 'string' ? titleCase(v) : String(v),
+    name: typeof v === 'string' ? (LOCALE_DISPLAY_NAMES[v] ?? titleCase(v)) : String(v),
     value: v,
   }));
 }
