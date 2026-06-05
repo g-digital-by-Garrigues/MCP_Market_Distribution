@@ -161,7 +161,7 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       expect(nodeSrc).toContain('"minValue":1');
       expect(nodeSrc).toContain('"maxValue":100');
       // Enum-as-options for sort.
-      expect(nodeSrc).toMatch(/name: 'sort'[\s\S]+\{ name: "asc", value: "asc" \}/);
+      expect(nodeSrc).toMatch(/name: 'sort'[\s\S]+\{ name: "Asc", value: "asc" \}/);
       // OPERATION_PROPERTY_NAMES is rendered at the bottom for every op.
       expect(nodeSrc).toContain("'get_widget': ['widget_id']");
       expect(nodeSrc).toContain("'submit_widget': ['name', 'metadata']");

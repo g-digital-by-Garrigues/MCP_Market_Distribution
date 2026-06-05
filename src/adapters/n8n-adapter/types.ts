@@ -105,6 +105,20 @@ export interface N8nOperationSpec {
   stubSuffix?: string;
 }
 
+/**
+ * A named resource group used for the n8n resource+operation two-level UI
+ * pattern (e.g. Evidence → Create, Get, List). Computed in build-node-spec.ts
+ * from operation name prefixes and consumed by node.ts.hbs.
+ */
+export interface N8nNodeResource {
+  /** Title-case label shown in n8n's Resource dropdown (e.g. 'Case File'). */
+  displayName: string;
+  /** camelCase value used in displayOptions (e.g. 'caseFile'). */
+  value: string;
+  /** Operations belonging to this resource, in declaration order. */
+  operations: N8nOperationSpec[];
+}
+
 export interface N8nCredentialField {
   /** Env-var name as the MCP expects it (e.g., OKTA_CLIENT_ID). */
   envName: string;
@@ -192,6 +206,24 @@ export interface N8nNodeSpec {
    * Okta-only adapters where the base URL is environment-specific).
    */
   defaultApiBaseUrl: string;
+  /**
+   * Resource groups for the n8n resource+operation two-level UI pattern.
+   * When present, the template renders one resource dropdown + one operation
+   * dropdown per resource (scoped via displayOptions.show.resource).
+   * When absent (e.g. small nodes with < 10 operations), the flat single
+   * operation dropdown is rendered instead.
+   */
+  resources?: N8nNodeResource[];
+  /**
+   * Per-operation auto-generated ID field names, used to inject the
+   * generated UUID into the output under a semantic field name.
+   * Computed from AUTO_ID_MAP in build-node-spec.ts for operations in the spec.
+   */
+  autoIdOutputFields?: Array<{ operation: string; fieldName: string }>;
+  /** True when this node has a chat_certificate_get operation that needs the
+   * documentUrl secondary fetch. Used to conditionalize the special-case block
+   * in node.ts.hbs (EAD-ES doesn't have chat ops; GoCertius does). */
+  hasChatCertificateGet?: boolean;
   /**
    * Authentication style for the REST-direct execute() body.
    * 'email-password' → POST /session with email+password → Bearer JWT.

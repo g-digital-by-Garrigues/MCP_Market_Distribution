@@ -79,7 +79,7 @@ export interface JsonSchemaToPropertiesResult {
 
 // Common abbreviations that should be fully uppercased in display names.
 const DISPLAY_ABBREVS: ReadonlySet<string> = new Set([
-  'id', 'url', 'api', 'otp', 'wa', 'os', 'html', 'json', 'pdf', 'sms', 'uuid', 'uri',
+  'id', 'ids', 'url', 'api', 'otp', 'wa', 'os', 'html', 'json', 'pdf', 'sms', 'uuid', 'uri', 'mb', 'gb', 'kb',
 ]);
 
 function titleCase(name: string): string {
@@ -115,7 +115,10 @@ function defaultForType(type: N8nProperty['type'], options?: N8nPropertyOption[]
 }
 
 function buildEnumOptions(values: readonly (string | number)[]): N8nPropertyOption[] {
-  return values.map((v) => ({ name: String(v), value: v }));
+  return values.map((v) => ({
+    name: typeof v === 'string' ? titleCase(v) : String(v),
+    value: v,
+  }));
 }
 
 function jsonSchemaTypeToN8n(node: JsonSchemaNode): N8nProperty['type'] {

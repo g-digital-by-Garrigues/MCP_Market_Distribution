@@ -137,8 +137,8 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       const sort = listWidgets.properties.find((p) => p.name === 'sort')!;
       expect(sort.type).toBe('options');
       expect(sort.options).toEqual([
-        { name: 'asc', value: 'asc' },
-        { name: 'desc', value: 'desc' },
+        { name: 'Asc', value: 'asc' },
+        { name: 'Desc', value: 'desc' },
       ]);
 
       // submit_widget has nested object → 'json' + diagnostic note.

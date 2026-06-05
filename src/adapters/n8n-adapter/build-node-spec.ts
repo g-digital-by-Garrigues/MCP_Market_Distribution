@@ -397,6 +397,53 @@ export async function buildN8nNodeSpec(
     unsupportedNotes.push(...notes);
   }
 
+  // --- Resource grouping for the n8n resource+operation UI pattern ---
+  // Operations are grouped by name prefix into logical resource domains.
+  // Only generated for nodes with many operations (>=8) to avoid adding
+  // a redundant dropdown to small nodes like EAD Factory.
+  const RESOURCE_ORDER = ['caseFile', 'evidence', 'dossierEvidence', 'dossier', 'notification', 'signature', 'chat', 'session', 'useCase'];
+  const RESOURCE_DISPLAY: Record<string, string> = {
+    caseFile: 'Case File', evidence: 'Evidence', dossierEvidence: 'Dossier Evidence',
+    dossier: 'Dossier', notification: 'Notification', signature: 'Signature',
+    chat: 'Chat', session: 'Session', useCase: 'Use Case',
+  };
+  const detectResource = (opName: string): string => {
+    if (opName.startsWith('dossier_evidence_')) return 'dossierEvidence';
+    if (opName.startsWith('dossier_')) return 'dossier';
+    if (opName.startsWith('evidence_') || opName.startsWith('large_evidence_')) return 'evidence';
+    if (opName.startsWith('notification_')) return 'notification';
+    if (opName.startsWith('case_file_')) return 'caseFile';
+    if (opName.startsWith('use_case_')) return 'useCase';
+    if (opName.startsWith('session_')) return 'session';
+    if (opName.startsWith('chat_')) return 'chat';
+    return 'signature';
+  };
+  const resourceMap = new Map<string, typeof operations>();
+  for (const op of operations) {
+    const res = detectResource(op.name);
+    if (!resourceMap.has(res)) resourceMap.set(res, []);
+    resourceMap.get(res)!.push(op);
+  }
+  const computedResources = operations.length >= 8
+    ? RESOURCE_ORDER
+        .filter((r) => resourceMap.has(r))
+        .map((r) => ({ displayName: RESOURCE_DISPLAY[r]!, value: r, operations: resourceMap.get(r)! }))
+    : undefined;
+
+  // --- Auto-ID output field map ---
+  const AUTO_ID_MAP: Record<string, string> = {
+    case_file_create: 'caseFileId', evidence_create: 'evidenceId',
+    evidence_group_create: 'evidenceGroupId', dossier_create: 'dossierId',
+    dossier_group_certify: 'dossierId', notification_request_create: 'notificationRequestId',
+    notification_receiver_add: 'receiverId', notification_document_add: 'documentId',
+    chat_create: 'chatId', chat_certificate_create: 'certificateId',
+    signature_request_create: 'requestId', signature_group_create: 'groupId',
+    signature_participant_create: 'signatoryId',
+  };
+  const autoIdOutputFields = operations
+    .filter((op) => AUTO_ID_MAP[op.name])
+    .map((op) => ({ operation: op.name, fieldName: AUTO_ID_MAP[op.name]! }));
+
   const credentials = buildCredentials(server);
   const defaultApiBaseUrl = await readDefaultApiBaseUrl(input.packageDir);
   const bareTargetName = distribution.n8n_adapter_target_name.replace(/^n8n-nodes-/, '');
@@ -447,12 +494,10 @@ export async function buildN8nNodeSpec(
     authStyle: credentials.some((c) => c.envName === 'OKTA_TOKEN_URL')
       ? 'okta-client-credentials'
       : 'email-password',
-    // Flag set when the source MCP ships a logo via .distribution.yaml.
-    // The generator (Story 5.1c, extended for icon support) copies the
-    // logo into nodes/<Class>/icon.png and emits `icon: 'file:icon.png'`
-    // on the n8n description so the catalogue UI renders the brand
-    // instead of a generic box.
     ...(distribution.logo_path ? { iconBundled: true } : {}),
+    ...(computedResources ? { resources: computedResources } : {}),
+    ...(autoIdOutputFields.length > 0 ? { autoIdOutputFields } : {}),
+    hasChatCertificateGet: operations.some((op) => op.name === 'chat_certificate_get') || undefined,
   };
 
   return { spec, unsupportedNotes };

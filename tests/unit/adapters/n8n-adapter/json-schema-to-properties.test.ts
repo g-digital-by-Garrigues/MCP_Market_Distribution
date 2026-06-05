@@ -39,9 +39,9 @@ describe('jsonSchemaToProperties', () => {
     const { properties } = jsonSchemaToProperties(schema, { operationName: 'set_status' });
     expect(properties[0]?.type).toBe('options');
     expect(properties[0]?.options).toEqual([
-      { name: 'DRAFT', value: 'DRAFT' },
-      { name: 'ACTIVE', value: 'ACTIVE' },
-      { name: 'CLOSED', value: 'CLOSED' },
+      { name: 'Draft', value: 'DRAFT' },
+      { name: 'Active', value: 'ACTIVE' },
+      { name: 'Closed', value: 'CLOSED' },
     ]);
     // Default lands on the first option.
     expect(properties[0]?.default).toBe('DRAFT');
