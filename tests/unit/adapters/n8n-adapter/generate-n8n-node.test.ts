@@ -285,7 +285,7 @@ describe('generateN8nNode', () => {
       'utf8',
     );
     expect(node).toContain('usableAsTool: true');
-    expect(node).toContain("categories: ['AI', 'Langchain']");
+    expect(node).toContain("categories: ['Utility']");
   });
 
   it('package.json peer-deps n8n-workflow is "*" (n8n Verified requirement per scan-community-package, Epic 12)', async () => {

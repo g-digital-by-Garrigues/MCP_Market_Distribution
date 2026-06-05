@@ -22,14 +22,40 @@ export class {{className}} implements INodeType {
     version: 1,{{#if iconBundled}}
     icon: 'file:icon.png',{{/if}}
     usableAsTool: true,
-    codex: { categories: ['AI', 'Langchain'] },
+    codex: { categories: ['Utility'] },
     description: {{json description}},
     defaults: { name: '{{displayName}}' },
     inputs: ['main'],
     outputs: ['main'],
     credentials: [{ name: '{{credentialParamName}}', required: true }],
     properties: [
-      {
+{{#if resources}}      {
+        displayName: 'Resource',
+        name: 'resource',
+        type: 'options',
+        noDataExpression: true,
+        options: [
+{{#each resources}}          { name: {{json this.displayName}}, value: '{{this.value}}' },
+{{/each}}        ],
+        default: '{{resources.0.value}}',
+      },
+{{#each resources}}      {
+        displayName: 'Operation',
+        name: 'operation',
+        type: 'options',
+        noDataExpression: true,
+        displayOptions: { show: { resource: ['{{this.value}}'] } },
+        options: [
+{{#each this.operations}}          {
+            name: {{json this.displayName}},
+            value: '{{this.name}}',
+            description: {{json this.description}},
+            action: {{json this.displayName}},
+          },
+{{/each}}        ],
+        default: '{{this.operations.0.name}}',
+      },
+{{/each}}{{else}}      {
         displayName: 'Operation',
         name: 'operation',
         type: 'options',
@@ -43,6 +69,7 @@ export class {{className}} implements INodeType {
 {{/each}}        ],
         default: '{{operations.0.name}}',
       },
+{{/if}}
 {{#each operations}}{{#each this.properties}}      {
         displayName: {{json this.displayName}},
         name: '{{this.name}}',
