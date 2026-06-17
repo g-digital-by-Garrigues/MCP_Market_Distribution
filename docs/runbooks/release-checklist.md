@@ -2,6 +2,13 @@
 
 The canonical "what to do before you push the tag" checklist for any MCP source repo (`EAD-Factory-MCP`, `GoCertius_MCP`, `EAD_Enterprise_Suite_MCP`, or future portfolio additions). Follow it for every release — patch, minor, or major.
 
+> **Source of truth (generator-emitted MCPs — `GoCertius_MCP`, `EAD_Enterprise_Suite_MCP`).**
+> These repos are **emitted by `@suite/generator`** ([`Suite-GoCertius-MCP-Generator`](https://github.com/g-digital-by-Garrigues/Suite-GoCertius-MCP-Generator)). The generator owns all source; this pipeline owns `server.json`, `smithery.yaml`, README install-block injection, and the n8n adapter. **Two rules that override the generic steps below:**
+> 1. **Never author source in the source repo** — it is overwritten on the next regen. Source/tool changes go in the generator (`products/<slug>/`), which is then re-emitted to the source repo's `main`. See the generator's [`docs/runbooks/release-procedure.md`](https://github.com/g-digital-by-Garrigues/Suite-GoCertius-MCP-Generator/blob/main/docs/runbooks/release-procedure.md).
+> 2. **Branch each release from `main`, never from a prior `chore/bump-v*` branch.** `/prep-mcp` *consumes* the README's `<!-- INSTALL_BLOCKS -->` / `<!-- ENV_VARS -->` markers when it assembles; a bump branch has none left, so prep fails with "Source README is missing required marker(s)". `main` carries the raw generator emit (version `1.0.0`, markers intact).
+>
+> `EAD-Factory-MCP` is hand-authored (not generator-emitted), so rule 1 does not apply to it — but it still has README markers, so rule 2 does.
+
 This document combines [Story 6.1](../../_bmad-output/planning-artifacts/epics.md#story-61-author-npm-trusted-publisher-setup-runbook) (npm Trusted Publisher setup) and Action Item A1 from the [Epic 7 retrospective](../../_bmad-output/implementation-artifacts/epic-7-retro-2026-05-24.md).
 
 ## Why this checklist exists
@@ -143,6 +150,8 @@ The "gap" in version coverage (no v1.1.0 in the registry but v1.1.1 is there) is
 These are things we've done that you should not do:
 
 - **Bumping only `package.json` manually.** Always go through `/prep-mcp` so every artifact bumps atomically. The MCP Registry will silently reject the publish if `server.json` is stale.
+- **Authoring source in a generator-emitted source repo.** Hand edits to `src/`, README static content, etc. in `GoCertius_MCP` / `EAD_Enterprise_Suite_MCP` are overwritten on the next regen. Make the change in `@suite/generator`'s `products/<slug>/` and re-emit.
+- **Running `/prep-mcp` against a `chore/bump-v*` branch.** Its README markers are already consumed → prep fails. Branch the release from `main`.
 - **Tagging before the bump PR merges.** The tag will point at the pre-merge commit. The pipeline clones the tag, not `main`.
 - **Configuring the Trusted Publisher against `MCP_Market_Distribution`.** The OIDC token's `workflow_ref` is the caller (your source repo). Configure against the source MCP repo.
 - **Setting `NPM_TOKEN` permanently in the org.** Use OIDC. Restore `NPM_TOKEN` only for the bootstrap first-ever publish of a new package; remove it once the Trusted Publisher is configured.
