@@ -271,21 +271,31 @@ describe('generateN8nNode', () => {
     expect(node).toContain('"A \\"tricky\\" description\'s edge case"');
   });
 
-  it('node.ts flags usableAsTool:true + codex.categories so n8n AI Agents auto-discover the node (Story 5.8)', async () => {
+  it('node.ts flags usableAsTool:true and keeps codex categories in the .node.json codex file, not inline (Story 5.8 + n8n Creator Portal review)', async () => {
     // Without `usableAsTool: true` n8n's CLI does NOT auto-generate the
     // virtual `<Name>Tool` sibling, so the node is invisible to AI Agent
-    // nodes. codex.categories surfaces it under the AI panel in the
-    // workflow builder. Both are the Option A path validated in Story
-    // 5.8 research — Hugo's feedback was that v1.0.5 was "bastante tonto"
-    // for the EAD Factory domain; this flag unlocks the AI-driven flow
-    // without needing a hand-authored sibling .node.ts file.
+    // nodes — that flag is the Option A path validated in Story 5.8
+    // research (Hugo's feedback was that v1.0.5 was "bastante tonto" for
+    // the EAD Factory domain; this flag unlocks the AI-driven flow
+    // without a hand-authored sibling .node.ts file).
+    //
+    // The n8n Creator Portal E2E review rejected the inline
+    // `codex: { categories: [...] }` on the node description: when a
+    // dedicated `.node.json` codex file ships alongside the node, the
+    // inline codex property is a duplicate/conflict. categories must live
+    // only in the codex file, so node.ts must NOT carry an inline codex.
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const node = await fs.readFile(
       path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
       'utf8',
     );
     expect(node).toContain('usableAsTool: true');
-    expect(node).toContain("categories: ['Utility']");
+    expect(node).not.toContain('codex:');
+    // categories now live exclusively in the codex file.
+    const codex = JSON.parse(
+      await fs.readFile(path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.json'), 'utf8'),
+    ) as { categories: string[] };
+    expect(codex.categories).toContain('Utility');
   });
 
   it('package.json peer-deps n8n-workflow is "*" (n8n Verified requirement per scan-community-package, Epic 12)', async () => {

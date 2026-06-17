@@ -22,7 +22,6 @@ export class {{className}} implements INodeType {
     version: 1,{{#if iconBundled}}
     icon: 'file:icon.png',{{/if}}
     usableAsTool: true,
-    codex: { categories: ['Utility'] },
     description: {{json description}},
     defaults: { name: '{{displayName}}' },
     inputs: ['main'],
