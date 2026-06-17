@@ -229,8 +229,17 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
     environmentVariables: envManifest.environmentVariables,
   });
 
-  // Step 7: README (Story 1.9)
-  const sourceReadme = await fs.readFile(path.join(mcpFolder, 'README.md'), 'utf8');
+  // Step 7: README (Story 1.9 + generator README split)
+  // Prefer the source-owned README.template.md (markers intact) when the
+  // generator emits it; fall back to README.md for hand-authored MCPs
+  // (e.g. ead-factory). The assembled output is always written to README.md.
+  const readmeTemplatePath = path.join(mcpFolder, 'README.template.md');
+  let sourceReadme: string;
+  try {
+    sourceReadme = await fs.readFile(readmeTemplatePath, 'utf8');
+  } catch {
+    sourceReadme = await fs.readFile(path.join(mcpFolder, 'README.md'), 'utf8');
+  }
   const readme = generateReadme({
     sourceReadme,
     installBlocks,
