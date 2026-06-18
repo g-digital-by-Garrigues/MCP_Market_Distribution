@@ -510,6 +510,115 @@ async function checkOfficialLinter(
   }
 }
 
+// n8n Creator Portal / Cloud verification rules that a generator regen of the
+// MCP source can silently break (each maps to a real review rejection on
+// EAD-ES v1.4.0). This gate is the durable guardrail: it fails the publish
+// BEFORE shipping a node that violates the rules, instead of waiting for the
+// human reviewer to catch it. See docs/n8n-adapter-contract.md.
+//
+//   - no_stub_operations:  no operation shown in the UI may be a STUB that
+//                          always throws "not available in n8n Cloud" (a STUB
+//                          means a source tool lost its // n8n-http: annotation)
+//   - brand_casing:        node displayName must use canonical brand casing
+//                          (EAD / GoCertius), never the toTitleCase fallback
+//   - no_transport_creds:  credential screen must not expose MCP-server
+//                          transport config (HTTP host/port, CORS, file-URL)
+//   - no_dead_chat:        nodes without chat ops must not ship chat code or
+//                          advertise "certified chats" in the README
+//   - label_casing:        no display label may read "IDS" (should be "IDs")
+const BRAND_MISCASED: readonly string[] = ["Ead ", "Gocertius"];
+const TRANSPORT_CRED_PROP_RE = /name:\s*'(mcpHttp\w*|mcpAllow\w*|mcpCors\w*|mcpTransport\w*)'/;
+const STUB_OP_RE = /'([^']+)':\s*\{\s*method:\s*'STUB'[^}]*stub:\s*true/g;
+
+async function checkN8nUxCompliance(opts: RunTrackBLayer1Options): Promise<TrackBLayer1CheckResult> {
+  const { nodeDir, spec } = opts;
+  const nodePath = path.join(nodeDir, 'nodes', spec.className, `${spec.className}.node.ts`);
+  const credPath = path.join(nodeDir, 'credentials', `${spec.credentialClassName}.credentials.ts`);
+  const readmePath = path.join(nodeDir, 'README.md');
+  let nodeSrc = '';
+  let credSrc = '';
+  let readmeSrc = '';
+  try {
+    nodeSrc = await fs.readFile(nodePath, 'utf8');
+    credSrc = await fs.readFile(credPath, 'utf8');
+    readmeSrc = await fs.readFile(readmePath, 'utf8');
+  } catch (err) {
+    return {
+      name: 'n8n_ux_compliance',
+      passed: false,
+      error: gateError('n8n_ux_compliance', {
+        observation: `Could not read generated files for UX compliance: ${(err as Error).message}.`,
+        cause: 'The codegen did not produce the node/credentials/README files.',
+        action: 'Ensure generate-n8n-node ran before this gate.',
+      }),
+    };
+  }
+
+  const issues: string[] = [];
+
+  // 1. No STUB operations shown in the UI (issue 1 — notification_certificate_get).
+  const stubbed: string[] = [];
+  for (const m of nodeSrc.matchAll(STUB_OP_RE)) {
+    if (m[1]) stubbed.push(m[1]);
+  }
+  if (stubbed.length > 0) {
+    issues.push(
+      `operations shown in the UI are STUBs that always throw at runtime: ${stubbed.join(', ')}. ` +
+      `A STUB means the source tool file lost its '// n8n-http: METHOD /path' annotation. ` +
+      `Restore the annotation in the MCP source (generator) or remove the tool.`,
+    );
+  }
+
+  // 2. Brand displayName casing (issue 6 — "Ead" vs "EAD").
+  const dispMatch = /displayName:\s*'([^']+)'/.exec(nodeSrc);
+  const nodeDisplayName = dispMatch?.[1] ?? '';
+  for (const bad of BRAND_MISCASED) {
+    if (nodeDisplayName.includes(bad)) {
+      issues.push(
+        `node displayName '${nodeDisplayName}' uses mis-cased brand token '${bad.trim()}'. ` +
+        `Set n8n_connector_display_name in .distribution.yaml or extend BRAND_TOKEN_CASING.`,
+      );
+    }
+  }
+
+  // 3. No MCP transport config on the credential screen (issue 3).
+  const transportMatch = TRANSPORT_CRED_PROP_RE.exec(credSrc);
+  if (transportMatch) {
+    issues.push(
+      `credential exposes MCP-server transport field '${transportMatch[1]}' which the REST-direct ` +
+      `n8n node never uses. Add its env var to CREDENTIAL_FIELD_EXCLUDE_PATTERNS in build-node-spec.ts.`,
+    );
+  }
+
+  // 4. No dead chat code / copy when this node has no chat operations (issue 2).
+  if (!spec.hasChat) {
+    if (nodeSrc.includes('chat_certificate_get')) {
+      issues.push(`node has no chat operations but ships chat_certificate_get code (dead code).`);
+    }
+    if (/certified chats|chat certification/i.test(readmeSrc)) {
+      issues.push(`README advertises chat capabilities this node cannot perform (no chat operations).`);
+    }
+  }
+
+  // 5. Display labels must read "IDs", not "IDS" (issue 5). Property displayNames
+  // are JSON-encoded (double quotes); the node displayName uses single quotes.
+  if (/displayName:\s*(['"])[^'"]*\bIDS\b[^'"]*\1/.test(nodeSrc)) {
+    issues.push(`a field displayName reads "IDS"; the n8n UX guideline plural of ID is "IDs".`);
+  }
+
+  if (issues.length === 0) return { name: 'n8n_ux_compliance', passed: true };
+  return {
+    name: 'n8n_ux_compliance',
+    passed: false,
+    error: gateError('n8n_ux_compliance', {
+      observation: `n8n Creator Portal / Cloud compliance failed: ${issues.join(' | ')}`,
+      cause: 'A generator regen or template change produced a node that violates n8n Cloud verification rules.',
+      action: 'See docs/n8n-adapter-contract.md for the source↔adapter contract; fix in the pipeline or file a generator issue per the routing table.',
+      source_path: path.relative(nodeDir, nodePath),
+    }),
+  };
+}
+
 export async function runTrackBLayer1(
   opts: RunTrackBLayer1Options,
 ): Promise<TrackBLayer1Result> {
@@ -520,6 +629,7 @@ export async function runTrackBLayer1(
   checks.push(await checkCredentialsClass(opts));
   checks.push(await checkReadme(opts));
   checks.push(await checkLanguage(opts));
+  checks.push(await checkN8nUxCompliance(opts));
 
   // Official n8n linter — runs after structural checks to avoid noise.
   // Short-circuit: skip if any structural check already failed.

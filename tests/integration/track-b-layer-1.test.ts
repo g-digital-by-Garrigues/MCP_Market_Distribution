@@ -217,4 +217,84 @@ describe('Track B — Layer 1 (structural lint)', () => {
       expect(e.action.length).toBeGreaterThan(0);
     }
   });
+
+  // The n8n UX compliance gate is the regen guardrail: each case mirrors a real
+  // n8n Cloud verification rejection on EAD-ES v1.4.0. These prove the gate
+  // CATCHES the violation so a future generator regen can't silently ship it.
+  describe('n8n UX compliance gate (regen guardrail)', () => {
+    it('fails when an operation shown in the UI is a STUB (issue 1: notification_certificate_get)', async () => {
+      const spec = sampleSpec();
+      spec.operations.push({
+        name: 'notification_certificate_get',
+        displayName: 'Get Notification Certificate',
+        description: 'Generate a certificate.',
+        httpMethod: 'STUB',
+        httpUrlTemplate: '',
+        isStub: true,
+        stubSuffix: ', stub: true',
+        properties: [],
+      });
+      await generateN8nNode({ spec, outputDir: nodeDir });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
+      expect(err).toBeDefined();
+      expect(err!.observation).toContain('notification_certificate_get');
+      expect(result.passed).toBe(false);
+    });
+
+    it('fails when node displayName uses mis-cased brand token (issue 6: Ead vs EAD)', async () => {
+      const spec = sampleSpec();
+      spec.displayName = 'Ead Enterprise Suite';
+      await generateN8nNode({ spec, outputDir: nodeDir });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
+      expect(err).toBeDefined();
+      expect(err!.observation).toContain('Ead');
+    });
+
+    it('fails when the credential exposes MCP transport config (issue 3)', async () => {
+      const spec = sampleSpec();
+      spec.credentials.push({
+        envName: 'MCP_HTTP_HOST', propName: 'mcpHttpHost', displayName: 'Mcp Http Host', isSecret: false,
+      });
+      await generateN8nNode({ spec, outputDir: nodeDir });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
+      expect(err).toBeDefined();
+      expect(err!.observation).toContain('mcpHttpHost');
+    });
+
+    it('fails when a chat-less node ships chat code (issue 2)', async () => {
+      const spec = sampleSpec();
+      spec.hasChatCertificateGet = true; // forces chat code into the template output
+      // spec.hasChat stays undefined → gate flags the dead code
+      await generateN8nNode({ spec, outputDir: nodeDir });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
+      expect(err).toBeDefined();
+      expect(err!.observation).toContain('chat');
+    });
+
+    it('fails when a field displayName reads "IDS" instead of "IDs" (issue 5)', async () => {
+      const spec = sampleSpec();
+      spec.operations[0]!.properties.push({
+        name: 'evidence_ids', displayName: 'Evidence IDS', type: 'string', default: '',
+        showForOperation: 'get_widget',
+      });
+      await generateN8nNode({ spec, outputDir: nodeDir });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
+      expect(err).toBeDefined();
+      expect(err!.observation).toContain('IDS');
+    });
+
+    it('passes a clean node with no violations', async () => {
+      const spec = sampleSpec();
+      await generateN8nNode({ spec, outputDir: nodeDir });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const uxCheck = result.checks.find((c) => c.name === 'n8n_ux_compliance');
+      expect(uxCheck).toBeDefined();
+      expect(uxCheck!.passed).toBe(true);
+    });
+  });
 });

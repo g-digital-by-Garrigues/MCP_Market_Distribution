@@ -68,8 +68,18 @@ export class BuildN8nNodeSpecError extends Error {
   }
 }
 
+// Brand tokens with non-titlecase canonical casing. Generic toTitleCase
+// produces 'Ead' / 'Gocertius'; these brands require 'EAD' / 'GoCertius'.
+// Applied as a fallback when .distribution.yaml omits n8n_connector_display_name,
+// so a generator regen that wipes the override can't silently mis-case the brand.
+// Keyed by lowercased token. See docs/n8n-adapter-contract.md.
+const BRAND_TOKEN_CASING: Readonly<Record<string, string>> = {
+  ead: 'EAD',
+  gocertius: 'GoCertius',
+};
+
 // Two-tier title-case so 'ead-factory' → 'EadFactory' (class name)
-// and 'ead-factory' → 'Ead Factory' (display).
+// and 'ead-factory' → 'EAD Factory' (display).
 function toPascalCase(kebab: string): string {
   return kebab
     .split(/[-_]/)
@@ -81,7 +91,7 @@ function toTitleCase(kebab: string): string {
   return kebab
     .split(/[-_]/)
     .filter((s) => s.length > 0)
-    .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
+    .map((s) => BRAND_TOKEN_CASING[s.toLowerCase()] ?? s.charAt(0).toUpperCase() + s.slice(1))
     .join(' ');
 }
 
@@ -129,6 +139,32 @@ const CREDENTIAL_FIELDS_TO_EXCLUDE = new Set([
   'PORT',
 ]);
 
+// Pattern-based exclusion for MCP-server transport/runtime config that the
+// generator may add to .env.example over time (HTTP host/port, CORS, file-URL
+// guards). These configure the *MCP server process*, never the n8n REST-direct
+// adapter, so they must never reach the n8n credential screen. Pattern-based so
+// new transport vars are filtered automatically without a pipeline change —
+// part of the regen-resilience contract (see docs/n8n-adapter-contract.md).
+const CREDENTIAL_FIELD_EXCLUDE_PATTERNS: readonly RegExp[] = [
+  /^MCP_HTTP_/,        // MCP_HTTP_HOST, MCP_HTTP_PUBLIC, MCP_HTTP_PORT…
+  /^MCP_ALLOW/,        // MCP_ALLOW_INSECURE_FILE_URL, MCP_ALLOWED_HOSTS, MCP_ALLOWED_ORIGINS
+  /^MCP_TRANSPORT/,    // MCP_TRANSPORT
+  /^MCP_CORS/,         // MCP_CORS_*
+];
+
+function isExcludedCredentialField(envName: string): boolean {
+  if (CREDENTIAL_FIELDS_TO_EXCLUDE.has(envName)) return true;
+  return CREDENTIAL_FIELD_EXCLUDE_PATTERNS.some((re) => re.test(envName));
+}
+
+// Human-readable credential field display names. The generic
+// toTitleCase(MCP_AUTH_EMAIL) → "Mcp Auth Email" leaks the env-var prefix into
+// the UI; these friendlier labels match what consumers expect.
+const CREDENTIAL_DISPLAY_NAME_MAP: Record<string, string> = {
+  MCP_AUTH_EMAIL: 'Account Email',
+  MCP_AUTH_PASSWORD: 'Account Password',
+};
+
 // Maps SCREAMING_SNAKE_CASE env-var names to camelCase n8n credential property
 // names. n8n convention requires camelCase; env-var style names are surfaced
 // to end users in error messages and the credential form.
@@ -154,13 +190,15 @@ function envToCamelCase(envName: string): string {
 function buildCredentials(server: ServerJsonShape): N8nCredentialField[] {
   const vars = server.packages?.[0]?.environmentVariables ?? [];
   return vars
-    .filter((v) => !CREDENTIAL_FIELDS_TO_EXCLUDE.has(v.name))
+    .filter((v) => !isExcludedCredentialField(v.name))
     .map((v) => {
       const propName = envToCamelCase(v.name);
       const field: N8nCredentialField = {
         envName: v.name,
         propName,
-        displayName: toTitleCase(v.name.toLowerCase().replace(/_/g, '-')),
+        displayName:
+          CREDENTIAL_DISPLAY_NAME_MAP[v.name] ??
+          toTitleCase(v.name.toLowerCase().replace(/_/g, '-')),
         isSecret: v.isSecret === true,
       };
       if (v.description) field.description = v.description;
@@ -269,6 +307,42 @@ const PRODUCT_OVERRIDES: Record<string, Record<string, FieldPatch>> = {
   },
 };
 
+// Action verbs that lead an operation label. n8n UX guidelines want operation
+// labels phrased verb-first ("Create Case File", "List Evidence"), not
+// noun-first ("Case File Create"). Tool names are noun_first_verb_last
+// (case_file_create), so we detect a trailing verb and move it to the front.
+const OPERATION_VERBS: ReadonlySet<string> = new Set([
+  'create', 'get', 'list', 'update', 'delete', 'add', 'remove', 'seal',
+  'certify', 'link', 'unlink', 'send', 'cancel', 'activate', 'assign', 'set',
+  'complete', 'initiate', 'login', 'logout', 'preview', 'search', 'upload',
+]);
+// Trailing prepositions guard: don't reorder "..._to_link" / "..._for_x" where
+// the verb is followed by a preposition phrase, which would mangle the label.
+const TRAILING_PREPOSITIONS: ReadonlySet<string> = new Set([
+  'to', 'for', 'with', 'by', 'and', 'of', 'from', 'into',
+]);
+
+// Produce a verb-first display label from a snake_case tool name.
+//   case_file_create        → "Create Case File"
+//   evidence_list           → "List Evidence"
+//   activate_signature_...  → "Activate Signature Request" (already verb-first)
+//   dossier_evidence_list_to_link → "Dossier Evidence List To Link" (guarded)
+function verbFirstLabel(toolName: string, titleCaseFn: (s: string) => string): string {
+  const tokens = toolName.split('_').filter((t) => t.length > 0);
+  if (tokens.length < 2) return titleCaseFn(toolName.replace(/_/g, '-'));
+  const first = tokens[0]!;
+  const last = tokens[tokens.length - 1]!;
+  const secondLast = tokens[tokens.length - 2]!;
+  // Already verb-first → leave order untouched.
+  if (OPERATION_VERBS.has(first)) return titleCaseFn(tokens.join('-'));
+  // Trailing verb with no preposition before it → hoist to front.
+  if (OPERATION_VERBS.has(last) && !TRAILING_PREPOSITIONS.has(secondLast)) {
+    const reordered = [last, ...tokens.slice(0, tokens.length - 1)];
+    return titleCaseFn(reordered.join('-'));
+  }
+  return titleCaseFn(tokens.join('-'));
+}
+
 function buildOperation(tool: InspectorToolEntry, mcpName: string): {
   op: Omit<N8nOperationSpec, 'httpMethod' | 'httpUrlTemplate' | 'customAnnotation'>;
   notes: string[];
@@ -293,7 +367,7 @@ function buildOperation(tool: InspectorToolEntry, mcpName: string): {
   return {
     op: {
       name: tool.name,
-      displayName: toTitleCase(tool.name.replace(/_/g, '-')),
+      displayName: verbFirstLabel(tool.name, toTitleCase),
       description: tool.description ?? '',
       properties: patchedProperties,
     },
@@ -498,6 +572,7 @@ export async function buildN8nNodeSpec(
     ...(computedResources ? { resources: computedResources } : {}),
     ...(autoIdOutputFields.length > 0 ? { autoIdOutputFields } : {}),
     hasChatCertificateGet: operations.some((op) => op.name === 'chat_certificate_get') || undefined,
+    hasChat: operations.some((op) => op.name.startsWith('chat_')) || undefined,
   };
 
   return { spec, unsupportedNotes };

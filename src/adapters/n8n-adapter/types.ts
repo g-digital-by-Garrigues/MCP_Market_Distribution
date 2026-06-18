@@ -224,6 +224,10 @@ export interface N8nNodeSpec {
    * documentUrl secondary fetch. Used to conditionalize the special-case block
    * in node.ts.hbs (EAD-ES doesn't have chat ops; GoCertius does). */
   hasChatCertificateGet?: boolean;
+  /** True when this node exposes any chat_* operation. Gates chat-specific
+   * copy in README.md.hbs so nodes without chat (EAD-ES) don't advertise
+   * "certified chats" capabilities they can't perform. */
+  hasChat?: boolean;
   /**
    * Authentication style for the REST-direct execute() body.
    * 'email-password' → POST /session with email+password → Bearer JWT.

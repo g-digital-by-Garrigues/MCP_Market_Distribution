@@ -79,8 +79,18 @@ export interface JsonSchemaToPropertiesResult {
 
 // Common abbreviations that should be fully uppercased in display names.
 const DISPLAY_ABBREVS: ReadonlySet<string> = new Set([
-  'id', 'ids', 'url', 'api', 'otp', 'wa', 'os', 'html', 'json', 'pdf', 'sms', 'uuid', 'uri', 'mb', 'gb', 'kb',
+  'id', 'url', 'api', 'otp', 'wa', 'os', 'html', 'json', 'pdf', 'sms', 'uuid', 'uri', 'mb', 'gb', 'kb',
 ]);
+
+// Abbreviations with specific (non-all-caps) casing. Takes priority over
+// DISPLAY_ABBREVS. e.g. plural of ID is "IDs", not "IDS" — n8n Creator Portal
+// UX guidelines flag "IDS"/"Evidence IDS" as incorrect.
+const MIXED_CASE_ABBREVS: Readonly<Record<string, string>> = {
+  ids: 'IDs',
+  urls: 'URLs',
+  uuids: 'UUIDs',
+  uris: 'URIs',
+};
 
 function titleCase(name: string): string {
   // Split camelCase (e.g. caseFileId → case File Id) then also split on _ and -
@@ -93,6 +103,7 @@ function titleCase(name: string): string {
   return words
     .map((word) => {
       const lower = word.toLowerCase();
+      if (MIXED_CASE_ABBREVS[lower]) return MIXED_CASE_ABBREVS[lower];
       if (DISPLAY_ABBREVS.has(lower)) return word.toUpperCase();
       return lower.charAt(0).toUpperCase() + lower.slice(1);
     })
