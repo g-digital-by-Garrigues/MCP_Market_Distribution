@@ -26,6 +26,9 @@ interface SetupOpts {
   envVars?: Array<{ name: string; description: string; isSecret: boolean; isRequired: boolean }>;
   /** When false, no server.json is written so we can exercise the missing-file branch. */
   writeServerJson?: boolean;
+  /** When false, no src/tools/*.ts REST annotations are written, so every tool
+   * is a non-REST stub (exercises the omit-stub branch). */
+  writeToolAnnotations?: boolean;
 }
 
 async function setupFixture(opts: SetupOpts): Promise<{
@@ -81,6 +84,22 @@ async function setupFixture(opts: SetupOpts): Promise<{
       ],
     };
     await fs.writeFile(path.join(packageDir, 'server.json'), JSON.stringify(serverJson, null, 2));
+  }
+
+  // REST annotations for the stub MCP's tools so they are REST-capable
+  // operations (not omitted as non-REST stubs). The adapter reads the
+  // `// n8n-http: METHOD /path` header from src/tools/<tool>.ts.
+  if (opts.writeToolAnnotations !== false) {
+    const toolsDir = path.join(packageDir, 'src', 'tools');
+    await fs.mkdir(toolsDir, { recursive: true });
+    const annotations: Record<string, string> = {
+      get_widget: '// n8n-http: GET /widgets/{widget_id}',
+      list_widgets: '// n8n-http: GET /widgets',
+      submit_widget: '// n8n-http: POST /widgets',
+    };
+    for (const [tool, header] of Object.entries(annotations)) {
+      await fs.writeFile(path.join(toolsDir, `${tool}.ts`), `${header}\nexport {};\n`);
+    }
   }
 
   return {
@@ -152,6 +171,38 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       const apiKey = spec.credentials.find((c) => c.envName === 'TEST_API_KEY')!;
       expect(apiKey.isSecret).toBe(true);
       expect(apiKey.displayName).toBe('Test Api Key');
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
+  it('omits non-REST stub operations from the node and emits a diagnostic note', async () => {
+    // Annotate only 2 of the 3 tools; submit_widget has no REST endpoint.
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      writeToolAnnotations: false,
+    });
+    try {
+      const toolsDir = path.join(packageDir, 'src', 'tools');
+      await fs.mkdir(toolsDir, { recursive: true });
+      await fs.writeFile(path.join(toolsDir, 'get_widget.ts'), '// n8n-http: GET /widgets/{widget_id}\nexport {};\n');
+      await fs.writeFile(path.join(toolsDir, 'list_widgets.ts'), '// n8n-http: GET /widgets\nexport {};\n');
+      // submit_widget.ts intentionally absent → non-REST stub → omitted.
+
+      const { spec, unsupportedNotes } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+
+      const opNames = spec.operations.map((o) => o.name).sort();
+      expect(opNames).toEqual(['get_widget', 'list_widgets']);
+      expect(spec.operations.some((o) => o.name === 'submit_widget')).toBe(false);
+      expect(unsupportedNotes.some((n) => n.includes('submit_widget') && n.includes('OMITTED'))).toBe(true);
     } finally {
       await cleanup();
     }

@@ -84,6 +84,19 @@ async function seedFixture(): Promise<{
   };
   await fs.writeFile(path.join(packageDir, 'server.json'), JSON.stringify(serverJson, null, 2));
 
+  // REST annotations so the stub MCP's tools are REST-capable operations
+  // (the adapter omits non-REST stubs from the node — Epic 12 REST-direct).
+  const toolsDir = path.join(packageDir, 'src', 'tools');
+  await fs.mkdir(toolsDir, { recursive: true });
+  const annotations: Record<string, string> = {
+    get_widget: '// n8n-http: GET /widgets/{widget_id}',
+    list_widgets: '// n8n-http: GET /widgets',
+    submit_widget: '// n8n-http: POST /widgets',
+  };
+  for (const [tool, header] of Object.entries(annotations)) {
+    await fs.writeFile(path.join(toolsDir, `${tool}.ts`), `${header}\nexport {};\n`);
+  }
+
   return {
     repoRoot,
     packageDir,

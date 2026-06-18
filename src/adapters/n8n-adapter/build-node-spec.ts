@@ -453,11 +453,11 @@ export async function buildN8nNodeSpec(
   }
 
   const unsupportedNotes: string[] = [];
-  const operations: N8nOperationSpec[] = [];
+  const allOperations: N8nOperationSpec[] = [];
   for (const tool of probe.tools_list) {
     const { op, notes } = buildOperation(tool, input.mcpName);
     const httpInfo = await readToolHttpInfo(input.packageDir, tool.name);
-    operations.push({
+    allOperations.push({
       ...op,
       httpMethod: httpInfo.httpMethod,
       httpUrlTemplate: httpInfo.httpUrlTemplate,
@@ -469,6 +469,29 @@ export async function buildN8nNodeSpec(
       stubSuffix: httpInfo.stubSuffix ?? '',
     });
     unsupportedNotes.push(...notes);
+  }
+
+  // Omit operations with no REST endpoint (STUBs) from the n8n node entirely.
+  // The REST-direct adapter (Epic 12 ADR 0008) cannot execute a tool that has
+  // no HTTP annotation — composite/custom-only tools like `evidence_upload` do
+  // local hashing + multi-step orchestration with no single backing endpoint.
+  // n8n Cloud verification rejects operations that always throw, so we drop them
+  // rather than ship a throwing stub. Each omission is surfaced as a diagnostic
+  // note so an accidentally-unannotated REST tool doesn't disappear silently.
+  // See docs/n8n-adapter-contract.md.
+  const operations = allOperations.filter((op) => !op.isStub);
+  const omittedStubs = allOperations.filter((op) => op.isStub);
+  for (const op of omittedStubs) {
+    unsupportedNotes.push(
+      `Operation '${op.name}' has no REST endpoint (no // n8n-http: annotation and no Sourced-from suffix) — OMITTED from the n8n node. ` +
+      `If this is a real REST endpoint, restore its annotation in the MCP source; if it is intentionally custom-only (e.g. evidence_upload), this omission is expected.`,
+    );
+  }
+  if (operations.length === 0) {
+    throw new BuildN8nNodeSpecError(
+      'tools_list',
+      `MCP for '${input.mcpName}' exposes ${allOperations.length} tools but ALL are non-REST stubs — refusing to generate an empty n8n node.`,
+    );
   }
 
   // --- Resource grouping for the n8n resource+operation UI pattern ---
