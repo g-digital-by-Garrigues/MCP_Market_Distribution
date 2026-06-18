@@ -252,7 +252,7 @@ export class {{className}} implements INodeType {
           if (semanticId && !json[semanticId]) json[semanticId] = generatedId;
           if (!json['id']) json['id'] = generatedId;
         }
-        // chat_certificate_get: when CERTIFIED, fetch documentUrl via a second call
+{{#if hasChatCertificateGet}}        // chat_certificate_get: when CERTIFIED, fetch documentUrl via a second call
         if (operation === 'chat_certificate_get' && (json as IDataObject).status === 'CERTIFIED' && !json['documentUrl']) {
           try {
             const docUrlRes = await fetch(`${url}/document-url`, {
@@ -264,7 +264,7 @@ export class {{className}} implements INodeType {
             }
           } catch { /* non-fatal */ }
         }
-        // session_info: inject userId decoded from JWT sub claim so callers
+{{/if}}        // session_info: inject userId decoded from JWT sub claim so callers
         // don't need a separate step to obtain the userId required by most operations.
         if (operation === 'session_info' && bearer) {
           try {
@@ -297,20 +297,11 @@ export class {{className}} implements INodeType {
 // When a _create/_add operation auto-generates a UUID for 'id', it is also
 // injected into the output under this field name so downstream nodes can
 // reference it with its domain-specific name (e.g. $json.caseFileId).
+// Generated per-node from the operations this MCP actually exposes — entries
+// for absent operations (e.g. chat_* on a node without chat) are never emitted.
 const AUTO_ID_OUTPUT_FIELD: Record<string, string> = {
-  case_file_create: 'caseFileId',
-  evidence_create: 'evidenceId',
-  evidence_group_create: 'evidenceGroupId',
-  dossier_create: 'dossierId',
-  dossier_group_certify: 'dossierId',
-  notification_request_create: 'notificationRequestId',
-  notification_receiver_add: 'receiverId',
-  notification_document_add: 'documentId',
-  chat_create: 'chatId',
-  chat_certificate_create: 'certificateId',
-  signature_request_create: 'requestId',
-  signature_group_create: 'groupId',
-  signature_participant_create: 'signatoryId',
+{{#each autoIdOutputFields}}  '{{this.operation}}': '{{this.fieldName}}',
+{{/each}}
 };
 
 // HTTP metadata per operation — method + URL template.

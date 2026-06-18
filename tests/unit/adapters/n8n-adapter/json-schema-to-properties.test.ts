@@ -29,6 +29,23 @@ describe('jsonSchemaToProperties', () => {
     });
   });
 
+  it('pluralized abbreviations use mixed case (IDs not IDS) — n8n UX guideline', () => {
+    const schema: ToolInputSchema = {
+      type: 'object',
+      properties: {
+        ids: { type: 'string', description: 'Comma-separated list.' },
+        evidence_ids: { type: 'string' },
+        validator_ids: { type: 'string' },
+      },
+    };
+    const { properties } = jsonSchemaToProperties(schema, { operationName: 'link_evidence' });
+    expect(properties.map((p) => p.displayName)).toEqual([
+      'IDs',
+      'Evidence IDs',
+      'Validator IDs',
+    ]);
+  });
+
   it("lowers a string with enum to type 'options'", () => {
     const schema: ToolInputSchema = {
       type: 'object',
