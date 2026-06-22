@@ -53,8 +53,8 @@ function sampleSpec(): N8nNodeSpec {
       },
     ],
     credentials: [
-      { envName: 'TEST_API_KEY', propName: 'TEST_API_KEY', displayName: 'Test Api Key', isSecret: true },
-      { envName: 'TEST_BASE_URL', propName: 'TEST_BASE_URL', displayName: 'Test Base Url', isSecret: false },
+      { envName: 'MCP_AUTH_EMAIL', propName: 'email', displayName: 'Auth Email', isSecret: false },
+      { envName: 'MCP_AUTH_PASSWORD', propName: 'password', displayName: 'Auth Password', isSecret: true },
     ],
   };
 }
@@ -169,14 +169,14 @@ describe('Track B — Layer 1 (structural lint)', () => {
     await generateN8nNode({ spec, outputDir: nodeDir });
     const credPath = path.join(nodeDir, 'credentials', 'MultiToolApi.credentials.ts');
     const original = await fs.readFile(credPath, 'utf8');
-    // The test fixture has propName: 'TEST_API_KEY' so the generated file has name: 'TEST_API_KEY'
-    const tampered = original.replace(/name: 'TEST_API_KEY'/, "name: 'WRONG_NAME'");
+    // The sample fixture has propName: 'email' so the generated file has name: 'email'
+    const tampered = original.replace(/name: 'email'/, "name: 'wrongName'");
     await fs.writeFile(credPath, tampered);
     const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
     expect(result.passed).toBe(false);
     const credError = result.errors.find((e) => e.check === 'credentials');
     expect(credError).toBeDefined();
-    expect(credError!.observation).toContain('TEST_API_KEY');
+    expect(credError!.observation).toContain('email');
   });
 
   it('fails readme when an operation is not mentioned in the README', async () => {
@@ -262,6 +262,20 @@ describe('Track B — Layer 1 (structural lint)', () => {
       const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
       expect(err).toBeDefined();
       expect(err!.observation).toContain('mcpHttpHost');
+    });
+
+    it('fails when a credential prop is not in the node-readable allowlist (any MCP config leak)', async () => {
+      const spec = sampleSpec();
+      // A leaked field that is NOT one of the transport prefixes — only the
+      // allowlist backstop catches it (the recurring [HIGH] class).
+      spec.credentials.push({
+        envName: 'MCP_OPENID_ISSUER', propName: 'mcpOpenidIssuer', displayName: 'Mcp Openid Issuer', isSecret: false,
+      });
+      await generateN8nNode({ spec, outputDir: nodeDir });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
+      expect(err).toBeDefined();
+      expect(err!.observation).toContain('mcpOpenidIssuer');
     });
 
     it('fails when a chat-less node ships chat code (issue 2)', async () => {

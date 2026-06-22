@@ -523,12 +523,26 @@ async function checkOfficialLinter(
 //                          (EAD / GoCertius), never the toTitleCase fallback
 //   - no_transport_creds:  credential screen must not expose MCP-server
 //                          transport config (HTTP host/port, CORS, file-URL)
+//   - credential_allowlist: every credential prop must be one the REST-direct
+//                          execute() actually reads — backstops the allowlist in
+//                          build-node-spec against any leak of MCP server config
 //   - no_dead_chat:        nodes without chat ops must not ship chat code or
 //                          advertise "certified chats" in the README
 //   - label_casing:        no display label may read "IDS" (should be "IDs")
 const BRAND_MISCASED: readonly string[] = ["Ead ", "Gocertius"];
 const TRANSPORT_CRED_PROP_RE = /name:\s*'(mcpHttp\w*|mcpAllow\w*|mcpCors\w*|mcpTransport\w*)'/;
 const STUB_OP_RE = /'([^']+)':\s*\{\s*method:\s*'STUB'[^}]*stub:\s*true/g;
+// The complete set of credential property names the REST-direct execute() reads
+// across both auth styles (baseUrl + email/password OR okta-*). Any credential
+// prop outside this set is MCP-server config that leaked into the n8n form.
+// Mirrors NODE_READABLE_CREDENTIAL_ENV_VARS in build-node-spec.ts.
+const ALLOWED_CREDENTIAL_PROPS: ReadonlySet<string> = new Set([
+  'baseUrl', 'email', 'password',
+  'oktaTokenUrl', 'oktaClientId', 'oktaClientSecret', 'oktaScope',
+]);
+// Match the `name: '...'` of each credential property (the credentials class
+// uses single-quoted prop names; the test-request body uses other strings).
+const CRED_PROP_NAME_RE = /name:\s*'([a-zA-Z][a-zA-Z0-9]*)'/g;
 
 async function checkN8nUxCompliance(opts: RunTrackBLayer1Options): Promise<TrackBLayer1CheckResult> {
   const { nodeDir, spec } = opts;
@@ -586,7 +600,23 @@ async function checkN8nUxCompliance(opts: RunTrackBLayer1Options): Promise<Track
   if (transportMatch) {
     issues.push(
       `credential exposes MCP-server transport field '${transportMatch[1]}' which the REST-direct ` +
-      `n8n node never uses. Add its env var to CREDENTIAL_FIELD_EXCLUDE_PATTERNS in build-node-spec.ts.`,
+      `n8n node never uses. The credential surface is an allowlist — see build-node-spec.ts.`,
+    );
+  }
+
+  // 3b. Credential allowlist backstop: every credential property must be one the
+  // REST-direct execute() actually reads. Catches any leak of MCP server config
+  // beyond the known transport prefixes (the recurring [HIGH] from v1.2.19/v1.3.x).
+  const leakedProps: string[] = [];
+  for (const m of credSrc.matchAll(CRED_PROP_NAME_RE)) {
+    const prop = m[1]!;
+    if (!ALLOWED_CREDENTIAL_PROPS.has(prop)) leakedProps.push(prop);
+  }
+  if (leakedProps.length > 0) {
+    issues.push(
+      `credential exposes ${leakedProps.length} field(s) the REST-direct node never reads: ` +
+      `${[...new Set(leakedProps)].join(', ')}. Only ${[...ALLOWED_CREDENTIAL_PROPS].join(', ')} are node-readable. ` +
+      `Add real auth fields to NODE_READABLE_CREDENTIAL_ENV_VARS in build-node-spec.ts; everything else is MCP server config.`,
     );
   }
 
