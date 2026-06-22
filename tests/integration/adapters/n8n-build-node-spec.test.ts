@@ -63,9 +63,12 @@ async function setupFixture(opts: SetupOpts): Promise<{
   await fs.writeFile(path.join(repoRoot, 'mcp-pipeline.yaml'), yaml.dump(registry));
 
   if (opts.writeServerJson !== false) {
+    // Default: a realistic email-password MCP plus an MCP-server runtime var that
+    // must NOT reach the n8n credential (exercises the allowlist).
     const envVars = opts.envVars ?? [
-      { name: 'TEST_API_KEY', description: 'API key for the test backend.', isSecret: true, isRequired: true },
-      { name: 'TEST_BASE_URL', description: 'Base URL of the test backend.', isSecret: false, isRequired: true },
+      { name: 'MCP_AUTH_EMAIL', description: 'Account email for the test backend.', isSecret: false, isRequired: true },
+      { name: 'MCP_AUTH_PASSWORD', description: 'Account password for the test backend.', isSecret: true, isRequired: true },
+      { name: 'MCP_HTTP_HOST', description: 'MCP server HTTP bind host.', isSecret: false, isRequired: false },
     ];
     const serverJson = {
       $schema: 'https://example.com/server.schema.json',
@@ -166,11 +169,15 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       expect(metadata.type).toBe('json');
       expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
 
-      // Credentials reflect server.json#environmentVariables.
-      expect(spec.credentials.map((c) => c.envName).sort()).toEqual(['TEST_API_KEY', 'TEST_BASE_URL']);
-      const apiKey = spec.credentials.find((c) => c.envName === 'TEST_API_KEY')!;
-      expect(apiKey.isSecret).toBe(true);
-      expect(apiKey.displayName).toBe('Test Api Key');
+      // Credentials are the allowlisted auth fields only — the MCP_HTTP_HOST
+      // server-runtime var is dropped (allowlist, not denylist).
+      expect(spec.credentials.map((c) => c.envName).sort()).toEqual(['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD']);
+      const pw = spec.credentials.find((c) => c.envName === 'MCP_AUTH_PASSWORD')!;
+      expect(pw.isSecret).toBe(true);
+      expect(pw.displayName).toBe('Auth Password');
+      expect(spec.credentials.find((c) => c.envName === 'MCP_AUTH_EMAIL')!.displayName).toBe('Auth Email');
+      expect(spec.credentials.some((c) => c.envName === 'MCP_HTTP_HOST')).toBe(false);
+      expect(spec.authStyle).toBe('email-password');
     } finally {
       await cleanup();
     }

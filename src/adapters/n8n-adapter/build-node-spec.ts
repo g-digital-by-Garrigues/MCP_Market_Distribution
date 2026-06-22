@@ -129,41 +129,40 @@ async function readServerJson(packageDir: string): Promise<ServerJsonShape> {
   }
 }
 
-// Env-var fields from server.json that belong to the MCP server runtime and
-// are never read by the n8n REST-direct adapter. Shipping them in the n8n
-// credential form is confusing — users are asked to fill in fields that do nothing.
-const CREDENTIAL_FIELDS_TO_EXCLUDE = new Set([
-  'MCP_OPENID_CLIENT_ID',
-  'MCP_OPENID_ISSUER',
-  'MCP_OPENID_REFRESH_TOKEN',
-  'PORT',
-]);
+type AuthStyle = 'email-password' | 'okta-client-credentials';
 
-// Pattern-based exclusion for MCP-server transport/runtime config that the
-// generator may add to .env.example over time (HTTP host/port, CORS, file-URL
-// guards). These configure the *MCP server process*, never the n8n REST-direct
-// adapter, so they must never reach the n8n credential screen. Pattern-based so
-// new transport vars are filtered automatically without a pipeline change —
-// part of the regen-resilience contract (see docs/n8n-adapter-contract.md).
-const CREDENTIAL_FIELD_EXCLUDE_PATTERNS: readonly RegExp[] = [
-  /^MCP_HTTP_/,        // MCP_HTTP_HOST, MCP_HTTP_PUBLIC, MCP_HTTP_PORT…
-  /^MCP_ALLOW/,        // MCP_ALLOW_INSECURE_FILE_URL, MCP_ALLOWED_HOSTS, MCP_ALLOWED_ORIGINS
-  /^MCP_TRANSPORT/,    // MCP_TRANSPORT
-  /^MCP_CORS/,         // MCP_CORS_*
-];
+// ALLOWLIST (not a denylist): the exact env vars the REST-direct execute()
+// reads as credentials, keyed by auth style. The n8n credential surface is
+// derived ONLY from this set — `server.json#environmentVariables` (sourced from
+// the MCP `.env.example`) may contain any number of MCP-server runtime settings
+// (HTTP host/port, CORS, DNS-rebinding guards, OpenID, PORT…) that the n8n node
+// never reads. A denylist is fail-open — every new server var leaks until
+// someone blocks it (this recurred: MCP_OPENID_*/PORT in v1.2.19, MCP_HTTP_*/
+// MCP_ALLOW* in v1.3.x). This allowlist is fail-closed: nothing the node can't
+// use ever reaches the credential screen, regardless of what the generator adds
+// to .env.example. `baseUrl` is emitted by the template separately (not an env
+// var). See docs/n8n-adapter-contract.md. To support a new auth field, add it
+// here AND to execute() (node.ts.hbs) AND to CREDENTIAL_PROP_NAME_MAP.
+const NODE_READABLE_CREDENTIAL_ENV_VARS: Record<AuthStyle, readonly string[]> = {
+  'email-password': ['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD'],
+  'okta-client-credentials': ['OKTA_TOKEN_URL', 'OKTA_CLIENT_ID', 'OKTA_CLIENT_SECRET', 'OKTA_SCOPE'],
+};
 
-function isExcludedCredentialField(envName: string): boolean {
-  if (CREDENTIAL_FIELDS_TO_EXCLUDE.has(envName)) return true;
-  return CREDENTIAL_FIELD_EXCLUDE_PATTERNS.some((re) => re.test(envName));
+function detectAuthStyle(server: ServerJsonShape): AuthStyle {
+  const names = new Set((server.packages?.[0]?.environmentVariables ?? []).map((v) => v.name));
+  return names.has('OKTA_TOKEN_URL') ? 'okta-client-credentials' : 'email-password';
 }
 
 // Human-readable credential field display names. The generic
 // toTitleCase(MCP_AUTH_EMAIL) → "Mcp Auth Email" leaks the env-var prefix into
-// the UI; these friendlier labels match what consumers expect.
+// the UI; these friendlier labels match what consumers expect (and the n8n
+// Creator Portal-approved v1.2.20 names).
 const CREDENTIAL_DISPLAY_NAME_MAP: Record<string, string> = {
-  MCP_AUTH_EMAIL: 'Account Email',
-  MCP_AUTH_PASSWORD: 'Account Password',
+  MCP_AUTH_EMAIL: 'Auth Email',
+  MCP_AUTH_PASSWORD: 'Auth Password',
 };
+
+const SECRET_ENV_SUFFIX_RE = /_SECRET$|_PASSWORD$|_TOKEN$/;
 
 // Maps SCREAMING_SNAKE_CASE env-var names to camelCase n8n credential property
 // names. n8n convention requires camelCase; env-var style names are surfaced
@@ -187,19 +186,24 @@ function envToCamelCase(envName: string): string {
     .replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
-function buildCredentials(server: ServerJsonShape): N8nCredentialField[] {
-  const vars = server.packages?.[0]?.environmentVariables ?? [];
-  return vars
-    .filter((v) => !isExcludedCredentialField(v.name))
-    .map((v) => {
-      const propName = envToCamelCase(v.name);
+function buildCredentials(server: ServerJsonShape, authStyle: AuthStyle): N8nCredentialField[] {
+  const declared = new Map(
+    (server.packages?.[0]?.environmentVariables ?? []).map((v) => [v.name, v]),
+  );
+  // Emit only allowlisted, node-readable fields, in a deterministic order.
+  // Intersect with what the MCP actually declares so the form mirrors the
+  // server's real auth inputs while staying fail-closed against everything else.
+  return NODE_READABLE_CREDENTIAL_ENV_VARS[authStyle]
+    .filter((envName) => declared.has(envName))
+    .map((envName) => {
+      const v = declared.get(envName)!;
       const field: N8nCredentialField = {
-        envName: v.name,
-        propName,
+        envName,
+        propName: envToCamelCase(envName),
         displayName:
-          CREDENTIAL_DISPLAY_NAME_MAP[v.name] ??
-          toTitleCase(v.name.toLowerCase().replace(/_/g, '-')),
-        isSecret: v.isSecret === true,
+          CREDENTIAL_DISPLAY_NAME_MAP[envName] ??
+          toTitleCase(envName.toLowerCase().replace(/_/g, '-')),
+        isSecret: v.isSecret === true || SECRET_ENV_SUFFIX_RE.test(envName),
       };
       if (v.description) field.description = v.description;
       return field;
@@ -541,7 +545,8 @@ export async function buildN8nNodeSpec(
     .filter((op) => AUTO_ID_MAP[op.name])
     .map((op) => ({ operation: op.name, fieldName: AUTO_ID_MAP[op.name]! }));
 
-  const credentials = buildCredentials(server);
+  const authStyle = detectAuthStyle(server);
+  const credentials = buildCredentials(server, authStyle);
   const defaultApiBaseUrl = await readDefaultApiBaseUrl(input.packageDir);
   const bareTargetName = distribution.n8n_adapter_target_name.replace(/^n8n-nodes-/, '');
   const className = toPascalCase(bareTargetName);
@@ -587,10 +592,8 @@ export async function buildN8nNodeSpec(
     })(),
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     defaultApiBaseUrl,
-    // authStyle: detect from credential fields — OKTA_TOKEN_URL presence → client_credentials
-    authStyle: credentials.some((c) => c.envName === 'OKTA_TOKEN_URL')
-      ? 'okta-client-credentials'
-      : 'email-password',
+    // authStyle drives both the credential allowlist and the execute() token flow.
+    authStyle,
     ...(distribution.logo_path ? { iconBundled: true } : {}),
     ...(computedResources ? { resources: computedResources } : {}),
     ...(autoIdOutputFields.length > 0 ? { autoIdOutputFields } : {}),

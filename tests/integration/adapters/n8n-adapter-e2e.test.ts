@@ -67,16 +67,23 @@ async function seedFixture(): Promise<{
         version: '1.0.0',
         environmentVariables: [
           {
-            name: 'TEST_API_KEY',
-            description: 'API key for the test backend.',
+            name: 'MCP_AUTH_EMAIL',
+            description: 'Account email for the test backend.',
+            isSecret: false,
+            isRequired: true,
+          },
+          {
+            name: 'MCP_AUTH_PASSWORD',
+            description: 'Account password for the test backend.',
             isSecret: true,
             isRequired: true,
           },
           {
-            name: 'TEST_BASE_URL',
-            description: 'Base URL of the test backend.',
+            // MCP-server runtime var that must NOT reach the n8n credential (allowlist).
+            name: 'MCP_HTTP_HOST',
+            description: 'MCP server HTTP bind host.',
             isSecret: false,
-            isRequired: true,
+            isRequired: false,
           },
         ],
       },
@@ -186,15 +193,18 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       );
       expect(credsSrc).toContain('export class MultiToolApi implements ICredentialType');
       expect(credsSrc).toContain("name = 'multiToolApi'");
-      expect(credsSrc).toMatch(/name: 'testApiKey'[\s\S]+typeOptions: { password: true }/);
-      expect(credsSrc).toContain("name: 'testBaseUrl'");
+      expect(credsSrc).toMatch(/name: 'password'[\s\S]+typeOptions: { password: true }/);
+      expect(credsSrc).toContain("name: 'email'");
+      // The MCP_HTTP_HOST server-runtime var must NOT reach the credential (allowlist).
+      expect(credsSrc).not.toContain('mcpHttpHost');
 
       // ─ README has the operations + credentials tables ─
       const readme = await fs.readFile(path.join(outputDir, 'README.md'), 'utf8');
       expect(readme).toContain('| `get_widget` |');
       expect(readme).toContain('| `list_widgets` |');
       expect(readme).toContain('| `submit_widget` |');
-      expect(readme).toContain('| `TEST_API_KEY` |');
+      expect(readme).toContain('| `MCP_AUTH_EMAIL` |');
+      expect(readme).not.toContain('MCP_HTTP_HOST');
 
       // ─ unsupportedNotes surfaces the 'metadata' nested-object lowering ─
       expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
