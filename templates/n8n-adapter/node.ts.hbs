@@ -111,6 +111,26 @@ export class {{className}} implements INodeType {
     const tokenBody = await tokenRes.json() as { access_token?: string };
     const bearer = tokenBody.access_token ?? '';
 {{else}}
+{{#if (eq authStyle 'oauth2-client-credentials')}}
+    const tokenParams = new URLSearchParams({
+      grant_type: 'client_credentials',
+      client_id: String(creds.mcpSvcClientId ?? ''),
+      client_secret: String(creds.mcpSvcClientSecret ?? ''),
+    });
+    const mcpSvcScope = String(creds.mcpSvcScope ?? '');
+    if (mcpSvcScope) tokenParams.set('scope', mcpSvcScope);
+    const tokenRes = await fetch(String(creds.mcpSvcTokenUrl ?? ''), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: tokenParams.toString(),
+    });
+    if (!tokenRes.ok) {
+      const tokenErr = await tokenRes.json().catch(() => ({ message: `HTTP ${tokenRes.status}` }));
+      throw new NodeApiError(this.getNode(), tokenErr as never, { httpCode: String(tokenRes.status) });
+    }
+    const tokenBody = await tokenRes.json() as { access_token?: string };
+    const bearer = tokenBody.access_token ?? '';
+{{else}}
     const loginRes = await fetch(`${baseUrl}/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -125,6 +145,7 @@ export class {{className}} implements INodeType {
     }
     const loginBody = await loginRes.json() as { jwt?: string; token?: string; accessToken?: string };
     const bearer = loginBody.jwt ?? loginBody.token ?? loginBody.accessToken ?? '';
+{{/if}}
 {{/if}}
 
     // --- Per-item REST calls ---

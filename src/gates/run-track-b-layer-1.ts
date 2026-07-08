@@ -533,12 +533,13 @@ const BRAND_MISCASED: readonly string[] = ["Ead ", "Gocertius"];
 const TRANSPORT_CRED_PROP_RE = /name:\s*'(mcpHttp\w*|mcpAllow\w*|mcpCors\w*|mcpTransport\w*)'/;
 const STUB_OP_RE = /'([^']+)':\s*\{\s*method:\s*'STUB'[^}]*stub:\s*true/g;
 // The complete set of credential property names the REST-direct execute() reads
-// across both auth styles (baseUrl + email/password OR okta-*). Any credential
-// prop outside this set is MCP-server config that leaked into the n8n form.
-// Mirrors NODE_READABLE_CREDENTIAL_ENV_VARS in build-node-spec.ts.
+// across all auth styles (baseUrl + email/password OR okta-* OR mcpSvc-*). Any
+// credential prop outside this set is MCP-server config that leaked into the n8n
+// form. Mirrors NODE_READABLE_CREDENTIAL_ENV_VARS in build-node-spec.ts.
 const ALLOWED_CREDENTIAL_PROPS: ReadonlySet<string> = new Set([
   'baseUrl', 'email', 'password',
   'oktaTokenUrl', 'oktaClientId', 'oktaClientSecret', 'oktaScope',
+  'mcpSvcTokenUrl', 'mcpSvcClientId', 'mcpSvcClientSecret', 'mcpSvcScope',
 ]);
 // Match the `name: '...'` of each credential property (the credentials class
 // uses single-quoted prop names; the test-request body uses other strings).
