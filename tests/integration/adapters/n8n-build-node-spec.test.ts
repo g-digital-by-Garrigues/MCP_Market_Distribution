@@ -183,6 +183,53 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
     }
   }, 30_000);
 
+  it('detects generic OAuth2 client_credentials (MCP_SVC_*) and builds the right credential surface', async () => {
+    // The generator generalized the hardcoded OKTA_* trio to a provider-agnostic
+    // MCP_SVC_* set. detectAuthStyle must recognize MCP_SVC_TOKEN_URL and the
+    // credential form must expose the four auth vars — never the introspect URL
+    // (inbound bearer validation) or transport config.
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      envVars: [
+        { name: 'MCP_SVC_TOKEN_URL', description: 'OAuth2 token endpoint.', isSecret: false, isRequired: true },
+        { name: 'MCP_SVC_CLIENT_ID', description: 'OAuth2 client id.', isSecret: false, isRequired: true },
+        { name: 'MCP_SVC_CLIENT_SECRET', description: 'OAuth2 client secret.', isSecret: true, isRequired: true },
+        { name: 'MCP_SVC_SCOPE', description: 'OAuth2 scope.', isSecret: false, isRequired: false },
+        { name: 'MCP_SVC_INTROSPECT_URL', description: 'Inbound bearer introspection (server config).', isSecret: false, isRequired: false },
+        { name: 'MCP_HTTP_HOST', description: 'MCP server HTTP bind host.', isSecret: false, isRequired: false },
+      ],
+    });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+
+      expect(spec.authStyle).toBe('oauth2-client-credentials');
+      expect(spec.credentials.map((c) => c.envName).sort()).toEqual([
+        'MCP_SVC_CLIENT_ID', 'MCP_SVC_CLIENT_SECRET', 'MCP_SVC_SCOPE', 'MCP_SVC_TOKEN_URL',
+      ]);
+      // camelCase prop names the template reads (creds.mcpSvc*).
+      expect(spec.credentials.map((c) => c.propName).sort()).toEqual([
+        'mcpSvcClientId', 'mcpSvcClientSecret', 'mcpSvcScope', 'mcpSvcTokenUrl',
+      ]);
+      const secret = spec.credentials.find((c) => c.envName === 'MCP_SVC_CLIENT_SECRET')!;
+      expect(secret.isSecret).toBe(true);
+      expect(secret.displayName).toBe('Client Secret');
+      expect(spec.credentials.find((c) => c.envName === 'MCP_SVC_TOKEN_URL')!.displayName).toBe('OAuth Token URL');
+      // Introspect URL is server config (inbound), not a node credential; transport too.
+      expect(spec.credentials.some((c) => c.envName === 'MCP_SVC_INTROSPECT_URL')).toBe(false);
+      expect(spec.credentials.some((c) => c.envName === 'MCP_HTTP_HOST')).toBe(false);
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
   it('omits non-REST stub operations from the node and emits a diagnostic note', async () => {
     // Annotate only 2 of the 3 tools; submit_widget has no REST endpoint.
     const { repoRoot, packageDir, cleanup } = await setupFixture({

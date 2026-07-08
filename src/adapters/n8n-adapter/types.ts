@@ -233,9 +233,12 @@ export interface N8nNodeSpec {
    * 'email-password' → POST /session with email+password → Bearer JWT.
    * 'okta-client-credentials' → POST OKTA_TOKEN_URL with
    *   grant_type=client_credentials → Bearer access_token.
-   * Detected from the credential fields: presence of OKTA_TOKEN_URL
-   * → 'okta-client-credentials', otherwise 'email-password'.
+   * 'oauth2-client-credentials' → POST MCP_SVC_TOKEN_URL with
+   *   grant_type=client_credentials → Bearer access_token (provider-agnostic;
+   *   the generator generalized the hardcoded OKTA_* trio to MCP_SVC_*).
+   * Detected from server env vars: MCP_SVC_TOKEN_URL → 'oauth2-client-credentials';
+   * else OKTA_TOKEN_URL → 'okta-client-credentials'; else 'email-password'.
    * Story 12.2 (Epic 12): REST-direct architecture per ADR 0008.
    */
-  authStyle: 'email-password' | 'okta-client-credentials';
+  authStyle: 'email-password' | 'okta-client-credentials' | 'oauth2-client-credentials';
 }

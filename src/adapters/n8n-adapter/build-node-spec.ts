@@ -129,7 +129,7 @@ async function readServerJson(packageDir: string): Promise<ServerJsonShape> {
   }
 }
 
-type AuthStyle = 'email-password' | 'okta-client-credentials';
+type AuthStyle = 'email-password' | 'okta-client-credentials' | 'oauth2-client-credentials';
 
 // ALLOWLIST (not a denylist): the exact env vars the REST-direct execute()
 // reads as credentials, keyed by auth style. The n8n credential surface is
@@ -146,11 +146,19 @@ type AuthStyle = 'email-password' | 'okta-client-credentials';
 const NODE_READABLE_CREDENTIAL_ENV_VARS: Record<AuthStyle, readonly string[]> = {
   'email-password': ['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD'],
   'okta-client-credentials': ['OKTA_TOKEN_URL', 'OKTA_CLIENT_ID', 'OKTA_CLIENT_SECRET', 'OKTA_SCOPE'],
+  // Generic OAuth2 client_credentials (the generator generalized the hardcoded
+  // OKTA_* trio to a provider-agnostic MCP_SVC_* set — Okta is now just one
+  // configured instance). Same grant as okta-client-credentials, different var
+  // names. MCP_SVC_INTROSPECT_URL is deliberately excluded: it configures the
+  // server's INBOUND bearer validation, not the node's OUTBOUND token fetch.
+  'oauth2-client-credentials': ['MCP_SVC_TOKEN_URL', 'MCP_SVC_CLIENT_ID', 'MCP_SVC_CLIENT_SECRET', 'MCP_SVC_SCOPE'],
 };
 
 function detectAuthStyle(server: ServerJsonShape): AuthStyle {
   const names = new Set((server.packages?.[0]?.environmentVariables ?? []).map((v) => v.name));
-  return names.has('OKTA_TOKEN_URL') ? 'okta-client-credentials' : 'email-password';
+  if (names.has('MCP_SVC_TOKEN_URL')) return 'oauth2-client-credentials';
+  if (names.has('OKTA_TOKEN_URL')) return 'okta-client-credentials';
+  return 'email-password';
 }
 
 // Human-readable credential field display names. The generic
@@ -160,6 +168,10 @@ function detectAuthStyle(server: ServerJsonShape): AuthStyle {
 const CREDENTIAL_DISPLAY_NAME_MAP: Record<string, string> = {
   MCP_AUTH_EMAIL: 'Auth Email',
   MCP_AUTH_PASSWORD: 'Auth Password',
+  MCP_SVC_TOKEN_URL: 'OAuth Token URL',
+  MCP_SVC_CLIENT_ID: 'Client ID',
+  MCP_SVC_CLIENT_SECRET: 'Client Secret',
+  MCP_SVC_SCOPE: 'Scope',
 };
 
 const SECRET_ENV_SUFFIX_RE = /_SECRET$|_PASSWORD$|_TOKEN$/;
@@ -174,6 +186,10 @@ const CREDENTIAL_PROP_NAME_MAP: Record<string, string> = {
   OKTA_CLIENT_ID: 'oktaClientId',
   OKTA_CLIENT_SECRET: 'oktaClientSecret',
   OKTA_SCOPE: 'oktaScope',
+  MCP_SVC_TOKEN_URL: 'mcpSvcTokenUrl',
+  MCP_SVC_CLIENT_ID: 'mcpSvcClientId',
+  MCP_SVC_CLIENT_SECRET: 'mcpSvcClientSecret',
+  MCP_SVC_SCOPE: 'mcpSvcScope',
   API_BASE_URL: 'apiBaseUrl',
   SIGNATURE_API_BASE_URL: 'signatureApiBaseUrl',
 };
