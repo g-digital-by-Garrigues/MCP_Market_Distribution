@@ -224,7 +224,10 @@ export function jsonSchemaToProperties(
       showForOperation: opts.operationName,
     };
     if (node.description) prop.description = node.description;
-    if (required.has(name)) prop.required = true;
+    // Story 13.1 (FR51): never mark 'id' as required — execute() auto-generates a
+    // UUID v4 for empty 'id' on _create/_add ops, and a required+empty field otherwise
+    // raises "workflow has issues" and blocks execution.
+    if (required.has(name) && name !== 'id') prop.required = true;
     if (options) prop.options = options;
 
     if (type === 'number') {

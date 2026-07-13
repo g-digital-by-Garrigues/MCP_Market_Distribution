@@ -113,6 +113,110 @@ async function setupFixture(opts: SetupOpts): Promise<{
 }
 
 describe('buildN8nNodeSpec (integration with stub MCP)', () => {
+  it('Story 13.3: manager_api_base_paths → per-operation base prefix (one credential, many managers)', async () => {
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      distributionOverrides: {
+        // Both managers declared; the stub's ops classify as 'signature', so only the
+        // signature prefix is applied and none get the evidence prefix (discrimination).
+        manager_api_base_paths: { evidence: '/digital-trust', signature: '/signature-manager' },
+      },
+    });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+      const prefixes = Object.fromEntries(
+        (spec.operationBasePrefix ?? []).map((e) => [e.operation, e.prefix]),
+      );
+      // Every stub op resolves to the signature manager → its prefix; none get evidence's.
+      expect(prefixes['get_widget']).toBe('/signature-manager');
+      expect(prefixes['list_widgets']).toBe('/signature-manager');
+      expect(prefixes['submit_widget']).toBe('/signature-manager');
+      expect(Object.values(prefixes)).not.toContain('/digital-trust');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('Story 13.3: no manager_api_base_paths → no operationBasePrefix (single-API product unchanged)', async () => {
+    const { repoRoot, packageDir, cleanup } = await setupFixture({ mcpName: 'multi-tool' });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+      expect(spec.operationBasePrefix).toBeUndefined();
+      // Story 13.4: single-API product keeps plain operation labels (no manager initials).
+      expect(spec.operations.find((o) => o.name === 'get_widget')?.displayName).toBe('Get Widget');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('Story 13.4: multi-manager product prefixes operation labels with manager initials', async () => {
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      distributionOverrides: {
+        manager_api_base_paths: { evidence: '/digital-trust', signature: '/signature-manager' },
+      },
+    });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+      // Stub ops classify as the signature manager → 'SM' prefix, manager word dropped.
+      expect(spec.operations.find((o) => o.name === 'get_widget')?.displayName).toBe('SM Get Widget');
+      expect(spec.operations.find((o) => o.name === 'list_widgets')?.displayName).toBe('SM List Widgets');
+      expect(spec.operations.find((o) => o.name === 'submit_widget')?.displayName).toBe('SM Submit Widget');
+    } finally {
+      await cleanup();
+    }
+  });
+
+  it('Story 13.6: query_param_style flows to the spec (flat / default undefined)', async () => {
+    const flat = await setupFixture({
+      mcpName: 'multi-tool',
+      distributionOverrides: { query_param_style: 'flat' },
+    });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot: flat.repoRoot, packageDir: flat.packageDir, mcpName: 'multi-tool',
+        version: '1.0.0', inspectorCommand: process.execPath, inspectorArgs: [MULTI_TOOL_STUB], inspectorTimeoutMs: 10_000,
+      });
+      expect(spec.queryParamStyle).toBe('flat');
+    } finally {
+      await flat.cleanup();
+    }
+    const def = await setupFixture({ mcpName: 'multi-tool' });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot: def.repoRoot, packageDir: def.packageDir, mcpName: 'multi-tool',
+        version: '1.0.0', inspectorCommand: process.execPath, inspectorArgs: [MULTI_TOOL_STUB], inspectorTimeoutMs: 10_000,
+      });
+      expect(spec.queryParamStyle).toBeUndefined();
+    } finally {
+      await def.cleanup();
+    }
+  });
+
   it('builds a spec with one operation per tool from the multi-tool stub', async () => {
     const { repoRoot, packageDir, cleanup } = await setupFixture({ mcpName: 'multi-tool' });
     try {

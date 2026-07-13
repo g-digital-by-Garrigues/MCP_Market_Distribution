@@ -74,6 +74,20 @@ export const distributionConfigSchema = z
     skip_targets: z.array(z.string().min(1)).optional(),
     logo_path: z.string().min(1).optional(),
     bundled_skills: z.array(z.string().min(1)).optional(),
+    // Story 13.3 (FR53): per-manager API base-path prefixes for MULTI-MANAGER
+    // products (e.g. EAD Factory: { evidence: '/digital-trust', signature:
+    // '/signature-manager', notification: '/notifications' }). When present, the
+    // generated n8n node treats the credential base URL as the gateway ROOT and
+    // appends the prefix for the operation's manager, so ONE credential serves every
+    // manager. Absent for single-API products (gocertius, ead-enterprise-suite) —
+    // their credential base URL is used as-is. Keyed by the n8n resource/manager slug.
+    manager_api_base_paths: z.record(z.string(), z.string()).optional(),
+    // Story 13.6 (FR56): how GET query parameters are serialized. 'bracket' (default)
+    // emits qs/NestJS-style `filter[key]=val`; 'flat' emits `key=val` (spreads a
+    // top-level object like `filter` into flat params). EAD Factory's API only honours
+    // flat params (bracketed ones are ignored → unfiltered results), so it sets 'flat';
+    // products whose backend expects bracket notation omit this (default).
+    query_param_style: z.enum(['bracket', 'flat']).optional(),
     // Static tool inventory shipped to Docker MCP Catalog. Each entry needs
     // a non-empty description; the docker-mcp-catalog publisher refuses to
     // ship an empty list or any tool with a blank description (so reviewers

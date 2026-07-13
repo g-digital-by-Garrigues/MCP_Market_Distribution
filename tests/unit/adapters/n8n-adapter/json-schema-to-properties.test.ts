@@ -29,6 +29,24 @@ describe('jsonSchemaToProperties', () => {
     });
   });
 
+  it("never marks 'id' as required even when the schema lists it (Story 13.1 / FR51)", () => {
+    const schema: ToolInputSchema = {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'UUID v4 identifier.' },
+        title: { type: 'string' },
+      },
+      required: ['id', 'title'],
+    };
+    const { properties } = jsonSchemaToProperties(schema, {
+      operationName: 'case_file_create',
+    });
+    // 'id' is auto-generated in execute(); required+empty would block execution.
+    expect(properties.find((p) => p.name === 'id')?.required).toBeUndefined();
+    // other required fields are still required.
+    expect(properties.find((p) => p.name === 'title')?.required).toBe(true);
+  });
+
   it('pluralized abbreviations use mixed case (IDs not IDS) — n8n UX guideline', () => {
     const schema: ToolInputSchema = {
       type: 'object',

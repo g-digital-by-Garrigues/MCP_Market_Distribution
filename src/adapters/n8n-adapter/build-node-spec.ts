@@ -325,6 +325,34 @@ const PRODUCT_OVERRIDES: Record<string, Record<string, FieldPatch>> = {
       description: 'UUID of the use case. Default is the general EAD Enterprise Suite use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.',
     },
   },
+  // Story 13.5 (FR55): copy-ready examples for EAD Factory's free-form JSON fields
+  // so users supply the correct shape without reading external API docs.
+  'ead-factory': {
+    testimony: {
+      description:
+        'Qualified-timestamp providers, keyed by family (TSP=eIDAS timestamp, DLT=blockchain). ' +
+        'Example: {"TSP":{"required":true,"providers":["EADTrust"]}}. Valid providers: EADTrust, EADTrustCompanySeal, Kepler, LACNet.',
+    },
+    requiredTestimonyProviders: {
+      description: 'Testimony providers required for this evidence (overrides tenant config). Example: ["EADTrust"], or [] for none.',
+    },
+    coordinates: {
+      description: 'On-page signature placement(s), in points from the bottom-left. Example: [{"x":100,"y":100,"page":1}].',
+    },
+    data: {
+      description:
+        'Report data — the evidence groups (and their evidences) to include. Example: ' +
+        '{"groups":[{"id":"<uuid>","code":"GRP-1","name":"Group 1","type":"FILE","capturedFrom":"2026-01-01T00:00:00Z","capturedUntil":"2026-01-01T00:00:00Z","evidences":[{"id":"<uuid>","title":"Evidence 1"}]}]}.',
+    },
+    metadata: {
+      description: 'Free key:value string map for extra attributes. Example: {"cliente":"ACME","expediente":"EXP-2026-001"}.',
+    },
+    filter: {
+      description:
+        'Search filter — flat fields become query parameters. Example for case files: ' +
+        '{"status":"OPEN","page":0,"size":20}. Results are returned under "records".',
+    },
+  },
 };
 
 // Action verbs that lead an operation label. n8n UX guidelines want operation
@@ -361,6 +389,22 @@ function verbFirstLabel(toolName: string, titleCaseFn: (s: string) => string): s
     return titleCaseFn(reordered.join('-'));
   }
   return titleCaseFn(tokens.join('-'));
+}
+
+// Story 13.4 (FR54): "<Verb> <Object>" label with the intercalated manager word
+// dropped. Strip the leading manager token; if only the verb remains, re-add the
+// manager word as the object. Caller prefixes the manager initials.
+//   ('evidence_case_file_search', 'evidence') → "Search Case File"
+//   ('evidence_search', 'evidence')           → "Search Evidence"
+//   ('create_signature_request', 'signature') → "Create Signature Request"
+//   ('notification_request_create','notification') → "Create Request"
+export function managerAwareLabel(name: string, resourceSlug: string): string {
+  let core = name;
+  if (name.startsWith(`${resourceSlug}_`)) {
+    const rest = name.slice(resourceSlug.length + 1);
+    core = rest.includes('_') ? rest : `${rest}_${resourceSlug}`;
+  }
+  return verbFirstLabel(core, toTitleCase);
 }
 
 function buildOperation(tool: InspectorToolEntry, mcpName: string): {
@@ -525,6 +569,11 @@ export async function buildN8nNodeSpec(
     chat: 'Chat', session: 'Session', useCase: 'Use Case',
   };
   const detectResource = (opName: string): string => {
+    // Legacy EAD Factory evidence tools that don't carry the 'evidence_' prefix but
+    // belong to the evidence manager (/digital-trust). Without this they fall through
+    // to the 'signature' default — wrong for both the dropdown grouping and, under
+    // Story 13.3, the per-manager base path.
+    if (opName === 'generate_evidence' || opName === 'get_evidence') return 'evidence';
     if (opName.startsWith('dossier_evidence_')) return 'dossierEvidence';
     if (opName.startsWith('dossier_')) return 'dossier';
     if (opName.startsWith('evidence_') || opName.startsWith('large_evidence_')) return 'evidence';
@@ -535,6 +584,32 @@ export async function buildN8nNodeSpec(
     if (opName.startsWith('chat_')) return 'chat';
     return 'signature';
   };
+
+  // --- Story 13.4 (FR54): manager-aware naming for MULTI-MANAGER products ---
+  // Gated on manager_api_base_paths (the multi-manager signal). Resource displays
+  // become "<Module> Manager" and each operation is labelled "<Initials> <Verb>
+  // <Object>" so operations stay unambiguous when the node is used as an AI tool
+  // (no Resource context). Slugs are untouched. Single-API products are unaffected.
+  const isMultiManager = !!distribution.manager_api_base_paths;
+  const MANAGER_INITIALS: Record<string, string> = {
+    evidence: 'EM', signature: 'SM', notification: 'NM', chat: 'CM',
+  };
+  const RESOURCE_DISPLAY_MULTI: Record<string, string> = {
+    evidence: 'Evidence Manager', signature: 'Signature Manager',
+    notification: 'Notice Manager', chat: 'Chat Manager',
+  };
+  const resourceDisplayName = (r: string): string =>
+    (isMultiManager ? RESOURCE_DISPLAY_MULTI[r] : undefined) ?? RESOURCE_DISPLAY[r] ?? r;
+  // "<Initials> <Verb> <Object>" via the module-level managerAwareLabel (unit-tested):
+  // evidence_search → "EM Search Evidence"; evidence_case_file_search → "EM Search Case File".
+  if (isMultiManager) {
+    for (const op of operations) {
+      const res = detectResource(op.name);
+      const initials = MANAGER_INITIALS[res];
+      if (initials) op.displayName = `${initials} ${managerAwareLabel(op.name, res)}`;
+    }
+  }
+
   const resourceMap = new Map<string, typeof operations>();
   for (const op of operations) {
     const res = detectResource(op.name);
@@ -544,7 +619,7 @@ export async function buildN8nNodeSpec(
   const computedResources = operations.length >= 8
     ? RESOURCE_ORDER
         .filter((r) => resourceMap.has(r))
-        .map((r) => ({ displayName: RESOURCE_DISPLAY[r]!, value: r, operations: resourceMap.get(r)! }))
+        .map((r) => ({ displayName: resourceDisplayName(r), value: r, operations: resourceMap.get(r)! }))
     : undefined;
 
   // --- Auto-ID output field map ---
@@ -560,6 +635,43 @@ export async function buildN8nNodeSpec(
   const autoIdOutputFields = operations
     .filter((op) => AUTO_ID_MAP[op.name])
     .map((op) => ({ operation: op.name, fieldName: AUTO_ID_MAP[op.name]! }));
+
+  // Story 13.1 (FR51): per-operation defaults for OPTIONAL body params. A boolean
+  // 'false', a number '0', or a defaulted non-empty string (e.g. language 'es_ES')
+  // would otherwise be transmitted on every call (n8n always returns the default from
+  // getNodeParameter) and rejected by the API. Required params are excluded so real
+  // missing-required gaps still error; '' and {} defaults are handled by the
+  // empty-skip in execute() and are not emitted here.
+  const optionalDefaults = operations
+    .map((op) => ({
+      operation: op.name,
+      defaults: op.properties
+        .filter((p) => !p.required)
+        .filter(
+          (p) =>
+            typeof p.default === 'boolean' ||
+            typeof p.default === 'number' ||
+            (typeof p.default === 'string' && p.default !== ''),
+        )
+        .map((p) => ({ prop: p.name, valueJson: JSON.stringify(p.default) })),
+    }))
+    .filter((o) => o.defaults.length > 0);
+
+  // Story 13.3 (FR53): per-operation API base-path prefix for MULTI-MANAGER products.
+  // When .distribution.yaml declares manager_api_base_paths, each operation's manager
+  // (its n8n resource slug, e.g. 'evidence'/'signature'/'notification') maps to a base
+  // path the node appends after the credential's gateway-root base URL. A single
+  // credential then serves every manager. Absent → single-API product, base URL used
+  // as-is (empty prefix, unchanged behavior).
+  const managerApiBasePaths = distribution.manager_api_base_paths;
+  const operationBasePrefix = managerApiBasePaths
+    ? operations
+        .map((op) => ({ operation: op.name, prefix: managerApiBasePaths[detectResource(op.name)] }))
+        .filter(
+          (o): o is { operation: string; prefix: string } =>
+            typeof o.prefix === 'string' && o.prefix.length > 0,
+        )
+    : [];
 
   const authStyle = detectAuthStyle(server);
   const credentials = buildCredentials(server, authStyle);
@@ -613,6 +725,9 @@ export async function buildN8nNodeSpec(
     ...(distribution.logo_path ? { iconBundled: true } : {}),
     ...(computedResources ? { resources: computedResources } : {}),
     ...(autoIdOutputFields.length > 0 ? { autoIdOutputFields } : {}),
+    ...(optionalDefaults.length > 0 ? { optionalDefaults } : {}),
+    ...(operationBasePrefix.length > 0 ? { operationBasePrefix } : {}),
+    ...(distribution.query_param_style ? { queryParamStyle: distribution.query_param_style } : {}),
     hasChatCertificateGet: operations.some((op) => op.name === 'chat_certificate_get') || undefined,
     hasChat: operations.some((op) => op.name.startsWith('chat_')) || undefined,
   };

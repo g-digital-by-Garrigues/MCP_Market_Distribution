@@ -220,6 +220,31 @@ export interface N8nNodeSpec {
    * Computed from AUTO_ID_MAP in build-node-spec.ts for operations in the spec.
    */
   autoIdOutputFields?: Array<{ operation: string; fieldName: string }>;
+  /**
+   * Story 13.1 (FR51): per-operation default values for OPTIONAL body parameters.
+   * At execute() time a value equal to its default is treated as "unset" and omitted
+   * from the request. Required params (incl. path params) are excluded here, so a
+   * genuinely missing required field still surfaces as an API error. Empty-string and
+   * empty-object defaults are already handled by the empty-skip and are not listed.
+   * `valueJson` is a JSON-stringified literal for direct emission into the node.
+   */
+  optionalDefaults?: Array<{
+    operation: string;
+    defaults: Array<{ prop: string; valueJson: string }>;
+  }>;
+  /**
+   * Story 13.3 (FR53): per-operation API base-path prefix for MULTI-MANAGER products.
+   * When set, execute() builds `${baseUrl}${prefix}${urlTemplate}` so one credential
+   * (gateway root) serves every manager. Empty/absent for single-API products.
+   */
+  operationBasePrefix?: Array<{ operation: string; prefix: string }>;
+  /**
+   * Story 13.6 (FR56): GET query-parameter serialization style. 'flat' spreads a
+   * top-level object (e.g. `filter`) into `key=val` params; 'bracket' (default when
+   * absent) uses qs-style `filter[key]=val`. Set 'flat' for APIs that ignore bracketed
+   * params (e.g. EAD Factory).
+   */
+  queryParamStyle?: 'bracket' | 'flat';
   /** True when this node has a chat_certificate_get operation that needs the
    * documentUrl secondary fetch. Used to conditionalize the special-case block
    * in node.ts.hbs (EAD-ES doesn't have chat ops; GoCertius does). */
