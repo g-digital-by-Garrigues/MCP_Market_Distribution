@@ -494,4 +494,4 @@ const PREFLIGHT_GUARDS: Record<string, readonly PreflightGuard[]> = {
 // GET query-parameter serialization style (Story 13.3/13.6). 'flat' spreads a
 // top-level object (e.g. filter) into key=val params; 'bracket' uses qs-style
 // filter[key]=val. Empty template value → default 'bracket'.
-const QUERY_PARAM_STYLE: 'bracket' | 'flat' = ('{{queryParamStyle}}' as 'bracket' | 'flat') || 'bracket';
+const QUERY_PARAM_STYLE: 'bracket' | 'flat' = '{{queryParamStyle}}' === 'flat' ? 'flat' : 'bracket';
