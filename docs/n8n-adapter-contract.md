@@ -47,10 +47,32 @@ When adding or regenerating a tool in the generator, ensure:
    - `// n8n-http: POST /path/{param}` — preferred for custom overrides.
    A tool with neither has no REST endpoint and is **omitted from the n8n node** (the REST-direct adapter cannot execute it), with a diagnostic note in the build output. This is correct for intentionally custom-only tools (e.g. `evidence_upload`, which does local hashing + multi-step S3 orchestration with no single backing endpoint). But it means a *real* endpoint whose annotation is accidentally dropped will silently disappear from the node — so always check the "OMITTED from the n8n node" notes after a regen. (This is exactly how `notification_certificate_get.ts` broke in v1.4.0: it had `// Sourced from operation: CreateNotificationCertificateController_run` **without** the `(METHOD /path)` suffix, so it shipped as a throwing stub; the adapter now omits such tools instead.)
 2. **`.distribution.yaml` sets `n8n_connector_display_name`** to the brand-correct string (`"EAD Enterprise Suite"`, `"GoCertius"`). The pipeline has a brand-casing fallback, but the source should be self-describing.
-3. **`.env.example` may contain any MCP-server runtime config — no n8n obligation.** Transport/CORS/OpenID/PORT vars belong in `.env.example` because the Docker/self-hosted MCP server reads them; **keep them**. The n8n adapter derives its credential surface from an allowlist (rule 3 above), so it is immune to whatever the generator adds here. There is nothing the generator must do for n8n credential hygiene — this is intentionally a pipeline-owned boundary, removing a standing coordination cost.
+3. **`.distribution.yaml` emits `manager_api_base_paths` for a MULTI-MANAGER product, and `query_param_style` where the API needs it.** These are the two things the pipeline genuinely cannot infer, and they are the **gates** for Stories 13.3/13.4/13.6 — absent, those stories are silently inert (the node still builds, it just keeps the old, wrong behavior):
+
+   | Field | Gates | Effect when absent |
+   |---|---|---|
+   | `manager_api_base_paths` (`{evidence: /digital-trust, signature: /signature-manager, …}`) | 13.3 per-manager base path, 13.4 manager-aware naming | one credential can't serve every manager; resources render `Evidence`/`Notification`/`Signature` instead of `… Manager`, operations `Search Evidence Case File` instead of `EM Search Case File` |
+   | `query_param_style: flat` | 13.6 query serialization | the node emits `?filter[size]=2`, which EAD Factory's API **ignores** — a search returns unfiltered results (observed: 50 records instead of 2) |
+
+   `manager_api_base_paths` is a plain string→string map; `query_param_style` is `'bracket'` (default, omit it) or `'flat'`. Only a product whose managers sit behind different gateway prefixes needs the first; single-API products (gocertius, ead-enterprise-suite) correctly omit both and are unaffected.
+
+   *Status 2026-07-15: EAD Factory needs both and emits neither, so 13.3/13.4/13.6 are inert in production. The data already exists in the generator (`products/ead-factory/product.config.ts#managerApiBasePaths`) — it just isn't rendered into `.distribution.yaml`. Tracked in Suite-GoCertius-MCP-Generator#66.*
+
+4. **`.env.example` may contain any MCP-server runtime config — no n8n obligation.** Transport/CORS/OpenID/PORT vars belong in `.env.example` because the Docker/self-hosted MCP server reads them; **keep them**. The n8n adapter derives its credential surface from an allowlist (rule 3 above), so it is immune to whatever the generator adds here. There is nothing the generator must do for n8n credential hygiene — this is intentionally a pipeline-owned boundary, removing a standing coordination cost.
 
 ## When the gate fails
 
 The error report tells you which rule and how to fix. Route per the table above: if it's a label/casing/credential-filter issue, fix in the pipeline; if it's a missing annotation, missing `n8n_connector_display_name`, or a README capability claim, file an issue against `Suite-GoCertius-MCP-Generator`.
 
 Never publish by bypassing the gate. A red gate is the system doing its job.
+
+## Verify CI yourself — a check nobody reads is worth nothing
+
+Opening a PR, merging it, or dispatching a pipeline is not the end of the task. **You must verify the result of every process you set in motion** — wait for the run and read its real status (`gh pr checks <n>`, `gh run view <id> --log-failed`), then report what actually happened, not what you expected to happen. Two rules follow from this:
+
+1. **Never claim a check "will run" or "passed" without looking.** Know exactly what each workflow validates before you cite it. In particular, `regression-e2e.yml` invokes `publish.yml@main` cross-repo, so it exercises the pipeline code on `main` — **not** the TypeScript in your PR. And there is currently **no `pull_request` workflow that runs the unit-test suite or the ESLint/`official_linter` pass**, so for a pipeline-code PR the automated evidence is *local only* unless you add one. Do not present a green `regression-e2e` as proof your PR's code is sound.
+2. **If a check runs in this repo, it is ours to fix.** "Pre-existing" or "belongs to another repo" is a diagnosis to prove, not an excuse to move on. A CI job that is chronically red trains reviewers to ignore the red X — which defeats the entire point of having it.
+
+3. **`regression-e2e` only exercises its deep gates AFTER a merge — so review that post-merge run.** On a PR it (a) tests `publish.yml@main`, not the PR's code, and (b) resolves each source to its already-published `@main` version, so the ledger marks every target idempotent and skips Track A L2/L3, Track B, Track C and all publishers — only coherence + Track A L1 + ledger + audit actually run. Its real value lands after the change is on `main` and the next run (or a manual `workflow_dispatch`) hits a not-yet-published version. **Therefore: after merging any pipeline change to `main`, you must open the resulting `regression-e2e` run and confirm it is green — that is the first time the deep gates see the merged code.** Accepting "green on the PR" as sufficient is exactly the trap this rule closes.
+
+*Example (2026-07-16): `regression-e2e` had been red on `main` since May because its source-version pins had gone stale — the dry-run clones each source @ main, but the "expected version" came from a hardcoded pin, so the coherence gate flagged a mismatch on every PR. Fixed by resolving each source's version from its repo @ main at run time (`resolve-versions` job) instead of pinning; the gate keeps its real value (catching an internally-incoherent snapshot) without the false positive.*

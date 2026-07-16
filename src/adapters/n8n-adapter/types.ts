@@ -63,6 +63,33 @@ export interface N8nProperty {
   };
 }
 
+/**
+ * One tier-3 pre-flight condition: "`field` is mandatory when the server says `driver` is X".
+ * Consumed by execute() in node.ts.hbs — see N8nNodeSpec.preflightGuards.
+ */
+export interface N8nPreflightGuard {
+  /** The parameter that may turn out to be mandatory (e.g. 'phone', 'coordinates'). */
+  field: string;
+  /**
+   * URL template of the GET that reveals the driver, relative to the same base +
+   * manager prefix as the operation itself. Its `{placeholders}` are filled from the
+   * operation's own path params.
+   */
+  lookupUrl: string;
+  /** Optional: pick the array element whose `id` equals the `matchParam` path param. */
+  arrayPath?: string;
+  /** Path-param name whose value identifies the element inside `arrayPath`. */
+  matchParam?: string;
+  /** Property holding the driver value (e.g. 'signatureType', 'filename'). */
+  driver: string;
+  /** Condition: driver === equals. Mutually exclusive with `matchesRe`. */
+  equals?: string;
+  /** Condition: case-insensitive regex over the driver (e.g. '\\.pdf$'). */
+  matchesRe?: string;
+  /** The error the user gets instead of the API's opaque rejection. */
+  message: string;
+}
+
 export interface N8nOperationSpec {
   /** Tool name as exposed by the MCP (snake_case ASCII per the schema). */
   name: string;
@@ -72,6 +99,14 @@ export interface N8nOperationSpec {
   description: string;
   /** Properties scoped to this operation (already tagged with showForOperation=name). */
   properties: N8nProperty[];
+  /**
+   * Story 13.2b (FR52) tier 4: genuinely secondary parameters, rendered inside an
+   * "Additional Fields" collection instead of top-level. The collection wrapper
+   * itself is emitted by node.ts.hbs; this array holds its items, pre-sorted by
+   * displayName (n8n's node-param-collection-type-unsorted-items lint rule).
+   * Absent when every parameter of the operation stays top-level.
+   */
+  additionalFields?: N8nProperty[];
   /**
    * HTTP method for the REST-direct call (e.g. 'GET', 'POST').
    * Extracted from the `// Sourced from operation:` comment in the
@@ -220,6 +255,46 @@ export interface N8nNodeSpec {
    * Computed from AUTO_ID_MAP in build-node-spec.ts for operations in the spec.
    */
   autoIdOutputFields?: Array<{ operation: string; fieldName: string }>;
+  /**
+   * Story 13.1 (FR51): per-operation default values for OPTIONAL body parameters.
+   * At execute() time a value equal to its default is treated as "unset" and omitted
+   * from the request. Required params (incl. path params) are excluded here, so a
+   * genuinely missing required field still surfaces as an API error. Empty-string and
+   * empty-object defaults are already handled by the empty-skip and are not listed.
+   * `valueJson` is a JSON-stringified literal for direct emission into the node.
+   */
+  optionalDefaults?: Array<{
+    operation: string;
+    defaults: Array<{ prop: string; valueJson: string }>;
+  }>;
+  /**
+   * Story 13.3 (FR53): per-operation API base-path prefix for MULTI-MANAGER products.
+   * When set, execute() builds `${baseUrl}${prefix}${urlTemplate}` so one credential
+   * (gateway root) serves every manager. Empty/absent for single-API products.
+   */
+  operationBasePrefix?: Array<{ operation: string; prefix: string }>;
+  /**
+   * Story 13.2a tier 3 (FR52): pre-flight guards. A tier-3 parameter is mandatory only in
+   * a configuration the node cannot see locally — its driver lives on a DIFFERENT operation
+   * (set by a previous node), so n8n's `displayOptions` cannot express it and the user only
+   * learns about it through an opaque API 400. When such a field is left empty, execute()
+   * fetches the server's own state once and raises an explanatory NodeOperationError.
+   *
+   * Costs nothing when the field is filled in: the lookup only runs for guards whose field
+   * is actually empty. Guards are best-effort — a failed or unrecognised lookup never blocks
+   * the request, it just falls through to the real API call.
+   */
+  preflightGuards?: Array<{
+    operation: string;
+    guards: N8nPreflightGuard[];
+  }>;
+  /**
+   * Story 13.6 (FR56): GET query-parameter serialization style. 'flat' spreads a
+   * top-level object (e.g. `filter`) into `key=val` params; 'bracket' (default when
+   * absent) uses qs-style `filter[key]=val`. Set 'flat' for APIs that ignore bracketed
+   * params (e.g. EAD Factory).
+   */
+  queryParamStyle?: 'bracket' | 'flat';
   /** True when this node has a chat_certificate_get operation that needs the
    * documentUrl secondary fetch. Used to conditionalize the special-case block
    * in node.ts.hbs (EAD-ES doesn't have chat ops; GoCertius does). */

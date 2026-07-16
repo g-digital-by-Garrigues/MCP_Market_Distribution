@@ -105,6 +105,16 @@ git push origin v<version>
 
 If you created the tag too early, see "Recovery: fixing a tag that points at a stale commit" below.
 
+## After merging a PIPELINE change to `main` (before any release)
+
+`regression-e2e` on a PR is shallow: it runs `publish.yml@main` (not the PR's code) against each source's already-published `@main` version, so the ledger skips the deep gates (Track A L2/L3, Track B, Track C) as idempotent. **The deep gates first see your merged code on the post-merge run.** So after every merge of a pipeline change:
+
+1. Open the `regression-e2e` run for the merge commit (`gh run list --branch main --workflow regression-e2e.yml --limit 1`).
+2. Confirm it is green — and that the jobs you expected to exercise actually ran, not skipped. A merge that skips everything as idempotent proves nothing.
+3. If red, it is ours to fix (it runs in this repo). Do not start a release on top of an unverified pipeline change.
+
+See `docs/n8n-adapter-contract.md` → "Verify CI yourself" for the full rationale.
+
 ## Post-publish verification
 
 After the tag push fires the pipeline (~15-20 min for a full run):

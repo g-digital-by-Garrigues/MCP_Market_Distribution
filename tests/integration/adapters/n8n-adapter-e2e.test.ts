@@ -184,7 +184,27 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       expect(nodeSrc).toMatch(/name: 'sort'[\s\S]+\{ name: "Asc", value: "asc" \}/);
       // OPERATION_PROPERTY_NAMES is rendered at the bottom for every op.
       expect(nodeSrc).toContain("'get_widget': ['widget_id']");
-      expect(nodeSrc).toContain("'submit_widget': ['name', 'metadata']");
+      // Story 13.2b (FR52): OPERATION_PROPERTY_NAMES now lists only TOP-LEVEL params.
+      // submit_widget.metadata is optional and non-conditional → tier 4, so it moves
+      // into the Additional Fields collection and execute() reads it from there.
+      expect(nodeSrc).toContain("'submit_widget': ['name']");
+      expect(nodeSrc).toMatch(/name: 'additionalFields'[\s\S]+name: 'metadata'/);
+      expect(nodeSrc).toContain("this.getNodeParameter('additionalFields', i, {})");
+      // Story 13.1 (FR51): OPTIONAL_DEFAULTS map + execute() skip logic are emitted,
+      // and an optional param (list_widgets.page_size) is registered so a bare list
+      // omits it instead of sending its default.
+      expect(nodeSrc).toContain('const OPTIONAL_DEFAULTS');
+      expect(nodeSrc).toContain('isPathParam');
+      expect(nodeSrc).toMatch(/'list_widgets': \{[^}]*'page_size'/);
+      // Story 13.3 (FR53): OPERATION_BASE_PREFIX map is emitted and used in the URL.
+      // The multi-tool stub declares no manager_api_base_paths, so the map is empty and
+      // the base URL is used as-is (single-API product unchanged).
+      expect(nodeSrc).toContain('const OPERATION_BASE_PREFIX');
+      expect(nodeSrc).toContain('${OPERATION_BASE_PREFIX[operation]');
+      // Story 13.6 (FR56): query-style switch is emitted with both serializers; the
+      // multi-tool fixture declares no style, so it defaults to 'bracket'.
+      expect(nodeSrc).toContain('const QUERY_PARAM_STYLE');
+      expect(nodeSrc).toContain("QUERY_PARAM_STYLE === 'flat'");
 
       // ─ Credentials class shape ─
       const credsSrc = await fs.readFile(

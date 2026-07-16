@@ -82,7 +82,28 @@ export class {{className}} implements INodeType {
         {{/if}}{{#if this.numberConstraints}}typeOptions: {{json this.numberConstraints}},
         {{/if}}displayOptions: { show: { operation: ['{{this.showForOperation}}'] } },
       },
-{{/each}}{{/each}}    ],
+{{/each}}{{/each}}{{#each operations}}{{#if this.additionalFields}}      {
+        displayName: 'Additional Fields',
+        name: 'additionalFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        default: {},
+        displayOptions: { show: { operation: ['{{this.name}}'] } },
+        options: [
+{{#each this.additionalFields}}          {
+            displayName: {{json this.displayName}},
+            name: '{{this.name}}',
+            type: '{{this.type}}',
+            {{#if this.options}}options: [
+{{#each this.options}}              { name: {{json this.name}}, value: {{json this.value}}{{#if this.description}}, description: {{json this.description}}{{/if}} },
+{{/each}}            ],
+            {{/if}}{{#if this.numberConstraints}}typeOptions: {{json this.numberConstraints}},
+            {{/if}}{{#if this.description}}description: {{json this.description}},
+            {{/if}}default: {{json this.default}},
+          },
+{{/each}}        ],
+      },
+{{/if}}{{/each}}    ],
   };
 
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
@@ -164,10 +185,17 @@ export class {{className}} implements INodeType {
           );
         }
 
-        // Replace URL path params {paramName} from input; remaining args → body/query
-        let url = `${baseUrl}${meta.urlTemplate}`;
+        // Replace URL path params {paramName} from input; remaining args → body/query.
+        // Story 13.3 (FR53): for multi-manager products, insert the per-operation
+        // manager base-path prefix between the credential's gateway-root base URL and
+        // the operation path, so one credential serves every manager. Empty for
+        // single-API products.
+        let url = `${baseUrl}${OPERATION_BASE_PREFIX[operation] ?? ''}${meta.urlTemplate}`;
         const propsForOp = OPERATION_PROPERTY_NAMES[operation] ?? [];
         const body: IDataObject = {};
+        // Story 13.2a tier 3: path-param values kept aside so a pre-flight guard can
+        // build its own lookup URL after `url` has already been substituted.
+        const pathParamValues: IDataObject = {};
         const isCreateOrAdd = operation.endsWith('_create') || operation.endsWith('_add');
         let generatedId: string | undefined;
         for (const propName of propsForOp) {
@@ -180,11 +208,40 @@ export class {{className}} implements INodeType {
           if (val === '' || val === null || val === undefined) continue;
           if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
           const placeholder = `{${propName}}`;
-          if (url.includes(placeholder)) {
+          const isPathParam = url.includes(placeholder);
+          // Story 13.1 (FR51): omit an OPTIONAL body parameter the user left at its
+          // declared default — n8n always returns the default from getNodeParameter,
+          // so without this a boolean 'false', a number '0', or a defaulted string
+          // (e.g. language) would be sent on every call and rejected by the API.
+          // Required params and path params are never in OPTIONAL_DEFAULTS, so a real
+          // missing-required gap still surfaces as an API error.
+          if (!isPathParam) {
+            const optDefaults = OPTIONAL_DEFAULTS[operation];
+            if (
+              optDefaults &&
+              Object.prototype.hasOwnProperty.call(optDefaults, propName) &&
+              JSON.stringify(val) === JSON.stringify(optDefaults[propName])
+            ) {
+              continue;
+            }
+          }
+          if (isPathParam) {
+            pathParamValues[propName] = val as IDataObject[string];
             url = url.replace(placeholder, encodeURIComponent(String(val)));
           } else {
             body[propName] = val;
           }
+        }
+
+        // Story 13.2b (FR52): "Additional Fields" collection — secondary parameters.
+        // n8n returns ONLY the keys the user explicitly added, so an unset field is
+        // simply absent: no default-comparison (Story 13.1) is needed here. Path
+        // params never live in the collection, so these only ever reach body/query.
+        const additionalFields = this.getNodeParameter('additionalFields', i, {}) as IDataObject;
+        for (const [propName, val] of Object.entries(additionalFields)) {
+          if (val === '' || val === null || val === undefined) continue;
+          if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
+          body[propName] = val;
         }
         // Substitute any remaining {placeholder} patterns from credentials.
         // First try exact credential key names, then common API→credential aliases
@@ -215,29 +272,93 @@ export class {{className}} implements INodeType {
           body.validityTo = oneYearLater.toISOString();
         }
 
+        // --- Story 13.2a tier 3 (FR52): pre-flight guards ---
+        // Some parameters are mandatory only in a configuration this node cannot see: the
+        // driver was set on a DIFFERENT operation (a previous node), so n8n's displayOptions
+        // cannot express it and the API's rejection is opaque. When such a field is left
+        // empty we resolve the driver from the server once and explain the problem instead.
+        // Zero cost when the user filled the field in — only empty ones trigger a lookup.
+        // Best-effort by design: any lookup failure falls through to the real API call
+        // rather than inventing a blocker.
+        const guards = (PREFLIGHT_GUARDS[operation] ?? []).filter((g) => body[g.field] === undefined);
+        if (guards.length > 0) {
+          const lookupCache = new Map<string, IDataObject>();
+          for (const guard of guards) {
+            let lookupUrl = `${baseUrl}${OPERATION_BASE_PREFIX[operation] ?? ''}${guard.lookupUrl}`;
+            for (const [k, v] of Object.entries(pathParamValues)) {
+              lookupUrl = lookupUrl.replace(`{${k}}`, encodeURIComponent(String(v)));
+            }
+            if (lookupUrl.includes('{')) continue; // a path param wasn't supplied — can't guard
+            let state = lookupCache.get(lookupUrl);
+            if (!state) {
+              try {
+                const lookupRes = await fetch(lookupUrl, { headers: { Authorization: `Bearer ${bearer}` } });
+                if (!lookupRes.ok) continue;
+                state = await lookupRes.json().catch(() => ({})) as IDataObject;
+              } catch { continue; }
+              lookupCache.set(lookupUrl, state);
+            }
+            let scope: IDataObject | undefined = state;
+            if (guard.arrayPath && guard.matchParam) {
+              const arr = state[guard.arrayPath];
+              const wanted = String(pathParamValues[guard.matchParam] ?? '');
+              scope = Array.isArray(arr)
+                ? (arr as IDataObject[]).find((entry) => String(entry.id) === wanted)
+                : undefined;
+            }
+            const driverVal = scope ? scope[guard.driver] : undefined;
+            if (driverVal === undefined || driverVal === null) continue;
+            const conditionHolds = guard.equals !== undefined
+              ? String(driverVal) === guard.equals
+              : new RegExp(guard.matchesRe as string, 'i').test(String(driverVal));
+            if (conditionHolds) {
+              throw new NodeOperationError(this.getNode(), guard.message, { itemIndex: i });
+            }
+          }
+        }
+
         const isBodyless = meta.method === 'GET' || meta.method === 'DELETE';
         if (isBodyless && Object.keys(body).length > 0) {
-          // hey-api client uses bracket notation for nested object query params,
-          // matching the qs library used by NestJS on the server:
-          // { filter: { ownerId: 'uuid' }, page: { number: 1, size: 20 } }
-          //   → filter[ownerId]=uuid&page[number]=1&page[size]=20
-          const flattenQs = (obj: IDataObject, prefix = ''): Array<[string, string]> => {
-            const pairs: Array<[string, string]> = [];
-            for (const [k, v] of Object.entries(obj)) {
-              if (v === null || v === undefined || v === '') continue;
-              const key = prefix ? `${prefix}[${k}]` : k;
-              if (typeof v === 'object' && !Array.isArray(v)) {
-                if (Object.keys(v as object).length === 0) continue;
-                pairs.push(...flattenQs(v as IDataObject, key));
-              } else if (Array.isArray(v)) {
-                for (const item of v) pairs.push([`${key}[]`, String(item)]);
+          const pairs: Array<[string, string]> = [];
+          if (QUERY_PARAM_STYLE === 'flat') {
+            // Story 13.6: the API's search endpoints expect FLAT query params
+            // (`?status=OPEN&size=20`) and ignore bracketed ones. A top-level object
+            // param (e.g. `filter`) is spread so its fields become the query params.
+            const pushVal = (key: string, v: unknown): void => {
+              if (v === null || v === undefined || v === '') return;
+              if (Array.isArray(v)) { for (const item of v) pairs.push([key, String(item)]); }
+              else if (typeof v === 'object') { for (const [k2, v2] of Object.entries(v as IDataObject)) pushVal(`${key}[${k2}]`, v2); }
+              else pairs.push([key, String(v)]);
+            };
+            for (const [k, v] of Object.entries(body)) {
+              if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+                // Spread the wrapper object (filter) into flat params.
+                for (const [k2, v2] of Object.entries(v as IDataObject)) pushVal(k2, v2);
               } else {
-                pairs.push([key, String(v)]);
+                pushVal(k, v);
               }
             }
-            return pairs;
-          };
-          const pairs = flattenQs(body);
+          } else {
+            // 'bracket' (default): qs/NestJS-style nested notation, matching hey-api:
+            // { filter: { ownerId: 'uuid' }, page: { number: 1 } } → filter[ownerId]=uuid&page[number]=1
+            const flattenQs = (obj: IDataObject, prefix = ''): Array<[string, string]> => {
+              const out: Array<[string, string]> = [];
+              for (const [k, v] of Object.entries(obj)) {
+                if (v === null || v === undefined || v === '') continue;
+                const key = prefix ? `${prefix}[${k}]` : k;
+                if (typeof v === 'object' && !Array.isArray(v)) {
+                  if (Object.keys(v as object).length === 0) continue;
+                  out.push(...flattenQs(v as IDataObject, key));
+                } else if (Array.isArray(v)) {
+                  for (const item of v) out.push([`${key}[]`, String(item)]);
+                } else {
+                  out.push([key, String(v)]);
+                }
+              }
+              return out;
+            };
+            pairs.push(...flattenQs(body));
+          }
           if (pairs.length > 0) {
             url = `${url}?${new URLSearchParams(pairs).toString()}`;
           }
@@ -336,3 +457,41 @@ const OPERATION_META: Record<string, { method: string; urlTemplate: string; stub
 const OPERATION_PROPERTY_NAMES: Record<string, readonly string[]> = {
 {{#each operations}}  '{{this.name}}': [{{#each this.properties}}'{{this.name}}'{{#unless @last}}, {{/unless}}{{/each}}],
 {{/each}} };
+
+// Per-operation default values for OPTIONAL body parameters (Story 13.1 / FR51).
+// A value equal to its default is treated as "unset" and omitted from the request.
+// Required params and path params are never listed here, so a genuinely missing
+// required field still surfaces as an API error.
+const OPTIONAL_DEFAULTS: Record<string, Record<string, unknown>> = {
+{{#each optionalDefaults}}  '{{this.operation}}': { {{#each this.defaults}}'{{this.prop}}': {{safe this.valueJson}},{{#unless @last}} {{/unless}}{{/each}} },
+{{/each}} };
+
+// Per-operation manager base-path prefix (Story 13.3 / FR53). Non-empty only for
+// multi-manager products; inserted between the credential base URL and the op path
+// so a single credential (gateway root) serves every manager.
+const OPERATION_BASE_PREFIX: Record<string, string> = {
+{{#each operationBasePrefix}}  '{{this.operation}}': '{{this.prefix}}',
+{{/each}} };
+
+// Per-operation pre-flight guards (Story 13.2a tier 3 / FR52). Each entry says "this
+// field is mandatory when the server reports <driver> is X" — a condition set on a
+// DIFFERENT operation, which n8n's displayOptions cannot see. execute() resolves it from
+// the server ONLY when the field was left empty, and never blocks on a failed lookup.
+interface PreflightGuard {
+  field: string;
+  lookupUrl: string;
+  arrayPath?: string;
+  matchParam?: string;
+  driver: string;
+  equals?: string;
+  matchesRe?: string;
+  message: string;
+}
+const PREFLIGHT_GUARDS: Record<string, readonly PreflightGuard[]> = {
+{{#each preflightGuards}}  '{{this.operation}}': {{json this.guards}},
+{{/each}} };
+
+// GET query-parameter serialization style (Story 13.3/13.6). 'flat' spreads a
+// top-level object (e.g. filter) into key=val params; 'bracket' uses qs-style
+// filter[key]=val. Empty template value → default 'bracket'.
+const QUERY_PARAM_STYLE: 'bracket' | 'flat' = ('{{queryParamStyle}}' as 'bracket' | 'flat') || 'bracket';

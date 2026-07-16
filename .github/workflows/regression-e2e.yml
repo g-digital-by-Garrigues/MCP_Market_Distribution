@@ -74,17 +74,57 @@ permissions:
   # step on `dry_run != 'true'` rather than re-adding the permission here.
 
 jobs:
+  # Resolve each source MCP's CURRENT version straight from its repo @ main,
+  # instead of a hardcoded pin. A dry-run clones the source @ main (see
+  # publish.yml "Resolve MCP source repo": dry_run ⇒ REPO_REF="main"), so the
+  # ONLY version that can be internally coherent with that snapshot is the one
+  # main itself declares. The old hardcoded pins (1.0.12 / 1.0.0 / 1.0.0) went
+  # stale the moment any MCP released, and the coherence gate (Story 8.1) then
+  # failed every PR — training reviewers to ignore a red X. Resolving from main
+  # keeps the gate's real value (it still catches an INTERNALLY incoherent
+  # snapshot: package.json bumped but server.json not — the ead-es v1.1.0 bug)
+  # while removing the false positive. Publishing paths are untouched: real
+  # releases still resolve version from the pushed tag in publish.yml.
+  resolve-versions:
+    name: Resolve source @ main versions
+    runs-on: ubuntu-latest
+    outputs:
+      ead_factory: ${{ steps.v.outputs.ead_factory }}
+      ead_enterprise_suite: ${{ steps.v.outputs.ead_enterprise_suite }}
+      gocertius: ${{ steps.v.outputs.gocertius }}
+    steps:
+      - id: v
+        env:
+          # Same credential the pipeline already uses to clone the sources
+          # (actions/checkout-mcp-source). public_repo scope is enough.
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+        run: |
+          set -euo pipefail
+          declare -A repos=(
+            [ead_factory]=EAD-Factory-MCP
+            [ead_enterprise_suite]=EAD_Enterprise_Suite_MCP
+            [gocertius]=GoCertius_MCP
+          )
+          for key in "${!repos[@]}"; do
+            repo="${repos[$key]}"
+            ver=$(gh api "repos/g-digital-by-Garrigues/${repo}/contents/package.json?ref=main" \
+              -H "Accept: application/vnd.github.raw" \
+              | node -p "JSON.parse(require('fs').readFileSync(0,'utf8')).version")
+            if [ -z "$ver" ] || [ "$ver" = "undefined" ]; then
+              echo "::error::could not read ${repo}@main package.json#version"
+              exit 1
+            fi
+            echo "${key}=${ver}" >> "$GITHUB_OUTPUT"
+            echo "resolved ${key} (${repo}@main) = ${ver}"
+          done
+
   ead-factory:
     name: Regression E2E — ead-factory
+    needs: resolve-versions
     uses: g-digital-by-Garrigues/MCP_Market_Distribution/.github/workflows/publish.yml@main
     with:
       mcp_name: ead-factory
-      # Pin a known-good current version. Re-pinning is a deliberate
-      # maintenance step when each MCP releases — the alternative
-      # (auto-detecting the latest version) adds complexity without a
-      # clear win. The dry-run is idempotent against an existing
-      # version, so a stale pin still works (just less informative).
-      version: "1.0.12"
+      version: ${{ needs.resolve-versions.outputs.ead_factory }}
       step: all
       track: both
       dry_run: true
@@ -92,14 +132,11 @@ jobs:
 
   ead-enterprise-suite:
     name: Regression E2E — ead-enterprise-suite
+    needs: resolve-versions
     uses: g-digital-by-Garrigues/MCP_Market_Distribution/.github/workflows/publish.yml@main
     with:
       mcp_name: ead-enterprise-suite
-      # Pinned to match the current EAD_Enterprise_Suite_MCP@main version.
-      # The earlier pin of 1.1.1 stale-failed the coherence gate (Story 8.1) —
-      # which is exactly what Story 8.1 is supposed to do, but here it's
-      # noise. When the dev team next bumps + tags, update this pin too.
-      version: "1.0.0"
+      version: ${{ needs.resolve-versions.outputs.ead_enterprise_suite }}
       step: all
       track: both
       dry_run: true
@@ -107,10 +144,11 @@ jobs:
 
   gocertius:
     name: Regression E2E — gocertius
+    needs: resolve-versions
     uses: g-digital-by-Garrigues/MCP_Market_Distribution/.github/workflows/publish.yml@main
     with:
       mcp_name: gocertius
-      version: "1.0.0"
+      version: ${{ needs.resolve-versions.outputs.gocertius }}
       step: all
       track: both
       dry_run: true
