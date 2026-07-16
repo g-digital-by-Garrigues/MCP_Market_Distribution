@@ -193,6 +193,9 @@ export class {{className}} implements INodeType {
         let url = `${baseUrl}${OPERATION_BASE_PREFIX[operation] ?? ''}${meta.urlTemplate}`;
         const propsForOp = OPERATION_PROPERTY_NAMES[operation] ?? [];
         const body: IDataObject = {};
+        // Story 13.2a tier 3: path-param values kept aside so a pre-flight guard can
+        // build its own lookup URL after `url` has already been substituted.
+        const pathParamValues: IDataObject = {};
         const isCreateOrAdd = operation.endsWith('_create') || operation.endsWith('_add');
         let generatedId: string | undefined;
         for (const propName of propsForOp) {
@@ -223,6 +226,7 @@ export class {{className}} implements INodeType {
             }
           }
           if (isPathParam) {
+            pathParamValues[propName] = val as IDataObject[string];
             url = url.replace(placeholder, encodeURIComponent(String(val)));
           } else {
             body[propName] = val;
@@ -266,6 +270,51 @@ export class {{className}} implements INodeType {
           const oneYearLater = new Date();
           oneYearLater.setFullYear(oneYearLater.getFullYear() + 1);
           body.validityTo = oneYearLater.toISOString();
+        }
+
+        // --- Story 13.2a tier 3 (FR52): pre-flight guards ---
+        // Some parameters are mandatory only in a configuration this node cannot see: the
+        // driver was set on a DIFFERENT operation (a previous node), so n8n's displayOptions
+        // cannot express it and the API's rejection is opaque. When such a field is left
+        // empty we resolve the driver from the server once and explain the problem instead.
+        // Zero cost when the user filled the field in — only empty ones trigger a lookup.
+        // Best-effort by design: any lookup failure falls through to the real API call
+        // rather than inventing a blocker.
+        const guards = (PREFLIGHT_GUARDS[operation] ?? []).filter((g) => body[g.field] === undefined);
+        if (guards.length > 0) {
+          const lookupCache = new Map<string, IDataObject>();
+          for (const guard of guards) {
+            let lookupUrl = `${baseUrl}${OPERATION_BASE_PREFIX[operation] ?? ''}${guard.lookupUrl}`;
+            for (const [k, v] of Object.entries(pathParamValues)) {
+              lookupUrl = lookupUrl.replace(`{${k}}`, encodeURIComponent(String(v)));
+            }
+            if (lookupUrl.includes('{')) continue; // a path param wasn't supplied — can't guard
+            let state = lookupCache.get(lookupUrl);
+            if (!state) {
+              try {
+                const lookupRes = await fetch(lookupUrl, { headers: { Authorization: `Bearer ${bearer}` } });
+                if (!lookupRes.ok) continue;
+                state = await lookupRes.json().catch(() => ({})) as IDataObject;
+              } catch { continue; }
+              lookupCache.set(lookupUrl, state);
+            }
+            let scope: IDataObject | undefined = state;
+            if (guard.arrayPath && guard.matchParam) {
+              const arr = state[guard.arrayPath];
+              const wanted = String(pathParamValues[guard.matchParam] ?? '');
+              scope = Array.isArray(arr)
+                ? (arr as IDataObject[]).find((entry) => String(entry.id) === wanted)
+                : undefined;
+            }
+            const driverVal = scope ? scope[guard.driver] : undefined;
+            if (driverVal === undefined || driverVal === null) continue;
+            const conditionHolds = guard.equals !== undefined
+              ? String(driverVal) === guard.equals
+              : new RegExp(guard.matchesRe as string, 'i').test(String(driverVal));
+            if (conditionHolds) {
+              throw new NodeOperationError(this.getNode(), guard.message, { itemIndex: i });
+            }
+          }
         }
 
         const isBodyless = meta.method === 'GET' || meta.method === 'DELETE';
@@ -422,6 +471,24 @@ const OPTIONAL_DEFAULTS: Record<string, Record<string, unknown>> = {
 // so a single credential (gateway root) serves every manager.
 const OPERATION_BASE_PREFIX: Record<string, string> = {
 {{#each operationBasePrefix}}  '{{this.operation}}': '{{this.prefix}}',
+{{/each}} };
+
+// Per-operation pre-flight guards (Story 13.2a tier 3 / FR52). Each entry says "this
+// field is mandatory when the server reports <driver> is X" — a condition set on a
+// DIFFERENT operation, which n8n's displayOptions cannot see. execute() resolves it from
+// the server ONLY when the field was left empty, and never blocks on a failed lookup.
+interface PreflightGuard {
+  field: string;
+  lookupUrl: string;
+  arrayPath?: string;
+  matchParam?: string;
+  driver: string;
+  equals?: string;
+  matchesRe?: string;
+  message: string;
+}
+const PREFLIGHT_GUARDS: Record<string, readonly PreflightGuard[]> = {
+{{#each preflightGuards}}  '{{this.operation}}': {{json this.guards}},
 {{/each}} };
 
 // GET query-parameter serialization style (Story 13.3/13.6). 'flat' spreads a

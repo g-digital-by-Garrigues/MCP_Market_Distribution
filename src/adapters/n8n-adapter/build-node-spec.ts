@@ -4,7 +4,13 @@ import { runInspectorHarness, type InspectorToolEntry } from '../../gates/inspec
 import { loadDistributionConfig } from '../../distribution/load-distribution-config.js';
 import type { DistributionConfig } from '../../schemas/distribution-config.schema.js';
 import { jsonSchemaToProperties, type ToolInputSchema } from './json-schema-to-properties.js';
-import type { N8nCredentialField, N8nNodeSpec, N8nOperationSpec, N8nProperty } from './types.js';
+import type {
+  N8nCredentialField,
+  N8nNodeSpec,
+  N8nOperationSpec,
+  N8nPreflightGuard,
+  N8nProperty,
+} from './types.js';
 import { resolveMcpEntryRelPath } from '../../utils/resolve-mcp-entry.js';
 
 // Story 5.1b: assemble the N8nNodeSpec for a single MCP.
@@ -498,6 +504,58 @@ const PRODUCT_OVERRIDES: Record<string, Record<string, FieldPatch>> = {
         'Search filter — flat fields become query parameters. Example for case files: ' +
         '{"status":"OPEN","page":0,"size":20}. Results are returned under "records".',
     },
+  },
+};
+
+// Story 13.2a tier 3 (FR52): pre-flight guards, keyed by mcpName → operation.
+// Each entry encodes "this field is mandatory when the server says <driver> is X".
+// The driver always lives on a DIFFERENT operation (a previous node in the workflow),
+// which is precisely why n8n's displayOptions cannot express it — see the tier-2 FINDING
+// in epics.md. Rather than let the user hit an opaque API 400, execute() resolves the
+// driver from the server when the field was left empty.
+//
+// Every lookupUrl/driver below is verified against the live INT API, not inferred:
+//   - EAD Factory GET /signature-requests/{id} returns documents[] carrying both
+//     `filename` and `signatureType` — one lookup answers both guards.
+//   - EAD-ES's zShowSignatureRequestControllerRunResponse carries `signatureType` at the
+//     top level, and its own signature_participant_create description states that
+//     "For ADVANCED signatures, phonePrefix and phoneNumber are mandatory".
+export const PRODUCT_PREFLIGHT_GUARDS: Record<string, Record<string, N8nPreflightGuard[]>> = {
+  'ead-factory': {
+    add_signatory_to_document: [
+      {
+        field: 'phone',
+        lookupUrl: '/api/v1/private/signature-requests/{signatureRequestId}',
+        arrayPath: 'documents',
+        matchParam: 'documentId',
+        driver: 'signatureType',
+        equals: 'ADVANCED',
+        message:
+          'This document is signed with signatureType ADVANCED, so the signatory Phone is mandatory (the signatory is authenticated by phone). Set Phone — e.g. +34600000000 — or use INTERPOSITION on the Add Document step.',
+      },
+      {
+        field: 'coordinates',
+        lookupUrl: '/api/v1/private/signature-requests/{signatureRequestId}',
+        arrayPath: 'documents',
+        matchParam: 'documentId',
+        driver: 'filename',
+        matchesRe: '\\.pdf$',
+        message:
+          'The document to sign is a PDF, so Coordinates are mandatory — activating the request fails without them. Set the on-page placement, e.g. [{"x":100,"y":100,"page":1}].',
+      },
+    ],
+  },
+  'ead-enterprise-suite': {
+    signature_participant_create: [
+      {
+        field: 'phoneNumber',
+        lookupUrl: '/case-files/{caseFileId}/signature-requests/{requestId}',
+        driver: 'signatureType',
+        equals: 'ADVANCED',
+        message:
+          'This signature request uses signatureType ADVANCED, so Phone Number (and Phone Prefix) are mandatory — the signer receives the OTP there. Set them, or create the request with INTERPOSITION.',
+      },
+    ],
   },
 };
 
@@ -1008,6 +1066,13 @@ export async function buildN8nNodeSpec(
         )
     : [];
 
+  // Story 13.2a tier 3 (FR52): emit only the guards whose operation this MCP exposes,
+  // so a product never ships a guard for a tool it doesn't have.
+  const productGuards = PRODUCT_PREFLIGHT_GUARDS[input.mcpName] ?? {};
+  const preflightGuards = operations
+    .filter((op) => productGuards[op.name])
+    .map((op) => ({ operation: op.name, guards: productGuards[op.name]! }));
+
   const authStyle = detectAuthStyle(server);
   const credentials = buildCredentials(server, authStyle);
   const defaultApiBaseUrl = await readDefaultApiBaseUrl(input.packageDir);
@@ -1063,6 +1128,7 @@ export async function buildN8nNodeSpec(
     ...(autoIdOutputFields.length > 0 ? { autoIdOutputFields } : {}),
     ...(optionalDefaults.length > 0 ? { optionalDefaults } : {}),
     ...(operationBasePrefix.length > 0 ? { operationBasePrefix } : {}),
+    ...(preflightGuards.length > 0 ? { preflightGuards } : {}),
     ...(distribution.query_param_style ? { queryParamStyle: distribution.query_param_style } : {}),
     hasChatCertificateGet: operations.some((op) => op.name === 'chat_certificate_get') || undefined,
     hasChat: operations.some((op) => op.name.startsWith('chat_')) || undefined,

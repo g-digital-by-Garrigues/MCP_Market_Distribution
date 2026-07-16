@@ -47,7 +47,18 @@ When adding or regenerating a tool in the generator, ensure:
    - `// n8n-http: POST /path/{param}` — preferred for custom overrides.
    A tool with neither has no REST endpoint and is **omitted from the n8n node** (the REST-direct adapter cannot execute it), with a diagnostic note in the build output. This is correct for intentionally custom-only tools (e.g. `evidence_upload`, which does local hashing + multi-step S3 orchestration with no single backing endpoint). But it means a *real* endpoint whose annotation is accidentally dropped will silently disappear from the node — so always check the "OMITTED from the n8n node" notes after a regen. (This is exactly how `notification_certificate_get.ts` broke in v1.4.0: it had `// Sourced from operation: CreateNotificationCertificateController_run` **without** the `(METHOD /path)` suffix, so it shipped as a throwing stub; the adapter now omits such tools instead.)
 2. **`.distribution.yaml` sets `n8n_connector_display_name`** to the brand-correct string (`"EAD Enterprise Suite"`, `"GoCertius"`). The pipeline has a brand-casing fallback, but the source should be self-describing.
-3. **`.env.example` may contain any MCP-server runtime config — no n8n obligation.** Transport/CORS/OpenID/PORT vars belong in `.env.example` because the Docker/self-hosted MCP server reads them; **keep them**. The n8n adapter derives its credential surface from an allowlist (rule 3 above), so it is immune to whatever the generator adds here. There is nothing the generator must do for n8n credential hygiene — this is intentionally a pipeline-owned boundary, removing a standing coordination cost.
+3. **`.distribution.yaml` emits `manager_api_base_paths` for a MULTI-MANAGER product, and `query_param_style` where the API needs it.** These are the two things the pipeline genuinely cannot infer, and they are the **gates** for Stories 13.3/13.4/13.6 — absent, those stories are silently inert (the node still builds, it just keeps the old, wrong behavior):
+
+   | Field | Gates | Effect when absent |
+   |---|---|---|
+   | `manager_api_base_paths` (`{evidence: /digital-trust, signature: /signature-manager, …}`) | 13.3 per-manager base path, 13.4 manager-aware naming | one credential can't serve every manager; resources render `Evidence`/`Notification`/`Signature` instead of `… Manager`, operations `Search Evidence Case File` instead of `EM Search Case File` |
+   | `query_param_style: flat` | 13.6 query serialization | the node emits `?filter[size]=2`, which EAD Factory's API **ignores** — a search returns unfiltered results (observed: 50 records instead of 2) |
+
+   `manager_api_base_paths` is a plain string→string map; `query_param_style` is `'bracket'` (default, omit it) or `'flat'`. Only a product whose managers sit behind different gateway prefixes needs the first; single-API products (gocertius, ead-enterprise-suite) correctly omit both and are unaffected.
+
+   *Status 2026-07-15: EAD Factory needs both and emits neither, so 13.3/13.4/13.6 are inert in production. The data already exists in the generator (`products/ead-factory/product.config.ts#managerApiBasePaths`) — it just isn't rendered into `.distribution.yaml`. Generator issue pending (draft in `docs/generator-issue-manager-base-paths.md`).*
+
+4. **`.env.example` may contain any MCP-server runtime config — no n8n obligation.** Transport/CORS/OpenID/PORT vars belong in `.env.example` because the Docker/self-hosted MCP server reads them; **keep them**. The n8n adapter derives its credential surface from an allowlist (rule 3 above), so it is immune to whatever the generator adds here. There is nothing the generator must do for n8n credential hygiene — this is intentionally a pipeline-owned boundary, removing a standing coordination cost.
 
 ## When the gate fails
 

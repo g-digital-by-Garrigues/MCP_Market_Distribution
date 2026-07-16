@@ -63,6 +63,33 @@ export interface N8nProperty {
   };
 }
 
+/**
+ * One tier-3 pre-flight condition: "`field` is mandatory when the server says `driver` is X".
+ * Consumed by execute() in node.ts.hbs — see N8nNodeSpec.preflightGuards.
+ */
+export interface N8nPreflightGuard {
+  /** The parameter that may turn out to be mandatory (e.g. 'phone', 'coordinates'). */
+  field: string;
+  /**
+   * URL template of the GET that reveals the driver, relative to the same base +
+   * manager prefix as the operation itself. Its `{placeholders}` are filled from the
+   * operation's own path params.
+   */
+  lookupUrl: string;
+  /** Optional: pick the array element whose `id` equals the `matchParam` path param. */
+  arrayPath?: string;
+  /** Path-param name whose value identifies the element inside `arrayPath`. */
+  matchParam?: string;
+  /** Property holding the driver value (e.g. 'signatureType', 'filename'). */
+  driver: string;
+  /** Condition: driver === equals. Mutually exclusive with `matchesRe`. */
+  equals?: string;
+  /** Condition: case-insensitive regex over the driver (e.g. '\\.pdf$'). */
+  matchesRe?: string;
+  /** The error the user gets instead of the API's opaque rejection. */
+  message: string;
+}
+
 export interface N8nOperationSpec {
   /** Tool name as exposed by the MCP (snake_case ASCII per the schema). */
   name: string;
@@ -246,6 +273,21 @@ export interface N8nNodeSpec {
    * (gateway root) serves every manager. Empty/absent for single-API products.
    */
   operationBasePrefix?: Array<{ operation: string; prefix: string }>;
+  /**
+   * Story 13.2a tier 3 (FR52): pre-flight guards. A tier-3 parameter is mandatory only in
+   * a configuration the node cannot see locally — its driver lives on a DIFFERENT operation
+   * (set by a previous node), so n8n's `displayOptions` cannot express it and the user only
+   * learns about it through an opaque API 400. When such a field is left empty, execute()
+   * fetches the server's own state once and raises an explanatory NodeOperationError.
+   *
+   * Costs nothing when the field is filled in: the lookup only runs for guards whose field
+   * is actually empty. Guards are best-effort — a failed or unrecognised lookup never blocks
+   * the request, it just falls through to the real API call.
+   */
+  preflightGuards?: Array<{
+    operation: string;
+    guards: N8nPreflightGuard[];
+  }>;
   /**
    * Story 13.6 (FR56): GET query-parameter serialization style. 'flat' spreads a
    * top-level object (e.g. `filter`) into `key=val` params; 'bracket' (default when
