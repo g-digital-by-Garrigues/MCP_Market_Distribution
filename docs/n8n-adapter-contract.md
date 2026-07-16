@@ -65,3 +65,12 @@ When adding or regenerating a tool in the generator, ensure:
 The error report tells you which rule and how to fix. Route per the table above: if it's a label/casing/credential-filter issue, fix in the pipeline; if it's a missing annotation, missing `n8n_connector_display_name`, or a README capability claim, file an issue against `Suite-GoCertius-MCP-Generator`.
 
 Never publish by bypassing the gate. A red gate is the system doing its job.
+
+## Verify CI yourself — a check nobody reads is worth nothing
+
+Opening a PR, merging it, or dispatching a pipeline is not the end of the task. **You must verify the result of every process you set in motion** — wait for the run and read its real status (`gh pr checks <n>`, `gh run view <id> --log-failed`), then report what actually happened, not what you expected to happen. Two rules follow from this:
+
+1. **Never claim a check "will run" or "passed" without looking.** Know exactly what each workflow validates before you cite it. In particular, `regression-e2e.yml` invokes `publish.yml@main` cross-repo, so it exercises the pipeline code on `main` — **not** the TypeScript in your PR. And there is currently **no `pull_request` workflow that runs the unit-test suite or the ESLint/`official_linter` pass**, so for a pipeline-code PR the automated evidence is *local only* unless you add one. Do not present a green `regression-e2e` as proof your PR's code is sound.
+2. **If a check runs in this repo, it is ours to fix.** "Pre-existing" or "belongs to another repo" is a diagnosis to prove, not an excuse to move on. A CI job that is chronically red trains reviewers to ignore the red X — which defeats the entire point of having it.
+
+*Example (2026-07-16): `regression-e2e` had been red on `main` since May because its source-version pins had gone stale — the dry-run clones each source @ main, but the "expected version" came from a hardcoded pin, so the coherence gate flagged a mismatch on every PR. Fixed by resolving each source's version from its repo @ main at run time (`resolve-versions` job) instead of pinning; the gate keeps its real value (catching an internally-incoherent snapshot) without the false positive.*
