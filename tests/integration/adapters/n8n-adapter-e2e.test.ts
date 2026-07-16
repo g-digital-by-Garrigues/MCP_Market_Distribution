@@ -210,11 +210,14 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       // fixture declares 'flat'.
       expect(nodeSrc).toContain('const QUERY_PARAM_STYLE');
       expect(nodeSrc).toContain("QUERY_PARAM_STYLE === 'flat'");
-      // Regression (v1.2.0): the declaration must NOT be `(<literal> as ...) || 'bracket'`
-      // — a non-empty literal makes it always-truthy → tsc TS2872, which blocked the
-      // n8n node publish. Must be a comparison instead.
-      expect(nodeSrc).not.toMatch(/as 'bracket' \| 'flat'\)\s*\|\|/);
-      expect(nodeSrc).toContain("'flat' === 'flat' ? 'flat' : 'bracket'");
+      // Regression guard for TWO compile errors this one line produced:
+      //   - v1.2.0 (flat present): `('flat' as 'bracket'|'flat') || 'bracket'` → literal
+      //     always-truthy → TS2872 (blocked EAD Factory's node publish).
+      //   - gocertius (flat absent): `'' === 'flat'` → literals with no overlap → TS2367.
+      // The `as string` widening is what makes the comparison valid in BOTH cases.
+      expect(nodeSrc).toContain("as string) === 'flat' ? 'flat' : 'bracket'");
+      expect(nodeSrc).not.toMatch(/as 'bracket' \| 'flat'\)\s*\|\|/); // not TS2872
+      expect(nodeSrc).not.toMatch(/= '(bracket|flat)?' === 'flat'/); // not TS2367 (bare literal compare)
 
       // ─ Credentials class shape ─
       const credsSrc = await fs.readFile(
