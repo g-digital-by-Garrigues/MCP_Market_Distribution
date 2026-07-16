@@ -276,15 +276,21 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       expect(metadata.type).toBe('json');
       expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
 
-      // Credentials are the allowlisted auth fields only — the MCP_HTTP_HOST
-      // server-runtime var is dropped (allowlist, not denylist).
-      expect(spec.credentials.map((c) => c.envName).sort()).toEqual(['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD']);
+      // Exposing MCP_AUTH_EMAIL makes this a user-facing product → session-login-or-token
+      // (a pasted JWT, or email/password login for Password-type accounts).
+      expect(spec.authStyle).toBe('session-login-or-token');
+      // Credentials are the allowlisted auth fields (email + password) PLUS the
+      // node-only sessionToken; the MCP_HTTP_HOST server-runtime var is dropped.
+      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password', 'sessionToken']);
       const pw = spec.credentials.find((c) => c.envName === 'MCP_AUTH_PASSWORD')!;
       expect(pw.isSecret).toBe(true);
       expect(pw.displayName).toBe('Auth Password');
       expect(spec.credentials.find((c) => c.envName === 'MCP_AUTH_EMAIL')!.displayName).toBe('Auth Email');
+      // sessionToken is node-only (no backing env var) and secret.
+      const st = spec.credentials.find((c) => c.propName === 'sessionToken')!;
+      expect(st.envName).toBe('');
+      expect(st.isSecret).toBe(true);
       expect(spec.credentials.some((c) => c.envName === 'MCP_HTTP_HOST')).toBe(false);
-      expect(spec.authStyle).toBe('email-password');
     } finally {
       await cleanup();
     }
@@ -332,6 +338,42 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       // Introspect URL is server config (inbound), not a node credential; transport too.
       expect(spec.credentials.some((c) => c.envName === 'MCP_SVC_INTROSPECT_URL')).toBe(false);
       expect(spec.credentials.some((c) => c.envName === 'MCP_HTTP_HOST')).toBe(false);
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
+  it('email + MCP_SVC_* together → session-login-or-token, NOT oauth2 (user-facing wins)', async () => {
+    // GoCertius / EAD Enterprise Suite expose BOTH a user email/password surface AND a
+    // service-account trio (for their own server-side use). An n8n user signs in as
+    // themselves, so the email surface must win. Regression: the old detectAuthStyle
+    // keyed on MCP_SVC_TOKEN_URL first and mis-detected these as oauth2, which broke
+    // every saved credential (Invalid URL — empty mcpSvcTokenUrl).
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      envVars: [
+        { name: 'MCP_AUTH_EMAIL', description: 'Account email.', isSecret: false, isRequired: true },
+        { name: 'MCP_AUTH_PASSWORD', description: 'Account password.', isSecret: true, isRequired: true },
+        { name: 'MCP_SVC_TOKEN_URL', description: 'Service-account token endpoint (server-side).', isSecret: false, isRequired: false },
+        { name: 'MCP_SVC_CLIENT_ID', description: 'Service-account client id.', isSecret: false, isRequired: false },
+        { name: 'MCP_SVC_CLIENT_SECRET', description: 'Service-account client secret.', isSecret: true, isRequired: false },
+      ],
+    });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+
+      expect(spec.authStyle).toBe('session-login-or-token');
+      // Surface = email + password + node-only sessionToken. NO mcpSvc* leaks in.
+      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password', 'sessionToken']);
+      expect(spec.credentials.some((c) => c.propName.startsWith('mcpSvc'))).toBe(false);
     } finally {
       await cleanup();
     }

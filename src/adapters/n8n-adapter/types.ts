@@ -315,5 +315,9 @@ export interface N8nNodeSpec {
    * else OKTA_TOKEN_URL → 'okta-client-credentials'; else 'email-password'.
    * Story 12.2 (Epic 12): REST-direct architecture per ADR 0008.
    */
-  authStyle: 'email-password' | 'okta-client-credentials' | 'oauth2-client-credentials';
+  authStyle:
+    | 'email-password'
+    | 'okta-client-credentials'
+    | 'oauth2-client-credentials'
+    | 'session-login-or-token';
 }
