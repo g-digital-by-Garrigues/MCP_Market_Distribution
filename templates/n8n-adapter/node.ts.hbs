@@ -82,7 +82,28 @@ export class {{className}} implements INodeType {
         {{/if}}{{#if this.numberConstraints}}typeOptions: {{json this.numberConstraints}},
         {{/if}}displayOptions: { show: { operation: ['{{this.showForOperation}}'] } },
       },
-{{/each}}{{/each}}    ],
+{{/each}}{{/each}}{{#each operations}}{{#if this.additionalFields}}      {
+        displayName: 'Additional Fields',
+        name: 'additionalFields',
+        type: 'collection',
+        placeholder: 'Add Field',
+        default: {},
+        displayOptions: { show: { operation: ['{{this.name}}'] } },
+        options: [
+{{#each this.additionalFields}}          {
+            displayName: {{json this.displayName}},
+            name: '{{this.name}}',
+            type: '{{this.type}}',
+            {{#if this.options}}options: [
+{{#each this.options}}              { name: {{json this.name}}, value: {{json this.value}}{{#if this.description}}, description: {{json this.description}}{{/if}} },
+{{/each}}            ],
+            {{/if}}{{#if this.numberConstraints}}typeOptions: {{json this.numberConstraints}},
+            {{/if}}{{#if this.description}}description: {{json this.description}},
+            {{/if}}default: {{json this.default}},
+          },
+{{/each}}        ],
+      },
+{{/if}}{{/each}}    ],
   };
 
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
@@ -206,6 +227,17 @@ export class {{className}} implements INodeType {
           } else {
             body[propName] = val;
           }
+        }
+
+        // Story 13.2b (FR52): "Additional Fields" collection — secondary parameters.
+        // n8n returns ONLY the keys the user explicitly added, so an unset field is
+        // simply absent: no default-comparison (Story 13.1) is needed here. Path
+        // params never live in the collection, so these only ever reach body/query.
+        const additionalFields = this.getNodeParameter('additionalFields', i, {}) as IDataObject;
+        for (const [propName, val] of Object.entries(additionalFields)) {
+          if (val === '' || val === null || val === undefined) continue;
+          if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
+          body[propName] = val;
         }
         // Substitute any remaining {placeholder} patterns from credentials.
         // First try exact credential key names, then common API→credential aliases

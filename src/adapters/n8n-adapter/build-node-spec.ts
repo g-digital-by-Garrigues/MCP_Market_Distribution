@@ -1,20 +1,10 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
-import {
-  runInspectorHarness,
-  type InspectorToolEntry,
-} from '../../gates/inspector-harness.js';
+import { runInspectorHarness, type InspectorToolEntry } from '../../gates/inspector-harness.js';
 import { loadDistributionConfig } from '../../distribution/load-distribution-config.js';
 import type { DistributionConfig } from '../../schemas/distribution-config.schema.js';
-import {
-  jsonSchemaToProperties,
-  type ToolInputSchema,
-} from './json-schema-to-properties.js';
-import type {
-  N8nCredentialField,
-  N8nNodeSpec,
-  N8nOperationSpec,
-} from './types.js';
+import { jsonSchemaToProperties, type ToolInputSchema } from './json-schema-to-properties.js';
+import type { N8nCredentialField, N8nNodeSpec, N8nOperationSpec, N8nProperty } from './types.js';
 import { resolveMcpEntryRelPath } from '../../utils/resolve-mcp-entry.js';
 
 // Story 5.1b: assemble the N8nNodeSpec for a single MCP.
@@ -145,13 +135,23 @@ type AuthStyle = 'email-password' | 'okta-client-credentials' | 'oauth2-client-c
 // here AND to execute() (node.ts.hbs) AND to CREDENTIAL_PROP_NAME_MAP.
 const NODE_READABLE_CREDENTIAL_ENV_VARS: Record<AuthStyle, readonly string[]> = {
   'email-password': ['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD'],
-  'okta-client-credentials': ['OKTA_TOKEN_URL', 'OKTA_CLIENT_ID', 'OKTA_CLIENT_SECRET', 'OKTA_SCOPE'],
+  'okta-client-credentials': [
+    'OKTA_TOKEN_URL',
+    'OKTA_CLIENT_ID',
+    'OKTA_CLIENT_SECRET',
+    'OKTA_SCOPE',
+  ],
   // Generic OAuth2 client_credentials (the generator generalized the hardcoded
   // OKTA_* trio to a provider-agnostic MCP_SVC_* set — Okta is now just one
   // configured instance). Same grant as okta-client-credentials, different var
   // names. MCP_SVC_INTROSPECT_URL is deliberately excluded: it configures the
   // server's INBOUND bearer validation, not the node's OUTBOUND token fetch.
-  'oauth2-client-credentials': ['MCP_SVC_TOKEN_URL', 'MCP_SVC_CLIENT_ID', 'MCP_SVC_CLIENT_SECRET', 'MCP_SVC_SCOPE'],
+  'oauth2-client-credentials': [
+    'MCP_SVC_TOKEN_URL',
+    'MCP_SVC_CLIENT_ID',
+    'MCP_SVC_CLIENT_SECRET',
+    'MCP_SVC_SCOPE',
+  ],
 };
 
 function detectAuthStyle(server: ServerJsonShape): AuthStyle {
@@ -197,9 +197,7 @@ const CREDENTIAL_PROP_NAME_MAP: Record<string, string> = {
 function envToCamelCase(envName: string): string {
   if (CREDENTIAL_PROP_NAME_MAP[envName]) return CREDENTIAL_PROP_NAME_MAP[envName];
   // Generic fallback: MY_VAR_NAME → myVarName
-  return envName
-    .toLowerCase()
-    .replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+  return envName.toLowerCase().replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 }
 
 function buildCredentials(server: ServerJsonShape, authStyle: AuthStyle): N8nCredentialField[] {
@@ -259,26 +257,39 @@ interface ToolHttpInfo {
   stubSuffix?: string;
 }
 
-async function readToolHttpInfo(
-  packageDir: string,
-  toolName: string,
-): Promise<ToolHttpInfo> {
+async function readToolHttpInfo(packageDir: string, toolName: string): Promise<ToolHttpInfo> {
   const toolFile = path.join(packageDir, 'src', 'tools', `${toolName}.ts`);
   try {
     const content = await fs.readFile(toolFile, 'utf8');
     const headerLines = content.split('\n').slice(0, 8).join('\n');
     const sourced = SOURCED_RE.exec(headerLines);
     if (sourced?.[1] && sourced?.[2]) {
-      return { httpMethod: sourced[1], httpUrlTemplate: sourced[2].trim(), customAnnotation: false, stubSuffix: '' };
+      return {
+        httpMethod: sourced[1],
+        httpUrlTemplate: sourced[2].trim(),
+        customAnnotation: false,
+        stubSuffix: '',
+      };
     }
     const manual = N8N_HTTP_RE.exec(headerLines);
     if (manual?.[1] && manual?.[2]) {
-      return { httpMethod: manual[1], httpUrlTemplate: manual[2].trim(), customAnnotation: true, stubSuffix: '' };
+      return {
+        httpMethod: manual[1],
+        httpUrlTemplate: manual[2].trim(),
+        customAnnotation: true,
+        stubSuffix: '',
+      };
     }
   } catch {
     // File not found or unreadable — fall through to STUB
   }
-  return { httpMethod: 'STUB', httpUrlTemplate: '', customAnnotation: true, isStub: true, stubSuffix: ', stub: true' };
+  return {
+    httpMethod: 'STUB',
+    httpUrlTemplate: '',
+    customAnnotation: true,
+    isStub: true,
+    stubSuffix: ', stub: true',
+  };
 }
 
 // Known sensible defaults for GoCertius/EAD field names.
@@ -294,50 +305,184 @@ type FieldPatch = {
 
 // Generic defaults applied to all adapters.
 const FIELD_DEFAULTS: Record<string, FieldPatch> = {
-  id: { default: '', description: 'UUID v4 identifier. Leave empty — the node generates it automatically.' },
-  language: { default: 'es_ES' },
+  id: {
+    default: '',
+    description: 'UUID v4 identifier. Leave empty — the node generates it automatically.',
+  },
+  // Story 13.2a tier 1 (Hugo, 2026-07-15): language is mandatory and visible, carrying
+  // a valid default. gocertius / ead-enterprise-suite constrain it with an enum
+  // (en_GB|es_ES|pt_PT), so the default below is always valid there. EAD Factory's
+  // OpenAPI types it as a bare string and its APIs reject locales — see the
+  // 'ead-factory' product override.
+  language: {
+    default: 'es_ES',
+    required: true,
+    description: 'Language used for generated documents and notices.',
+  },
   evidenceType: { default: 'FILE' },
-  custodyType: { default: 'INTERNAL' },
+  // Story 13.2a tier 3 (Hugo, 2026-07-15): OTP / WhatsApp delivery can be MANDATORY
+  // depending on how the signature is configured (an ADVANCED signature needs the
+  // signatory's phone). The driver lives in a different operation, so n8n cannot show
+  // these conditionally — they stay visible and state the condition instead.
+  otpRequired: {
+    description:
+      'Require an OTP code to open/sign. REQUIRED (true) for signature types that authenticate the signatory by phone, e.g. ADVANCED — the signatory phone must then also be supplied.',
+  },
+  otpByDefault: {
+    description: 'Apply OTP by default to participants that do not state their own setting.',
+  },
+  sendWaUrl: {
+    description:
+      'Deliver the access URL over WhatsApp. Needs the signatory phone (with phonePrefix) to be supplied.',
+  },
+  sendWaUrlByDefault: {
+    description:
+      'Deliver over WhatsApp by default for participants that do not state their own setting.',
+  },
+  phonePrefix: {
+    description:
+      'International dialling prefix for the phone (e.g. 34 for Spain). REQUIRED whenever a phone is used — OTP or WhatsApp delivery, and ADVANCED signatures.',
+  },
+  // Story 13.2a tier 1 (FR52): mandatory fields that CARRY A DEFAULT stay top-level
+  // and required — "has a default" does not make a field optional. The default keeps
+  // them always valid, so `required` never blocks the user.
+  custodyType: {
+    default: 'INTERNAL',
+    required: true,
+    description:
+      'Who holds the file. INTERNAL = the platform stores and custodies it. EXTERNAL = it lives outside; only its hash is attested.',
+  },
+  signatureType: {
+    required: true,
+    description:
+      'How the document is signed. INTERPOSITION = the platform mediates (e.g. OTP). ADVANCED = advanced electronic signature (requires the signatory phone).',
+  },
+  dossierTemplateId: {
+    required: true,
+    description:
+      'UUID of the dossier template to use. Mandatory — the template also determines which of evidenceIds / filledFields you must supply.',
+  },
+  // Story 13.2a: sequence is visible top-level with its "parallel" default so nobody
+  // is misled about the signing mode (the API default is parallel signing).
+  sequence: {
+    description:
+      'Signing order. Leave at 0 for PARALLEL signing (all signatories sign at once — the API default). Set 1, 2, 3… only to require a sequential order.',
+  },
+  // Story 13.2a tier 3 (FR52): conditionally-required fields whose condition lives in a
+  // DIFFERENT operation (a previous node in the workflow), which n8n displayOptions
+  // cannot evaluate. They stay top-level and state the condition explicitly.
+  phone: {
+    description:
+      'Signatory phone (e.g. +34600000000). REQUIRED when the document is signed with signatureType ADVANCED (set in the Add Document step); optional otherwise.',
+  },
+  phoneNumber: {
+    description:
+      'Phone number. REQUIRED when the signature request uses signatureType ADVANCED (set in the Create Signature Request step); optional otherwise.',
+  },
+  evidenceIds: {
+    description:
+      'Evidence UUIDs to include. REQUIRED by some dossier templates — which ones depends on the dossierTemplateId you chose.',
+  },
+  filledFields: {
+    description:
+      'Template field values. REQUIRED by some dossier templates — which ones depends on the dossierTemplateId you chose.',
+  },
+  // Story 13.2a (FR52): search/pagination is NOT secondary — it stays top-level and
+  // documents how to fill it.
+  page: {
+    description: 'Zero-based page number for paginated results (e.g. 0 for the first page).',
+  },
+  size: { description: 'Page size — how many records to return (e.g. 20).' },
+  sort: {
+    description: 'Field to sort by (see the operation description for the accepted fields).',
+  },
+  order: { description: 'Sort direction / ordering for the results.' },
   service: { default: 'Telegram' },
-  validityFrom: { default: '', description: 'ISO 8601 datetime (e.g. 2026-01-01T00:00:00.000Z). Leave empty — defaults to now.' },
-  validityTo: { default: '', description: 'ISO 8601 datetime. Leave empty — defaults to 1 year from now.' },
-  useCaseId: { default: '', description: 'UUID of the use case for this operation. Find it by calling case_file_list and reading useCaseId from any existing case file.' },
-  description: { required: true, displayName: 'Item Description', description: 'Short plain-text description (e.g. "My case file"). Required by the API.' },
-  reference: { description: 'Optional user-defined reference code (max 32 chars, e.g. "EXP-2026-001"). Do not use a UUID.' },
-  // 'content' in notification operations must be valid HTML — plain text will not render.
+  validityFrom: {
+    default: '',
+    description:
+      'ISO 8601 datetime (e.g. 2026-01-01T00:00:00.000Z). Leave empty — defaults to now.',
+  },
+  validityTo: {
+    default: '',
+    description: 'ISO 8601 datetime. Leave empty — defaults to 1 year from now.',
+  },
+  useCaseId: {
+    default: '',
+    description:
+      'UUID of the use case for this operation. Find it by calling case_file_list and reading useCaseId from any existing case file.',
+  },
+  description: {
+    required: true,
+    displayName: 'Item Description',
+    description: 'Short plain-text description (e.g. "My case file"). Required by the API.',
+  },
+  reference: {
+    description:
+      'Optional user-defined reference code (max 32 chars, e.g. "EXP-2026-001"). Do not use a UUID.',
+  },
+  // 'content' is the notice body — tier 1 (FR52): mandatory everywhere. EAD Factory's
+  // schema marks it optional (a gap); gocertius / ead-enterprise-suite already require
+  // it. Must be valid HTML — plain text will not render.
   content: {
-    description: 'Must be valid HTML. Supported tags only: <p>, <strong>, <em>, <ul><li>, <ol><li>. No other tags or CSS. Example: <p>Your document is <strong>ready</strong> for review.</p>',
+    required: true,
+    description:
+      'Must be valid HTML. Supported tags only: <p>, <strong>, <em>, <ul><li>, <ol><li>. No other tags or CSS. Example: <p>Your document is <strong>ready</strong> for review.</p>',
     displayName: 'Content (HTML)',
   },
 };
 
 // Product-specific overrides — applied on top of FIELD_DEFAULTS, keyed by mcpName.
 const PRODUCT_OVERRIDES: Record<string, Record<string, FieldPatch>> = {
-  'gocertius': {
+  gocertius: {
     useCaseId: {
       default: '063a016a-1d62-4b7b-a24f-7cf4d1d289bf',
-      description: 'UUID of the use case. Default is the general GoCertius use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.',
+      description:
+        'UUID of the use case. Default is the general GoCertius use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.',
     },
   },
   'ead-enterprise-suite': {
     useCaseId: {
       default: '063a016a-1d62-4b7b-a24f-7cf4d1d289bf',
-      description: 'UUID of the use case. Default is the general EAD Enterprise Suite use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.',
+      description:
+        'UUID of the use case. Default is the general EAD Enterprise Suite use case (063a016a-1d62-4b7b-a24f-7cf4d1d289bf). Change only if you need a specific use case.',
     },
   },
   // Story 13.5 (FR55): copy-ready examples for EAD Factory's free-form JSON fields
   // so users supply the correct shape without reading external API docs.
   'ead-factory': {
+    // Story 13.2a tier 1: EAD Factory's OpenAPI types both of these as a bare string
+    // (no enum), and the two use DIFFERENT conventions — confirmed against
+    // https://digitaltrust.gcloudfactory.com/notification-manager/notification-operations.html
+    // and the signature flow, which rejects a locale with "Invalid language code".
+    // The generic FIELD_DEFAULTS 'es_ES' is valid for gocertius / ead-enterprise-suite
+    // (their enum is en_GB|es_ES|pt_PT) but would 400 every EAD Factory call, and as a
+    // tier-1 field it is now sent on every request — so the default must be right.
+    language: {
+      default: 'es',
+      required: true,
+      description:
+        'Language for the notice/signature emails. Two-letter code only — "es" or "en". NOT a locale: "es_ES" is rejected with "Invalid language code". (Report and certificate operations use a separate Language Code field, which does take "es_ES".)',
+    },
+    languageCode: {
+      default: 'es_ES',
+      required: true,
+      description:
+        'Language of the generated report/certificate. Locale form — e.g. "es_ES", "en_GB". (Distinct from the Language field on notice/signature operations, which takes a bare "es"/"en".)',
+    },
     testimony: {
       description:
         'Qualified-timestamp providers, keyed by family (TSP=eIDAS timestamp, DLT=blockchain). ' +
         'Example: {"TSP":{"required":true,"providers":["EADTrust"]}}. Valid providers: EADTrust, EADTrustCompanySeal, Kepler, LACNet.',
     },
     requiredTestimonyProviders: {
-      description: 'Testimony providers required for this evidence (overrides tenant config). Example: ["EADTrust"], or [] for none.',
+      description:
+        'Testimony providers required for this evidence (overrides tenant config). Example: ["EADTrust"], or [] for none.',
     },
     coordinates: {
-      description: 'On-page signature placement(s), in points from the bottom-left. Example: [{"x":100,"y":100,"page":1}].',
+      description:
+        'On-page signature placement(s), in points from the bottom-left. Example: [{"x":100,"y":100,"page":1}]. ' +
+        'REQUIRED when the document to sign is a PDF (or a Word converted with Convert To Pdf) — activation fails without it.',
     },
     data: {
       description:
@@ -345,7 +490,8 @@ const PRODUCT_OVERRIDES: Record<string, Record<string, FieldPatch>> = {
         '{"groups":[{"id":"<uuid>","code":"GRP-1","name":"Group 1","type":"FILE","capturedFrom":"2026-01-01T00:00:00Z","capturedUntil":"2026-01-01T00:00:00Z","evidences":[{"id":"<uuid>","title":"Evidence 1"}]}]}.',
     },
     metadata: {
-      description: 'Free key:value string map for extra attributes. Example: {"cliente":"ACME","expediente":"EXP-2026-001"}.',
+      description:
+        'Free key:value string map for extra attributes. Example: {"cliente":"ACME","expediente":"EXP-2026-001"}.',
     },
     filter: {
       description:
@@ -355,19 +501,77 @@ const PRODUCT_OVERRIDES: Record<string, Record<string, FieldPatch>> = {
   },
 };
 
+// Story 13.9 (FR58): parameters that only apply to the vendor's MOBILE-APP API
+// surface — device/location capture, which travels with `attestation`, plus the
+// app's user agent. They cannot be satisfied from an n8n workflow and only produce
+// errors, so the adapter does not emit them at all.
+// NOTE: accessToken / purpose are deliberately NOT here — they belong to
+// dossier_create / dossier_update, not to app capture (verified by inspection).
+export const PRODUCT_EXCLUDED_FIELDS: Record<string, ReadonlySet<string>> = {
+  gocertius: new Set([
+    'attestation',
+    'userAgent',
+    'deviceManufacturer',
+    'deviceModel',
+    'deviceOS',
+    'latitudeLocation',
+    'longitudeLocation',
+    'altitudeLocation',
+    'locationAccuracy',
+  ]),
+  'ead-enterprise-suite': new Set([
+    'attestation',
+    'userAgent',
+    'deviceManufacturer',
+    'deviceModel',
+    'deviceOS',
+    'latitudeLocation',
+    'longitudeLocation',
+    'altitudeLocation',
+    'locationAccuracy',
+  ]),
+};
+
 // Action verbs that lead an operation label. n8n UX guidelines want operation
 // labels phrased verb-first ("Create Case File", "List Evidence"), not
 // noun-first ("Case File Create"). Tool names are noun_first_verb_last
 // (case_file_create), so we detect a trailing verb and move it to the front.
 const OPERATION_VERBS: ReadonlySet<string> = new Set([
-  'create', 'get', 'list', 'update', 'delete', 'add', 'remove', 'seal',
-  'certify', 'link', 'unlink', 'send', 'cancel', 'activate', 'assign', 'set',
-  'complete', 'initiate', 'login', 'logout', 'preview', 'search', 'upload',
+  'create',
+  'get',
+  'list',
+  'update',
+  'delete',
+  'add',
+  'remove',
+  'seal',
+  'certify',
+  'link',
+  'unlink',
+  'send',
+  'cancel',
+  'activate',
+  'assign',
+  'set',
+  'complete',
+  'initiate',
+  'login',
+  'logout',
+  'preview',
+  'search',
+  'upload',
 ]);
 // Trailing prepositions guard: don't reorder "..._to_link" / "..._for_x" where
 // the verb is followed by a preposition phrase, which would mangle the label.
 const TRAILING_PREPOSITIONS: ReadonlySet<string> = new Set([
-  'to', 'for', 'with', 'by', 'and', 'of', 'from', 'into',
+  'to',
+  'for',
+  'with',
+  'by',
+  'and',
+  'of',
+  'from',
+  'into',
 ]);
 
 // Produce a verb-first display label from a snake_case tool name.
@@ -407,7 +611,92 @@ export function managerAwareLabel(name: string, resourceSlug: string): string {
   return verbFirstLabel(core, toTitleCase);
 }
 
-function buildOperation(tool: InspectorToolEntry, mcpName: string): {
+// Story 13.2b (FR52) tier 4 — ALLOWLIST (not a denylist): the exact parameters that
+// are GENUINELY SECONDARY and therefore render inside "Additional Fields".
+// Everything else stays top-level.
+//
+// This MUST be an allowlist. The obvious rule — "the schema says optional, so hide
+// it" — is fail-open, and generating the three real nodes proved it: EAD Factory's
+// inputSchemas come from hey-api over an upstream OpenAPI that UNDER-DECLARES
+// `required`, so that rule buried `code`/`owner`/`category` on
+// evidence_case_file_create (the API 500s without them), `data` on
+// evidence_case_file_report_generate, and entire request bodies (`patch`,
+// `requestModel`, `signatureRequestBody`). With a denylist every newly-added or
+// mis-declared field buries itself silently; with this allowlist the worst case is a
+// node as verbose as the one already shipped. Same fail-closed reasoning as
+// NODE_READABLE_CREDENTIAL_ENV_VARS above. See docs/n8n-adapter-contract.md.
+//
+// To hide a NEW field, add it here — and only after confirming the API cannot
+// require it in any configuration. Deliberately NOT here (Hugo, 2026-07-15):
+//   - OTP/WhatsApp delivery (otpRequired, sendWaUrl, phonePrefix…): can be mandatory
+//     depending on the signature type → tier 3, visible with the condition stated.
+//   - service/web/model (serviceTitle, webUrl, dashboardUrl…): visible.
+//   - language: tier 1 — mandatory, visible, carrying a valid default.
+// Matched on a normalized name (underscores dropped, lowercased) so snake_case and
+// camelCase spellings of the same field cannot diverge.
+const SECONDARY_FIELDS: ReadonlySet<string> = new Set(
+  [
+    // free-form extras — never load-bearing
+    'metadata',
+    'additionalData',
+    // informational / user-defined
+    'fileSize',
+    'reference',
+    // validity window: the API applies its own defaults when absent
+    'validityFrom',
+    'validityTo',
+    // EAD Factory retention + delivery config
+    'deletionDate',
+    'deletionType',
+    'collectMetadata',
+    'embedAttachmentsEnabled',
+    'autosend',
+    'senderName',
+    'senderAddress',
+    'webhookUris',
+  ].map((n) => n.replace(/_/g, '').toLowerCase()),
+);
+
+const normalizeFieldName = (name: string): string => name.replace(/_/g, '').toLowerCase();
+
+const PATH_PARAM_RE = /\{(\w+)\}/g;
+
+// Partition an operation's properties into top-level (tiers 1-3) and Additional
+// Fields (tier 4). Collection items are sorted by displayName because n8n's
+// node-param-collection-type-unsorted-items lint rule requires it.
+export function splitAdditionalFields(
+  properties: readonly N8nProperty[],
+  urlTemplate: string,
+  httpMethod: string,
+): { topLevel: N8nProperty[]; additional: N8nProperty[] } {
+  const pathParams = new Set<string>();
+  for (const m of urlTemplate.matchAll(PATH_PARAM_RE)) pathParams.add(m[1]!);
+  // A GET/DELETE carries no body: every parameter it takes IS a query/search
+  // criterion, and FR52 says search is never secondary. Hiding them left an operation
+  // like `notification_request_status` showing only page/size/sort while its actual
+  // filters (ids, states, filters) sat behind "Add Field".
+  const isBodyless = httpMethod === 'GET' || httpMethod === 'DELETE';
+  const topLevel: N8nProperty[] = [];
+  const additional: N8nProperty[] = [];
+  for (const p of properties) {
+    // Required and path params can never be hidden, even if listed as secondary.
+    const pinnedTopLevel = p.required === true || isBodyless || pathParams.has(p.name);
+    if (!pinnedTopLevel && SECONDARY_FIELDS.has(normalizeFieldName(p.name))) {
+      additional.push(p);
+    } else {
+      topLevel.push(p);
+    }
+  }
+  additional.sort((a, b) => a.displayName.localeCompare(b.displayName));
+  return { topLevel, additional };
+}
+
+function buildOperation(
+  tool: InspectorToolEntry,
+  mcpName: string,
+  urlTemplate: string,
+  httpMethod: string,
+): {
   op: Omit<N8nOperationSpec, 'httpMethod' | 'httpUrlTemplate' | 'customAnnotation'>;
   notes: string[];
 } {
@@ -416,24 +705,33 @@ function buildOperation(tool: InspectorToolEntry, mcpName: string): {
     { operationName: tool.name },
   );
   const productOverrides = PRODUCT_OVERRIDES[mcpName] ?? {};
+  // Story 13.9 (FR58): drop app-only parameters before anything else — they never
+  // reach the properties list, OPERATION_PROPERTY_NAMES, or the request body.
+  const excludedFields = PRODUCT_EXCLUDED_FIELDS[mcpName];
   // Apply known defaults so the n8n UI shows sensible pre-filled values
-  const patchedProperties = properties.map((p) => {
-    const patch: FieldPatch = { ...FIELD_DEFAULTS[p.name], ...productOverrides[p.name] };
-    if (Object.keys(patch).length === 0) return p;
-    return {
-      ...p,
-      ...(patch.default !== undefined && (p.default === '' || p.default === null) ? { default: patch.default } : {}),
-      ...(patch.description ? { description: patch.description } : {}),
-      ...(patch.required !== undefined ? { required: patch.required } : {}),
-      ...(patch.displayName ? { displayName: patch.displayName } : {}),
-    };
-  });
+  const patchedProperties = properties
+    .filter((p) => !excludedFields?.has(p.name))
+    .map((p) => {
+      const patch: FieldPatch = { ...FIELD_DEFAULTS[p.name], ...productOverrides[p.name] };
+      if (Object.keys(patch).length === 0) return p;
+      return {
+        ...p,
+        ...(patch.default !== undefined && (p.default === '' || p.default === null)
+          ? { default: patch.default }
+          : {}),
+        ...(patch.description ? { description: patch.description } : {}),
+        ...(patch.required !== undefined ? { required: patch.required } : {}),
+        ...(patch.displayName ? { displayName: patch.displayName } : {}),
+      };
+    });
+  const { topLevel, additional } = splitAdditionalFields(patchedProperties, urlTemplate, httpMethod);
   return {
     op: {
       name: tool.name,
       displayName: verbFirstLabel(tool.name, toTitleCase),
       description: tool.description ?? '',
-      properties: patchedProperties,
+      properties: topLevel,
+      ...(additional.length > 0 ? { additionalFields: additional } : {}),
     },
     notes: unsupportedNotes,
   };
@@ -519,8 +817,15 @@ export async function buildN8nNodeSpec(
   const unsupportedNotes: string[] = [];
   const allOperations: N8nOperationSpec[] = [];
   for (const tool of probe.tools_list) {
-    const { op, notes } = buildOperation(tool, input.mcpName);
+    // httpInfo first: splitAdditionalFields needs the URL template to keep path
+    // params top-level (Story 13.2b).
     const httpInfo = await readToolHttpInfo(input.packageDir, tool.name);
+    const { op, notes } = buildOperation(
+      tool,
+      input.mcpName,
+      httpInfo.httpUrlTemplate,
+      httpInfo.httpMethod,
+    );
     allOperations.push({
       ...op,
       httpMethod: httpInfo.httpMethod,
@@ -548,7 +853,7 @@ export async function buildN8nNodeSpec(
   for (const op of omittedStubs) {
     unsupportedNotes.push(
       `Operation '${op.name}' has no REST endpoint (no // n8n-http: annotation and no Sourced-from suffix) — OMITTED from the n8n node. ` +
-      `If this is a real REST endpoint, restore its annotation in the MCP source; if it is intentionally custom-only (e.g. evidence_upload), this omission is expected.`,
+        `If this is a real REST endpoint, restore its annotation in the MCP source; if it is intentionally custom-only (e.g. evidence_upload), this omission is expected.`,
     );
   }
   if (operations.length === 0) {
@@ -562,11 +867,27 @@ export async function buildN8nNodeSpec(
   // Operations are grouped by name prefix into logical resource domains.
   // Only generated for nodes with many operations (>=8) to avoid adding
   // a redundant dropdown to small nodes like EAD Factory.
-  const RESOURCE_ORDER = ['caseFile', 'evidence', 'dossierEvidence', 'dossier', 'notification', 'signature', 'chat', 'session', 'useCase'];
+  const RESOURCE_ORDER = [
+    'caseFile',
+    'evidence',
+    'dossierEvidence',
+    'dossier',
+    'notification',
+    'signature',
+    'chat',
+    'session',
+    'useCase',
+  ];
   const RESOURCE_DISPLAY: Record<string, string> = {
-    caseFile: 'Case File', evidence: 'Evidence', dossierEvidence: 'Dossier Evidence',
-    dossier: 'Dossier', notification: 'Notification', signature: 'Signature',
-    chat: 'Chat', session: 'Session', useCase: 'Use Case',
+    caseFile: 'Case File',
+    evidence: 'Evidence',
+    dossierEvidence: 'Dossier Evidence',
+    dossier: 'Dossier',
+    notification: 'Notification',
+    signature: 'Signature',
+    chat: 'Chat',
+    session: 'Session',
+    useCase: 'Use Case',
   };
   const detectResource = (opName: string): string => {
     // Legacy EAD Factory evidence tools that don't carry the 'evidence_' prefix but
@@ -592,11 +913,16 @@ export async function buildN8nNodeSpec(
   // (no Resource context). Slugs are untouched. Single-API products are unaffected.
   const isMultiManager = !!distribution.manager_api_base_paths;
   const MANAGER_INITIALS: Record<string, string> = {
-    evidence: 'EM', signature: 'SM', notification: 'NM', chat: 'CM',
+    evidence: 'EM',
+    signature: 'SM',
+    notification: 'NM',
+    chat: 'CM',
   };
   const RESOURCE_DISPLAY_MULTI: Record<string, string> = {
-    evidence: 'Evidence Manager', signature: 'Signature Manager',
-    notification: 'Notice Manager', chat: 'Chat Manager',
+    evidence: 'Evidence Manager',
+    signature: 'Signature Manager',
+    notification: 'Notice Manager',
+    chat: 'Chat Manager',
   };
   const resourceDisplayName = (r: string): string =>
     (isMultiManager ? RESOURCE_DISPLAY_MULTI[r] : undefined) ?? RESOURCE_DISPLAY[r] ?? r;
@@ -616,20 +942,29 @@ export async function buildN8nNodeSpec(
     if (!resourceMap.has(res)) resourceMap.set(res, []);
     resourceMap.get(res)!.push(op);
   }
-  const computedResources = operations.length >= 8
-    ? RESOURCE_ORDER
-        .filter((r) => resourceMap.has(r))
-        .map((r) => ({ displayName: resourceDisplayName(r), value: r, operations: resourceMap.get(r)! }))
-    : undefined;
+  const computedResources =
+    operations.length >= 8
+      ? RESOURCE_ORDER.filter((r) => resourceMap.has(r)).map((r) => ({
+          displayName: resourceDisplayName(r),
+          value: r,
+          operations: resourceMap.get(r)!,
+        }))
+      : undefined;
 
   // --- Auto-ID output field map ---
   const AUTO_ID_MAP: Record<string, string> = {
-    case_file_create: 'caseFileId', evidence_create: 'evidenceId',
-    evidence_group_create: 'evidenceGroupId', dossier_create: 'dossierId',
-    dossier_group_certify: 'dossierId', notification_request_create: 'notificationRequestId',
-    notification_receiver_add: 'receiverId', notification_document_add: 'documentId',
-    chat_create: 'chatId', chat_certificate_create: 'certificateId',
-    signature_request_create: 'requestId', signature_group_create: 'groupId',
+    case_file_create: 'caseFileId',
+    evidence_create: 'evidenceId',
+    evidence_group_create: 'evidenceGroupId',
+    dossier_create: 'dossierId',
+    dossier_group_certify: 'dossierId',
+    notification_request_create: 'notificationRequestId',
+    notification_receiver_add: 'receiverId',
+    notification_document_add: 'documentId',
+    chat_create: 'chatId',
+    chat_certificate_create: 'certificateId',
+    signature_request_create: 'requestId',
+    signature_group_create: 'groupId',
     signature_participant_create: 'signatoryId',
   };
   const autoIdOutputFields = operations
@@ -699,9 +1034,10 @@ export async function buildN8nNodeSpec(
     // ensure the description uses connector framing ("EAD Factory connector
     // for n8n") rather than the default "n8n community node for ... MCP".
     displayName: distribution.n8n_connector_display_name ?? resourceLabel,
-    description: distribution.n8n_connector_description
-      ?? server.description
-      ?? `${distribution.n8n_connector_display_name ?? resourceLabel} connector for n8n.`,
+    description:
+      distribution.n8n_connector_description ??
+      server.description ??
+      `${distribution.n8n_connector_display_name ?? resourceLabel} connector for n8n.`,
     nodeName: input.mcpName,
     paramName,
     resourceDisplayName: resourceLabel,

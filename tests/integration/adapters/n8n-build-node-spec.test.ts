@@ -268,8 +268,11 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       ]);
 
       // submit_widget has nested object → 'json' + diagnostic note.
+      // Story 13.2b (FR52): metadata is optional and non-conditional → tier 4, so it
+      // lives in the Additional Fields collection rather than top-level.
       const submitWidget = spec.operations.find((o) => o.name === 'submit_widget')!;
-      const metadata = submitWidget.properties.find((p) => p.name === 'metadata')!;
+      expect(submitWidget.properties.some((p) => p.name === 'metadata')).toBe(false);
+      const metadata = submitWidget.additionalFields!.find((p) => p.name === 'metadata')!;
       expect(metadata.type).toBe('json');
       expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
 

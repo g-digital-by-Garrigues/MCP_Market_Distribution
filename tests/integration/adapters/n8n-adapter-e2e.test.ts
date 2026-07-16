@@ -184,7 +184,12 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       expect(nodeSrc).toMatch(/name: 'sort'[\s\S]+\{ name: "Asc", value: "asc" \}/);
       // OPERATION_PROPERTY_NAMES is rendered at the bottom for every op.
       expect(nodeSrc).toContain("'get_widget': ['widget_id']");
-      expect(nodeSrc).toContain("'submit_widget': ['name', 'metadata']");
+      // Story 13.2b (FR52): OPERATION_PROPERTY_NAMES now lists only TOP-LEVEL params.
+      // submit_widget.metadata is optional and non-conditional → tier 4, so it moves
+      // into the Additional Fields collection and execute() reads it from there.
+      expect(nodeSrc).toContain("'submit_widget': ['name']");
+      expect(nodeSrc).toMatch(/name: 'additionalFields'[\s\S]+name: 'metadata'/);
+      expect(nodeSrc).toContain("this.getNodeParameter('additionalFields', i, {})");
       // Story 13.1 (FR51): OPTIONAL_DEFAULTS map + execute() skip logic are emitted,
       // and an optional param (list_widgets.page_size) is registered so a bare list
       // omits it instead of sending its default.

@@ -73,6 +73,14 @@ export interface N8nOperationSpec {
   /** Properties scoped to this operation (already tagged with showForOperation=name). */
   properties: N8nProperty[];
   /**
+   * Story 13.2b (FR52) tier 4: genuinely secondary parameters, rendered inside an
+   * "Additional Fields" collection instead of top-level. The collection wrapper
+   * itself is emitted by node.ts.hbs; this array holds its items, pre-sorted by
+   * displayName (n8n's node-param-collection-type-unsorted-items lint rule).
+   * Absent when every parameter of the operation stays top-level.
+   */
+  additionalFields?: N8nProperty[];
+  /**
    * HTTP method for the REST-direct call (e.g. 'GET', 'POST').
    * Extracted from the `// Sourced from operation:` comment in the
    * source MCP's `src/tools/<tool>.ts`. 'STUB' means the tool is
