@@ -152,6 +152,44 @@ export class {{className}} implements INodeType {
     const tokenBody = await tokenRes.json() as { access_token?: string };
     const bearer = tokenBody.access_token ?? '';
 {{else}}
+{{#if (eq authStyle 'session-login-or-token')}}
+    // Auth: a session token (JWT) wins if provided; otherwise sign in with
+    // email + password, but only for Password-type accounts. OpenID/SSO accounts
+    // cannot use email/password here and must paste a session token instead.
+    let bearer: string;
+    const sessionToken = String(creds.sessionToken ?? '').trim();
+    if (sessionToken) {
+      bearer = sessionToken;
+    } else {
+      const email = String(creds.email ?? '');
+      const password = String(creds.password ?? '');
+      if (!email || !password) {
+        throw new NodeOperationError(this.getNode(), 'Authentication needs either a Session Token, or both Email and Password.');
+      }
+      const infoRes = await fetch(`${baseUrl}/session-info/${encodeURIComponent(email)}`, {
+        headers: { 'Content-Type': 'application/json' },
+      });
+      if (!infoRes.ok) {
+        const infoErr = await infoRes.json().catch(() => ({ message: `HTTP ${infoRes.status}` }));
+        throw new NodeApiError(this.getNode(), infoErr as never, { httpCode: String(infoRes.status) });
+      }
+      const info = await infoRes.json() as { type?: string };
+      if (info.type !== 'Password') {
+        throw new NodeOperationError(this.getNode(), `Account ${email} signs in via ${info.type ?? 'a non-password method'} — email/password is not available here. Paste a Session Token (JWT) into the credential instead.`);
+      }
+      const loginRes = await fetch(`${baseUrl}/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      });
+      if (!loginRes.ok) {
+        const loginErr = await loginRes.json().catch(() => ({ message: `HTTP ${loginRes.status}` }));
+        throw new NodeApiError(this.getNode(), loginErr as never, { httpCode: String(loginRes.status) });
+      }
+      const loginBody = await loginRes.json() as { jwt?: string; token?: string };
+      bearer = loginBody.jwt ?? loginBody.token ?? '';
+    }
+{{else}}
     const loginRes = await fetch(`${baseUrl}/session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -166,6 +204,7 @@ export class {{className}} implements INodeType {
     }
     const loginBody = await loginRes.json() as { jwt?: string; token?: string; accessToken?: string };
     const bearer = loginBody.jwt ?? loginBody.token ?? loginBody.accessToken ?? '';
+{{/if}}
 {{/if}}
 {{/if}}
 

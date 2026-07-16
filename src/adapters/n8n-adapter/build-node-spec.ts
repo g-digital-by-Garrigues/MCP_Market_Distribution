@@ -125,7 +125,11 @@ async function readServerJson(packageDir: string): Promise<ServerJsonShape> {
   }
 }
 
-type AuthStyle = 'email-password' | 'okta-client-credentials' | 'oauth2-client-credentials';
+type AuthStyle =
+  | 'email-password'
+  | 'okta-client-credentials'
+  | 'oauth2-client-credentials'
+  | 'session-login-or-token';
 
 // ALLOWLIST (not a denylist): the exact env vars the REST-direct execute()
 // reads as credentials, keyed by auth style. The n8n credential surface is
@@ -158,10 +162,39 @@ const NODE_READABLE_CREDENTIAL_ENV_VARS: Record<AuthStyle, readonly string[]> = 
     'MCP_SVC_CLIENT_SECRET',
     'MCP_SVC_SCOPE',
   ],
+  // User-facing products (GoCertius / EAD Enterprise Suite): the n8n user signs in
+  // as themselves, either with email+password (Password-type accounts) or by pasting
+  // a session JWT directly. `sessionToken` has no backing env var — it is a node-only
+  // credential field added in buildCredentials. See the session-login-or-token block
+  // in node.ts.hbs and docs/n8n-adapter-contract.md.
+  'session-login-or-token': ['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD'],
+};
+
+// Node-only credential fields that are NOT derived from a server env var, keyed by
+// auth style. Appended to the credential surface on top of the env-var allowlist.
+const EXTRA_CREDENTIAL_FIELDS: Partial<Record<AuthStyle, readonly N8nCredentialField[]>> = {
+  'session-login-or-token': [
+    {
+      envName: '',
+      propName: 'sessionToken',
+      displayName: 'Session Token (JWT)',
+      isSecret: true,
+      description:
+        'Optional. Paste a session JWT to authenticate directly (used as the Bearer token). ' +
+        'Leave empty to sign in with Email + Password instead. Required for OpenID/SSO accounts, ' +
+        'which cannot use email/password here.',
+    },
+  ],
 };
 
 function detectAuthStyle(server: ServerJsonShape): AuthStyle {
   const names = new Set((server.packages?.[0]?.environmentVariables ?? []).map((v) => v.name));
+  // A product that exposes MCP_AUTH_EMAIL is user-facing: the n8n user authenticates
+  // as themselves (email/password → session JWT, or a pasted token). This is checked
+  // BEFORE MCP_SVC_* because such products also expose a service-account trio for their
+  // OWN server-side use (GoCertius/EAD-ES do) — but that is NOT how an n8n user signs in.
+  // Only a product with NO email surface (EAD Factory) is a pure service account.
+  if (names.has('MCP_AUTH_EMAIL')) return 'session-login-or-token';
   if (names.has('MCP_SVC_TOKEN_URL')) return 'oauth2-client-credentials';
   if (names.has('OKTA_TOKEN_URL')) return 'okta-client-credentials';
   return 'email-password';
@@ -213,7 +246,7 @@ function buildCredentials(server: ServerJsonShape, authStyle: AuthStyle): N8nCre
   // Emit only allowlisted, node-readable fields, in a deterministic order.
   // Intersect with what the MCP actually declares so the form mirrors the
   // server's real auth inputs while staying fail-closed against everything else.
-  return NODE_READABLE_CREDENTIAL_ENV_VARS[authStyle]
+  const envFields = NODE_READABLE_CREDENTIAL_ENV_VARS[authStyle]
     .filter((envName) => declared.has(envName))
     .map((envName) => {
       const v = declared.get(envName)!;
@@ -228,6 +261,10 @@ function buildCredentials(server: ServerJsonShape, authStyle: AuthStyle): N8nCre
       if (v.description) field.description = v.description;
       return field;
     });
+  // Node-only fields (no backing env var), e.g. the session token for
+  // session-login-or-token. Appended after the env-derived fields.
+  const extra = EXTRA_CREDENTIAL_FIELDS[authStyle] ?? [];
+  return [...envFields, ...extra];
 }
 
 // Story 12.2 (Epic 12): REST-direct architecture per ADR 0008.
