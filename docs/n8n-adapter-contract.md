@@ -56,7 +56,7 @@ When adding or regenerating a tool in the generator, ensure:
 
    `manager_api_base_paths` is a plain string→string map; `query_param_style` is `'bracket'` (default, omit it) or `'flat'`. Only a product whose managers sit behind different gateway prefixes needs the first; single-API products (gocertius, ead-enterprise-suite) correctly omit both and are unaffected.
 
-   *Status 2026-07-15: EAD Factory needs both and emits neither, so 13.3/13.4/13.6 are inert in production. The data already exists in the generator (`products/ead-factory/product.config.ts#managerApiBasePaths`) — it just isn't rendered into `.distribution.yaml`. Generator issue pending (draft in `docs/generator-issue-manager-base-paths.md`).*
+   *Status 2026-07-15: EAD Factory needs both and emits neither, so 13.3/13.4/13.6 are inert in production. The data already exists in the generator (`products/ead-factory/product.config.ts#managerApiBasePaths`) — it just isn't rendered into `.distribution.yaml`. Tracked in Suite-GoCertius-MCP-Generator#66.*
 
 4. **`.env.example` may contain any MCP-server runtime config — no n8n obligation.** Transport/CORS/OpenID/PORT vars belong in `.env.example` because the Docker/self-hosted MCP server reads them; **keep them**. The n8n adapter derives its credential surface from an allowlist (rule 3 above), so it is immune to whatever the generator adds here. There is nothing the generator must do for n8n credential hygiene — this is intentionally a pipeline-owned boundary, removing a standing coordination cost.
 
