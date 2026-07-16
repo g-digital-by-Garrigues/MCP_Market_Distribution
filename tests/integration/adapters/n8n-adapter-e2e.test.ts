@@ -44,6 +44,11 @@ async function seedFixture(): Promise<{
     license: 'MIT',
     credential_help_url: 'https://example.com',
     target_overrides: {},
+    // Story 13.6: exercise the 'flat' path. Regression guard for the TS2872
+    // "always truthy" compile error that shipped when this field went from absent
+    // to 'flat' (EAD Factory v1.2.0) — the old template emitted
+    // `('flat' as ...) || 'bracket'`, which a literal makes always-truthy.
+    query_param_style: 'flat',
   };
   await fs.writeFile(path.join(packageDir, '.distribution.yaml'), yaml.dump(distribution));
   const registry = {
@@ -202,9 +207,14 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       expect(nodeSrc).toContain('const OPERATION_BASE_PREFIX');
       expect(nodeSrc).toContain('${OPERATION_BASE_PREFIX[operation]');
       // Story 13.6 (FR56): query-style switch is emitted with both serializers; the
-      // multi-tool fixture declares no style, so it defaults to 'bracket'.
+      // fixture declares 'flat'.
       expect(nodeSrc).toContain('const QUERY_PARAM_STYLE');
       expect(nodeSrc).toContain("QUERY_PARAM_STYLE === 'flat'");
+      // Regression (v1.2.0): the declaration must NOT be `(<literal> as ...) || 'bracket'`
+      // — a non-empty literal makes it always-truthy → tsc TS2872, which blocked the
+      // n8n node publish. Must be a comparison instead.
+      expect(nodeSrc).not.toMatch(/as 'bracket' \| 'flat'\)\s*\|\|/);
+      expect(nodeSrc).toContain("'flat' === 'flat' ? 'flat' : 'bracket'");
 
       // ─ Credentials class shape ─
       const credsSrc = await fs.readFile(
