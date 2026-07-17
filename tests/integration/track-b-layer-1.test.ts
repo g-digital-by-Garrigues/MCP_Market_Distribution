@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { runTrackBLayer1 } from '../../src/gates/run-track-b-layer-1.js';
 import { generateN8nNode } from '../../src/adapters/n8n-adapter/generate-n8n-node.js';
+import { normalizeGeneratedNode } from '../../src/adapters/n8n-adapter/normalize-generated-node.js';
 import type { N8nNodeSpec } from '../../src/adapters/n8n-adapter/types.js';
 
 function sampleSpec(): N8nNodeSpec {
@@ -23,6 +24,12 @@ function sampleSpec(): N8nNodeSpec {
     sourceRepoUrl: 'https://github.com/test/test-mcp',
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     authStyle: 'email-password',
+    // n8n requires an icon on BOTH the node and the credential class
+    // (@n8n/community-nodes/icon-validation, cred-class-field-icon-missing). Every
+    // real product bundles its logo, so the fixture must too — a spec with
+    // iconBundled unset generates a node the official linter rejects, which is the
+    // gate working, not a fixture quirk.
+    iconBundled: true,
     defaultApiBaseUrl: '',
     credentialAcquisitionUrl: '',
     operations: [
@@ -59,19 +66,56 @@ function sampleSpec(): N8nNodeSpec {
   };
 }
 
+/** Smallest valid PNG — stands in for the product logo the real builds copy in. */
+const ONE_PX_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+  'base64',
+);
+
+/**
+ * Run a block with NODE_ENV unset.
+ *
+ * eslint-plugin-n8n-nodes-base changes behaviour when NODE_ENV === 'test': its
+ * `getNodeFilename()` returns a hardcoded "Test.node.ts" instead of reading the real
+ * path, which makes the trigger-node rules match and rename the node to
+ * "<Name>Trigger". Vitest sets NODE_ENV=test, so linting inside a test lints a
+ * fiction. The pipeline never runs under NODE_ENV=test, so this restores production
+ * conditions rather than working around a rule.
+ */
+async function withProductionNodeEnv<T>(fn: () => Promise<T>): Promise<T> {
+  const previous = process.env.NODE_ENV;
+  delete process.env.NODE_ENV;
+  try {
+    return await fn();
+  } finally {
+    if (previous !== undefined) process.env.NODE_ENV = previous;
+  }
+}
+
 describe('Track B — Layer 1 (structural lint)', () => {
   let nodeDir: string;
+  let logoPath: string;
   beforeEach(async () => {
     nodeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'track-b-l1-'));
+    logoPath = path.join(nodeDir, '..', `logo-${path.basename(nodeDir)}.png`);
+    await fs.writeFile(logoPath, ONE_PX_PNG);
   });
   afterEach(async () => {
     await fs.rm(nodeDir, { recursive: true, force: true });
+    await fs.rm(logoPath, { force: true });
   });
 
   it('happy path: passes every check against a freshly generated node tree', async () => {
     const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
-    const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+    // Mirror run-adapter-build: the official linter is a real check now (Story 15.1
+    // — it used to pass by catching its own import failure), and production always
+    // normalizes before the gate runs. Skipping this here would test a tree that is
+    // never shipped.
+    const result = await withProductionNodeEnv(async () => {
+      await normalizeGeneratedNode(nodeDir);
+      return runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
+    });
     expect(result.passed).toBe(true);
     expect(result.errors).toEqual([]);
     expect(result.checks.every((c) => c.passed)).toBe(true);
@@ -80,7 +124,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
 
   it('fails file_layout when a generated file is missing', async () => {
     const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
     await fs.rm(path.join(nodeDir, 'index.ts'));
     const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
     expect(result.passed).toBe(false);
@@ -95,7 +139,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
   // Story 12.2 (Epic 12): REST-direct architecture — new gate behaviors
   it('fails package_json when source-MCP appears in devDependencies (REST-direct: not bundled)', async () => {
     const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
     const pkgPath = path.join(nodeDir, 'package.json');
     const pkg = JSON.parse(await fs.readFile(pkgPath, 'utf8')) as {
       devDependencies: Record<string, string>;
@@ -117,13 +161,16 @@ describe('Track B — Layer 1 (structural lint)', () => {
     // exist — the gate should PASS if no source-MCP dep is present at all
     // (which is what the generator now produces).
     const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
     // Don't inject any sourceMcpPackageName dep — the generator no longer adds it.
     await fs.writeFile(
       path.join(nodeDir, '.adapter-build.json'),
       JSON.stringify({ dry_run: true, source_substituted: true }),
     );
-    const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
+    const result = await withProductionNodeEnv(async () => {
+      await normalizeGeneratedNode(nodeDir);
+      return runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
+    });
     expect(result.passed).toBe(true);
     expect(result.errors).toEqual([]);
   });
@@ -134,7 +181,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
     // nodes. Simulate a template drift that drops the flag — Layer 1
     // must catch it before publish.
     const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
     const nodePath = path.join(nodeDir, 'nodes', 'MultiTool', 'MultiTool.node.ts');
     const original = await fs.readFile(nodePath, 'utf8');
     const tampered = original.replace(/usableAsTool: true,?\s*\n/, '');
@@ -148,7 +195,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
 
   it("fails node_class when an operation is missing from OPERATION_PROPERTY_NAMES", async () => {
     const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
     // Surgically strip get_widget from the OPERATION_PROPERTY_NAMES table
     // (and the dropdown, just to amplify) to simulate a template drift bug.
     const nodePath = path.join(nodeDir, 'nodes', 'MultiTool', 'MultiTool.node.ts');
@@ -166,7 +213,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
 
   it('fails credentials when one of the spec env vars is absent from the credentials class', async () => {
     const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
     const credPath = path.join(nodeDir, 'credentials', 'MultiToolApi.credentials.ts');
     const original = await fs.readFile(credPath, 'utf8');
     // The sample fixture has propName: 'email' so the generated file has name: 'email'
@@ -181,7 +228,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
 
   it('fails readme when an operation is not mentioned in the README', async () => {
     const spec = sampleSpec();
-    await generateN8nNode({ spec, outputDir: nodeDir });
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
     const readmePath = path.join(nodeDir, 'README.md');
     const original = await fs.readFile(readmePath, 'utf8');
     // Replace ALL get_widget mentions (table row AND any other reference).
@@ -234,7 +281,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
         stubSuffix: ', stub: true',
         properties: [],
       });
-      await generateN8nNode({ spec, outputDir: nodeDir });
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
       const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
       const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
       expect(err).toBeDefined();
@@ -245,7 +292,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
     it('fails when node displayName uses mis-cased brand token (issue 6: Ead vs EAD)', async () => {
       const spec = sampleSpec();
       spec.displayName = 'Ead Enterprise Suite';
-      await generateN8nNode({ spec, outputDir: nodeDir });
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
       const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
       const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
       expect(err).toBeDefined();
@@ -257,7 +304,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
       spec.credentials.push({
         envName: 'MCP_HTTP_HOST', propName: 'mcpHttpHost', displayName: 'Mcp Http Host', isSecret: false,
       });
-      await generateN8nNode({ spec, outputDir: nodeDir });
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
       const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
       const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
       expect(err).toBeDefined();
@@ -271,7 +318,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
       spec.credentials.push({
         envName: 'MCP_OPENID_ISSUER', propName: 'mcpOpenidIssuer', displayName: 'Mcp Openid Issuer', isSecret: false,
       });
-      await generateN8nNode({ spec, outputDir: nodeDir });
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
       const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
       const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
       expect(err).toBeDefined();
@@ -282,7 +329,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
       const spec = sampleSpec();
       spec.hasChatCertificateGet = true; // forces chat code into the template output
       // spec.hasChat stays undefined → gate flags the dead code
-      await generateN8nNode({ spec, outputDir: nodeDir });
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
       const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
       const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
       expect(err).toBeDefined();
@@ -295,7 +342,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
         name: 'evidence_ids', displayName: 'Evidence IDS', type: 'string', default: '',
         showForOperation: 'get_widget',
       });
-      await generateN8nNode({ spec, outputDir: nodeDir });
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
       const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
       const err = result.errors.find((e) => e.check === 'n8n_ux_compliance');
       expect(err).toBeDefined();
@@ -304,7 +351,7 @@ describe('Track B — Layer 1 (structural lint)', () => {
 
     it('passes a clean node with no violations', async () => {
       const spec = sampleSpec();
-      await generateN8nNode({ spec, outputDir: nodeDir });
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
       const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
       const uxCheck = result.checks.find((c) => c.name === 'n8n_ux_compliance');
       expect(uxCheck).toBeDefined();

@@ -457,49 +457,94 @@ async function checkLanguage(opts: RunTrackBLayer1Options): Promise<TrackBLayer1
   };
 }
 
-// Story 12.3 (Epic 12): official n8n linter gate.
+// Story 12.3 (Epic 12): official n8n linter gate. Story 15.1 (Epic 15): fail-closed.
 //
 // Runs `@n8n/scan-community-package` against the GENERATED adapter tree
 // (before compilation — the ESLint rules operate on TypeScript source,
 // not compiled JS). Placed after all structural checks so structural
 // failures short-circuit before the slower ESLint run.
 //
-// The linter is invoked via its internal `analyzePackage(dir)` function
-// (same function the CLI wraps). It returns `{ passed, details? }`.
-// On any violation the gate fails with a structured ErrorReport containing
-// the linter output so engineers can fix the template / generator.
+// FR59 — THIS GATE FAILS CLOSED. It used to `catch` an import failure and return
+// `passed: true` "because the package isn't installed in this environment". The
+// package was never a dependency, so the import ALWAYS threw and the gate ALWAYS
+// reported green: FR28 ("the generated node passes the official n8n linter") went
+// unverified across every release while every release report said the check passed.
+// The n8n Creator Portal found 132 violations we had reported as clean. A gate that
+// approves what it did not run is worse than no gate — it manufactures confidence.
+// So: if the scanner cannot be loaded or cannot run, that IS a gate failure.
 //
-// Skip condition: if any structural check already failed, skip the linter
-// to avoid noise. The `skipLinter` option also exists for unit tests that
-// don't want the ESLint overhead.
+// The scanner has its own fail-open (`filesToLint.length === 0 → passed: true`), so
+// a wrong nodeDir would score green. That case is detected and failed explicitly.
+//
+// `skipLinter` remains for unit tests that don't want the ESLint overhead. It is
+// never set by the pipeline — grep before you reuse it.
+//
+// Deviations live ONLY here, named, with a reason. Anything not on this list blocks.
+const LINTER_RULE_ALLOWLIST: ReadonlyMap<string, string> = new Map([
+  [
+    'n8n-nodes-base/node-class-description-icon-not-svg',
+    'We ship a PNG icon and have no SVG artwork. The rule is advisory ("Try to use an SVG icon") and the approved, live v1.4.2 ships PNG — the reviewers never raised it. Revisit if artwork is ever produced.',
+  ],
+  [
+    '@n8n/community-nodes/icon-prefer-themed-variants',
+    'Light/dark icon variants need artwork we do not have. Reported by the scanner as a warning, which does not fail it anyway.',
+  ],
+]);
+
+/**
+ * Rule id is the trailing token of a `stylish` violation line; severity is the token
+ * after the location. Only `error` blocks — the scanner itself fails on errorCount
+ * alone, so treating warnings as blocking would make this gate stricter than the
+ * review it is meant to predict.
+ */
+function parseLinterViolations(details: string): Array<{ ruleId: string; severity: string }> {
+  const out: Array<{ ruleId: string; severity: string }> = [];
+  for (const line of details.split('\n')) {
+    const m = /\s(error|warning)\s+.*\s((?:@[\w/-]+|[\w-]+)\/[\w-]+)\s*$/.exec(line.trimEnd());
+    if (m?.[1] && m[2]) out.push({ severity: m[1], ruleId: m[2] });
+  }
+  return out;
+}
+
 async function checkOfficialLinter(
   opts: RunTrackBLayer1Options,
 ): Promise<TrackBLayer1CheckResult> {
   if (opts.skipLinter) return { name: 'official_linter', passed: true };
 
-  let analyzePackage: (dir: string) => Promise<{ passed: boolean; details?: string }>;
+  type AnalyzeResult = { passed: boolean; message?: string; details?: string };
+  let analyzePackage: (dir: string, filePatterns?: readonly string[]) => Promise<AnalyzeResult>;
+  // Lint exactly the file set the n8n reviewers lint. Their scan resolves the
+  // published package, follows its attestations back to the source repo, and lints
+  // it with SOURCE_FILE_PATTERNS — package.json plus nodes/ and credentials/.
+  // analyzePackage's DEFAULT pattern (`**/*.ts`) is broader than that and flags
+  // build tooling (tsup.config.ts) they never see, so using the default would block
+  // us on findings that cannot get us rejected. Mirror the reviewers instead.
+  let sourceFilePatterns: readonly string[] | undefined;
   try {
     const mod = await import('@n8n/scan-community-package/scanner/scanner.mjs' as string);
-    analyzePackage = (mod as { analyzePackage: typeof analyzePackage }).analyzePackage;
-  } catch {
-    // Package not installed in this environment (e.g. unit-test CI).
-    // Log a warning but don't fail the gate — the linter is available
-    // in the pipeline runner via pnpm's dev deps.
-    return { name: 'official_linter', passed: true };
-  }
-
-  try {
-    const result = await analyzePackage(opts.nodeDir);
-    if (result.passed) return { name: 'official_linter', passed: true };
+    const m = mod as {
+      analyzePackage: typeof analyzePackage;
+      SOURCE_FILE_PATTERNS?: readonly string[];
+    };
+    analyzePackage = m.analyzePackage;
+    sourceFilePatterns = m.SOURCE_FILE_PATTERNS;
+  } catch (err) {
     return {
       name: 'official_linter',
       passed: false,
       error: gateError('official_linter', {
-        observation: `@n8n/scan-community-package found ESLint violations:\n${(result.details ?? '').slice(0, 2000)}`,
-        cause: 'The generated n8n node uses Node.js built-ins (fs, path, process, child_process, setTimeout, globalThis) or has invalid peer-dependency ranges. These are prohibited in n8n Cloud.',
-        action: 'Fix the offending pattern in templates/n8n-adapter/node.ts.hbs or update peerDependencies.n8n-workflow to "*". See docs/adr/0008-n8n-rest-direct-execution-model.md for the REST-direct architecture that avoids these violations.',
+        observation: `Could not load @n8n/scan-community-package: ${(err as Error).message}`,
+        cause: 'The official n8n linter is not installed, so the node could not be checked against the rules the n8n Creator Portal reviews against. This gate does not pass checks it cannot run (FR59).',
+        action: 'Install the pipeline dependencies (`pnpm install`). @n8n/scan-community-package is a declared dependency — if it is missing, the install is incomplete or the dependency was dropped.',
       }),
     };
+  }
+
+  let result: AnalyzeResult;
+  try {
+    result = sourceFilePatterns
+      ? await analyzePackage(opts.nodeDir, sourceFilePatterns)
+      : await analyzePackage(opts.nodeDir);
   } catch (err) {
     return {
       name: 'official_linter',
@@ -511,6 +556,56 @@ async function checkOfficialLinter(
       }),
     };
   }
+
+  // The scanner returns passed:true when its glob matched nothing. That is a
+  // misconfiguration (wrong dir / empty tree), not a clean node.
+  if (result.message === 'No files found to analyze') {
+    return {
+      name: 'official_linter',
+      passed: false,
+      error: gateError('official_linter', {
+        observation: `@n8n/scan-community-package found no files to analyze in ${opts.nodeDir}.`,
+        cause: 'The linter scored the node clean without reading a single file — its own fail-open path. The generated tree is empty or the gate was pointed at the wrong directory.',
+        action: 'Check that the adapter build produced nodes/ and credentials/ under the node dir before the gate ran.',
+      }),
+    };
+  }
+
+  if (result.passed) return { name: 'official_linter', passed: true };
+
+  const details = result.details ?? '';
+  const found = parseLinterViolations(details);
+  const blocking = found
+    .filter((v) => v.severity === 'error' && !LINTER_RULE_ALLOWLIST.has(v.ruleId))
+    .map((v) => v.ruleId);
+  if (blocking.length === 0) {
+    // Only warnings and/or accepted deviations remain — pass, but say what was
+    // tolerated rather than swallowing it silently.
+    const tolerated = [...new Set(found.map((v) => v.ruleId))];
+    if (tolerated.length > 0) {
+      process.stderr.write(
+        `[official_linter] Passing with non-blocking findings: ${tolerated.join(', ')}\n`,
+      );
+    }
+    return { name: 'official_linter', passed: true };
+  }
+
+  const counts = new Map<string, number>();
+  for (const id of blocking) counts.set(id, (counts.get(id) ?? 0) + 1);
+  const summary = [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, n]) => `  ${String(n).padStart(3)} × ${id}`)
+    .join('\n');
+
+  return {
+    name: 'official_linter',
+    passed: false,
+    error: gateError('official_linter', {
+      observation: `@n8n/scan-community-package found ${blocking.length} blocking violation(s):\n${summary}\n\n${details.slice(0, 4000)}`,
+      cause: 'The generated n8n node breaks rules the n8n Creator Portal reviews against — it would be rejected on submission.',
+      action: 'Fix the pattern in templates/n8n-adapter/*.hbs or the spec builder so every product benefits. Reproduce with: npx @n8n/scan-community-package@latest <generated-node-dir>. A rule we consciously accept goes in LINTER_RULE_ALLOWLIST here, with a reason — never by weakening the gate.',
+    }),
+  };
 }
 
 // n8n Creator Portal / Cloud verification rules that a generator regen of the

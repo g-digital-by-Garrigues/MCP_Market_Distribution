@@ -4,6 +4,7 @@ import { runInspectorHarness, type InspectorToolEntry } from '../../gates/inspec
 import { loadDistributionConfig } from '../../distribution/load-distribution-config.js';
 import type { DistributionConfig } from '../../schemas/distribution-config.schema.js';
 import { jsonSchemaToProperties, type ToolInputSchema } from './json-schema-to-properties.js';
+import { normalizeIdCasing, whetherizeBooleanDescription } from './normalize-generated-node.js';
 import type {
   N8nCredentialField,
   N8nNodeSpec,
@@ -802,13 +803,23 @@ function buildOperation(
         ...(patch.required !== undefined ? { required: patch.required } : {}),
         ...(patch.displayName ? { displayName: patch.displayName } : {}),
       };
-    });
+    })
+    // Story 15.3 (FR60): re-apply the "Whether" rule AFTER the patches — FIELD_DEFAULTS
+    // and PRODUCT_OVERRIDES replace descriptions wholesale, so a boolean whose copy is
+    // written here (otpByDefault, sendWaUrlByDefault…) would otherwise slip past the
+    // normalization done at schema-conversion time. This rule has no autofixer.
+    .map((p) =>
+      p.type === 'boolean'
+        ? { ...p, description: whetherizeBooleanDescription(p.description) }
+        : p,
+    )
+    .map((p) => (p.description ? { ...p, description: normalizeIdCasing(p.description) } : p));
   const { topLevel, additional } = splitAdditionalFields(patchedProperties, urlTemplate, httpMethod);
   return {
     op: {
       name: tool.name,
       displayName: verbFirstLabel(tool.name, toTitleCase),
-      description: tool.description ?? '',
+      description: normalizeIdCasing(tool.description ?? ''),
       properties: topLevel,
       ...(additional.length > 0 ? { additionalFields: additional } : {}),
     },
@@ -1040,13 +1051,25 @@ export async function buildN8nNodeSpec(
     if (!resourceMap.has(res)) resourceMap.set(res, []);
     resourceMap.get(res)!.push(op);
   }
+  // Story 15.3 (FR60): n8n requires both the Resource and Operation dropdowns to be
+  // alphabetical by display name (node-param-options-type-unsorted-items, and its
+  // @n8n/community-nodes/options-sorted-alphabetically twin). Sorting HERE rather than
+  // leaving it to eslint --fix is deliberate: the two rules' autofixers disagree on the
+  // comparator and ESLint bails out with "Circular fixes detected", leaving the node
+  // unsorted and the gate red. Emitting sorted output means neither rule ever fires.
+  // RESOURCE_ORDER still exists — it is the manager order used elsewhere — but the
+  // dropdown no longer follows it.
+  const byDisplayName = <T extends { displayName: string }>(a: T, b: T): number =>
+    a.displayName.localeCompare(b.displayName, 'en');
   const computedResources =
     operations.length >= 8
-      ? RESOURCE_ORDER.filter((r) => resourceMap.has(r)).map((r) => ({
-          displayName: resourceDisplayName(r),
-          value: r,
-          operations: resourceMap.get(r)!,
-        }))
+      ? RESOURCE_ORDER.filter((r) => resourceMap.has(r))
+          .map((r) => ({
+            displayName: resourceDisplayName(r),
+            value: r,
+            operations: [...resourceMap.get(r)!].sort(byDisplayName),
+          }))
+          .sort(byDisplayName)
       : undefined;
 
   // --- Auto-ID output field map ---

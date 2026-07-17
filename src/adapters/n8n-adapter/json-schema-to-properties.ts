@@ -1,4 +1,5 @@
 import type { N8nProperty, N8nPropertyOption } from './types.js';
+import { whetherizeBooleanDescription } from './normalize-generated-node.js';
 
 // Convert one MCP tool's JSON Schema (the `inputSchema` returned by
 // tools/list) into an array of n8n `INodeProperties`. The converter is
@@ -224,6 +225,11 @@ export function jsonSchemaToProperties(
       showForOperation: opts.operationName,
     };
     if (node.description) prop.description = node.description;
+    // Story 15.3 (FR60): n8n requires a boolean's description to start with "Whether"
+    // (node-param-description-boolean-without-whether). It is one of the few rules with
+    // no autofixer — the fixer cannot write the sentence — so the wording is derived
+    // from whatever the generator supplied.
+    if (type === 'boolean') prop.description = whetherizeBooleanDescription(prop.description);
     // Story 13.1 (FR51): never mark 'id' as required — execute() auto-generates a
     // UUID v4 for empty 'id' on _create/_add ops, and a required+empty field otherwise
     // raises "workflow has issues" and blocks execution.

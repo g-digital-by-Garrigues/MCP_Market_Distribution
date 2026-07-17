@@ -10,7 +10,9 @@ import {
   INodeExecutionData,
   INodeType,
   INodeTypeDescription,
+  JsonObject,
   NodeApiError,
+  NodeConnectionTypes,
   NodeOperationError,
 {{#if (eq authStyle 'session-login-or-token')}}
   ICredentialsDecrypted,
@@ -28,9 +30,10 @@ export class {{className}} implements INodeType {
     icon: 'file:icon.png',{{/if}}
     usableAsTool: true,
     description: {{json description}},
+    subtitle: '=\{{$parameter["operation"]}}',
     defaults: { name: '{{displayName}}' },
-    inputs: ['main'],
-    outputs: ['main'],
+    inputs: [NodeConnectionTypes.Main],
+    outputs: [NodeConnectionTypes.Main],
 {{#if (eq authStyle 'session-login-or-token')}}
     credentials: [{ name: '{{credentialParamName}}', required: true, testedBy: 'testAuth' }],
 {{else}}
@@ -554,13 +557,24 @@ export class {{className}} implements INodeType {
             }
           } catch { /* non-fatal */ }
         }
-{{/if}}        out.push({ json: json as IDataObject });
+{{/if}}        // pairedItem links this output back to the input item it came from, so the
+        // execution UI can trace a row through the workflow.
+        out.push({ json: json as IDataObject, pairedItem: { item: i } });
       } catch (error) {
         if (this.continueOnFail()) {
-          out.push({ json: this.getInputData(i)[0].json, error: error as NodeOperationError });
+          out.push({
+            json: this.getInputData(i)[0].json,
+            error: error as NodeOperationError,
+            pairedItem: { item: i },
+          });
           continue;
         }
-        throw error;
+        // Always wrap: a raw re-throw loses the HTTP context in the n8n UI, and n8n's
+        // require-node-api-error rule rejects any bare `throw error` inside a catch —
+        // even one guarded by an instanceof. NodeApiError carries the message of
+        // whatever it is given, so our own NodeApiError/NodeOperationError throws
+        // (auth, pre-flight guards, unknown operation) still read the same.
+        throw new NodeApiError(this.getNode(), error as JsonObject, { itemIndex: i });
       }
     }
 
