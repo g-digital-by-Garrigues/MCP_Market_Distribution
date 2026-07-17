@@ -252,7 +252,10 @@ async function checkNodeClass(opts: RunTrackBLayer1Options): Promise<TrackBLayer
   if (!src.includes(`name: '${spec.paramName}'`)) {
     issues.push(`description.name must be '${spec.paramName}'`);
   }
-  if (!src.includes(`credentials: [{ name: '${spec.credentialParamName}', required: true }]`)) {
+  // `testedBy: '<method>'` trails the pair when the auth style needs a programmatic
+  // credential test (session-login-or-token), so match the prefix rather than the
+  // whole literal.
+  if (!new RegExp(`credentials: \\[\\{ name: '${spec.credentialParamName}', required: true(,|\\s*\\})`).test(src)) {
     issues.push(`description.credentials must reference '${spec.credentialParamName}'`);
   }
   // Story 5.8: require the AI-Tool flag so n8n's CLI generates a virtual

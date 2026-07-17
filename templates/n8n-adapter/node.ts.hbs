@@ -12,6 +12,11 @@ import {
   INodeTypeDescription,
   NodeApiError,
   NodeOperationError,
+{{#if (eq authStyle 'session-login-or-token')}}
+  ICredentialsDecrypted,
+  ICredentialTestFunctions,
+  INodeCredentialTestResult,
+{{/if}}
 } from 'n8n-workflow';
 
 export class {{className}} implements INodeType {
@@ -26,7 +31,11 @@ export class {{className}} implements INodeType {
     defaults: { name: '{{displayName}}' },
     inputs: ['main'],
     outputs: ['main'],
+{{#if (eq authStyle 'session-login-or-token')}}
+    credentials: [{ name: '{{credentialParamName}}', required: true, testedBy: 'testAuth' }],
+{{else}}
     credentials: [{ name: '{{credentialParamName}}', required: true }],
+{{/if}}
     properties: [
 {{#if resources}}      {
         displayName: 'Resource',
@@ -106,6 +115,81 @@ export class {{className}} implements INodeType {
 {{/if}}{{/each}}    ],
   };
 
+{{#if (eq authStyle 'session-login-or-token')}}
+  // Credential test. The auth here branches (User Key exchange vs email/password
+  // login), which ICredentialTestRequest cannot express — hence a programmatic test
+  // wired up via `testedBy` above. It mirrors execute()'s auth block so the green
+  // check means the same thing the node will do at run time, and it reports the
+  // misconfigurations the user can actually fix rather than a bare HTTP code.
+  methods = {
+    credentialTest: {
+      async testAuth(
+        this: ICredentialTestFunctions,
+        credential: ICredentialsDecrypted,
+      ): Promise<INodeCredentialTestResult> {
+        const creds = (credential.data ?? {}) as IDataObject;
+        const baseUrl = String(creds.baseUrl ?? '').replace(/\/$/, '');
+        const userKey = String(creds.userKey ?? '').trim();
+        const email = String(creds.email ?? '');
+        const password = String(creds.password ?? '');
+        if (!baseUrl) {
+          return { status: 'Error', message: 'Base URL is empty.' };
+        }
+        if (userKey && (email || password)) {
+          return {
+            status: 'Error',
+            message: 'Configure exactly one auth flow: either a User Key, or Auth Email + Auth Password — not both. Clear the fields of the flow you are not using.',
+          };
+        }
+        if (!userKey && !(email && password)) {
+          return {
+            status: 'Error',
+            message: 'Authentication needs either a User Key, or both Auth Email and Auth Password.',
+          };
+        }
+        try {
+          if (userKey) {
+            const keyRes = await fetch(`${baseUrl}/user-keys/session`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ key: userKey }),
+            });
+            if (keyRes.status === 404) {
+              return {
+                status: 'Error',
+                message: 'User Key sign-in is not available on this environment (POST /user-keys/session returned 404). Point Base URL at an environment where User Keys are enabled, or use Auth Email + Auth Password.',
+              };
+            }
+            if (!keyRes.ok) {
+              return { status: 'Error', message: `User Key rejected (HTTP ${keyRes.status}).` };
+            }
+            const keyBody = await keyRes.json() as { jwt?: string; token?: string };
+            if (!(keyBody.jwt ?? keyBody.token)) {
+              return { status: 'Error', message: 'The User Key exchange returned no session token.' };
+            }
+            return { status: 'OK', message: 'Authentication successful.' };
+          }
+          const loginRes = await fetch(`${baseUrl}/session`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password }),
+          });
+          if (!loginRes.ok) {
+            return { status: 'Error', message: `Sign-in failed (HTTP ${loginRes.status}). Check Auth Email and Auth Password.` };
+          }
+          const loginBody = await loginRes.json() as { jwt?: string; token?: string };
+          if (!(loginBody.jwt ?? loginBody.token)) {
+            return { status: 'Error', message: 'Sign-in returned no session token.' };
+          }
+          return { status: 'OK', message: 'Authentication successful.' };
+        } catch (error) {
+          return { status: 'Error', message: `Could not reach ${baseUrl}: ${(error as Error).message}` };
+        }
+      },
+    },
+  };
+
+{{/if}}
   async execute(this: IExecuteFunctions): Promise<INodeExecutionData[][]> {
     const items = this.getInputData();
     const out: INodeExecutionData[] = [];
