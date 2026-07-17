@@ -980,10 +980,29 @@ export async function buildN8nNodeSpec(
     if (opName.startsWith('notification_')) return 'notification';
     if (opName.startsWith('case_file_')) return 'caseFile';
     if (opName.startsWith('use_case_')) return 'useCase';
-    if (opName.startsWith('session_')) return 'session';
+    // Identity/session domain: session_login + profile_get (Epic 14 — /profile is how a
+    // User-Key user resolves their userId, since session_info is keyed on the email).
+    if (opName.startsWith('session_') || opName.startsWith('profile_')) return 'session';
     if (opName.startsWith('chat_')) return 'chat';
     return 'signature';
   };
+
+  // The 'signature' return above is a FALLBACK, not a match: EAD Factory's signature
+  // tools carry no common prefix (create_signature_request, add_signatory_to_document,
+  // activate_signature_request…), so anything unrecognized lands in Signature silently.
+  // That is fail-open: profile_get (Epic 14) was filed under Signature for a whole
+  // release cycle and only surfaced when a human went looking for it in the UI. Flag any
+  // operation that reaches the fallback without looking like a signature op at all, so
+  // the next unprefixed tool is caught at build time instead of in review.
+  const SIGNATURE_SHAPED_RE = /signat|document|observer|validator/i;
+  const miscategorized = operations
+    .filter((op) => detectResource(op.name) === 'signature' && !SIGNATURE_SHAPED_RE.test(op.name))
+    .map((op) => op.name);
+  if (miscategorized.length > 0) {
+    unsupportedNotes.push(
+      `Operations ${miscategorized.map((n) => `'${n}'`).join(', ')} matched no resource prefix and fell back to the 'Signature' resource — they will be buried under the wrong dropdown entry in n8n. Add an explicit rule to detectResource() in build-node-spec.ts.`,
+    );
+  }
 
   // --- Story 13.4 (FR54): manager-aware naming for MULTI-MANAGER products ---
   // Gated on manager_api_base_paths (the multi-manager signal). Resource displays
