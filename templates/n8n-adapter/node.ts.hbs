@@ -153,29 +153,39 @@ export class {{className}} implements INodeType {
     const bearer = tokenBody.access_token ?? '';
 {{else}}
 {{#if (eq authStyle 'session-login-or-token')}}
-    // Auth: a session token (JWT) wins if provided; otherwise sign in with
-    // email + password, but only for Password-type accounts. OpenID/SSO accounts
-    // cannot use email/password here and must paste a session token instead.
-    let bearer: string;
-    const sessionToken = String(creds.sessionToken ?? '').trim();
-    if (sessionToken) {
-      bearer = sessionToken;
-    } else {
-      const email = String(creds.email ?? '');
-      const password = String(creds.password ?? '');
-      if (!email || !password) {
-        throw new NodeOperationError(this.getNode(), 'Authentication needs either a Session Token, or both Email and Password.');
-      }
-      const infoRes = await fetch(`${baseUrl}/session-info/${encodeURIComponent(email)}`, {
-        headers: { 'Content-Type': 'application/json' },
-      });
-      if (!infoRes.ok) {
-        const infoErr = await infoRes.json().catch(() => ({ message: `HTTP ${infoRes.status}` }));
-        throw new NodeApiError(this.getNode(), infoErr as never, { httpCode: String(infoRes.status) });
-      }
-      const info = await infoRes.json() as { type?: string };
-      if (info.type !== 'Password') {
-        throw new NodeOperationError(this.getNode(), `Account ${email} signs in via ${info.type ?? 'a non-password method'} — email/password is not available here. Paste a Session Token (JWT) into the credential instead.`);
+    // Auth: two mutually exclusive flows, both minting the same short-lived session
+    // JWT used as the Bearer. A User Key (long-lived, issued out-of-band) is
+    // exchanged at POST /user-keys/session; email + password logs in at POST /session.
+    // Exactly one must be configured — this mirrors the MCP server's own
+    // detectAuthAdapter, which rejects the combination with an AuthConfigError.
+    // Minting is wrapped in a function so a 401 mid-run can re-mint and replay the
+    // call (the JWT is short-lived; a workflow may run longer than it lives).
+    const userKey = String(creds.userKey ?? '').trim();
+    const email = String(creds.email ?? '');
+    const password = String(creds.password ?? '');
+    if (userKey && (email || password)) {
+      throw new NodeOperationError(this.getNode(), 'Configure exactly one auth flow: either a User Key, or Auth Email + Auth Password — not both. Clear the fields of the flow you are not using.');
+    }
+    if (!userKey && !(email && password)) {
+      throw new NodeOperationError(this.getNode(), 'Authentication needs either a User Key, or both Auth Email and Auth Password.');
+    }
+    const obtainBearer = async (): Promise<string> => {
+      if (userKey) {
+        const keyRes = await fetch(`${baseUrl}/user-keys/session`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          // The key travels in the BODY, not as a Bearer header.
+          body: JSON.stringify({ key: userKey }),
+        });
+        if (keyRes.status === 404) {
+          throw new NodeOperationError(this.getNode(), 'User Key sign-in is not available on this environment (POST /user-keys/session returned 404). Clear the User Key and use Auth Email + Auth Password, or point Base URL at an environment where User Keys are enabled.');
+        }
+        if (!keyRes.ok) {
+          const keyErr = await keyRes.json().catch(() => ({ message: `HTTP ${keyRes.status}` }));
+          throw new NodeApiError(this.getNode(), keyErr as never, { httpCode: String(keyRes.status) });
+        }
+        const keyBody = await keyRes.json() as { jwt?: string; token?: string };
+        return keyBody.jwt ?? keyBody.token ?? '';
       }
       const loginRes = await fetch(`${baseUrl}/session`, {
         method: 'POST',
@@ -187,8 +197,9 @@ export class {{className}} implements INodeType {
         throw new NodeApiError(this.getNode(), loginErr as never, { httpCode: String(loginRes.status) });
       }
       const loginBody = await loginRes.json() as { jwt?: string; token?: string };
-      bearer = loginBody.jwt ?? loginBody.token ?? '';
-    }
+      return loginBody.jwt ?? loginBody.token ?? '';
+    };
+    let bearer = await obtainBearer();
 {{else}}
     const loginRes = await fetch(`${baseUrl}/session`, {
       method: 'POST',
@@ -282,21 +293,24 @@ export class {{className}} implements INodeType {
           if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
           body[propName] = val;
         }
-        // Substitute any remaining {placeholder} patterns from credentials.
-        // First try exact credential key names, then common API→credential aliases
-        // (e.g. {email} in session_info maps to the 'email' credential field).
-        const credAliases: Record<string, string> = { email: 'email' };
+        // Substitute any remaining {placeholder} patterns from credential values,
+        // matched by credential key name (e.g. a {baseUrl} or {email} in a path).
         for (const [credKey, credVal] of Object.entries(creds)) {
           const placeholder = `{${credKey}}`;
           if (url.includes(placeholder) && credVal) {
             url = url.replace(placeholder, encodeURIComponent(String(credVal)));
           }
         }
-        for (const [alias, credKey] of Object.entries(credAliases)) {
-          const placeholder = `{${alias}}`;
-          if (url.includes(placeholder) && creds[credKey]) {
-            url = url.replace(placeholder, encodeURIComponent(String(creds[credKey])));
-          }
+        // Nothing filled this placeholder — neither an input nor a credential. Firing
+        // the URL with a literal `{name}` in it only yields an opaque 404, so name the
+        // missing input instead.
+        const unresolved = /\{([^}]+)\}/.exec(url);
+        if (unresolved) {
+          throw new NodeOperationError(
+            this.getNode(),
+            `Operation '${operation}' needs '${unresolved[1]}', but it was left empty and no credential field supplies it.`,
+            { itemIndex: i },
+          );
         }
 
         // --- Smart defaults for remaining body fields ---
@@ -403,7 +417,7 @@ export class {{className}} implements INodeType {
           }
         }
 
-        const apiRes = await fetch(url, {
+        const callApi = () => fetch(url, {
           method: meta.method,
           headers: {
             Authorization: `Bearer ${bearer}`,
@@ -411,6 +425,17 @@ export class {{className}} implements INodeType {
           },
           ...(isBodyless ? {} : { body: JSON.stringify(body) }),
         });
+{{#if (eq authStyle 'session-login-or-token')}}
+        let apiRes = await callApi();
+        // The session JWT is short-lived and minted once per execute() — a long
+        // workflow can outlive it. Re-mint once and replay before surfacing a 401.
+        if (apiRes.status === 401) {
+          bearer = await obtainBearer();
+          apiRes = await callApi();
+        }
+{{else}}
+        const apiRes = await callApi();
+{{/if}}
 
         if (!apiRes.ok) {
           const errBody = await apiRes.json().catch(() => ({ message: `${operation} failed: HTTP ${apiRes.status}` }));
@@ -445,22 +470,7 @@ export class {{className}} implements INodeType {
             }
           } catch { /* non-fatal */ }
         }
-{{/if}}        // session_info: inject userId decoded from JWT sub claim so callers
-        // don't need a separate step to obtain the userId required by most operations.
-        if (operation === 'session_info' && bearer) {
-          try {
-            const parts = bearer.split('.');
-            if (parts.length === 3) {
-              const pad = (s: string) => s + '='.repeat((4 - s.length % 4) % 4);
-              const payload = JSON.parse(Buffer.from(pad(parts[1] ?? ''), 'base64').toString('utf8')) as IDataObject;
-              const sub = payload.sub ?? payload.userId ?? payload.user_id;
-              if (sub && !(json as IDataObject).userId) {
-                (json as IDataObject).userId = sub;
-              }
-            }
-          } catch { /* ignore decode errors */ }
-        }
-        out.push({ json: json as IDataObject });
+{{/if}}        out.push({ json: json as IDataObject });
       } catch (error) {
         if (this.continueOnFail()) {
           out.push({ json: this.getInputData(i)[0].json, error: error as NodeOperationError });

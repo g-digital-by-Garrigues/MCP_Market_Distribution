@@ -538,7 +538,7 @@ const STUB_OP_RE = /'([^']+)':\s*\{\s*method:\s*'STUB'[^}]*stub:\s*true/g;
 // form. Mirrors NODE_READABLE_CREDENTIAL_ENV_VARS in build-node-spec.ts.
 const ALLOWED_CREDENTIAL_PROPS: ReadonlySet<string> = new Set([
   'baseUrl', 'email', 'password',
-  'sessionToken', // session-login-or-token: node-only JWT field (no backing env var)
+  'userKey', // session-login-or-token: long-lived key exchanged for a session JWT
   'oktaTokenUrl', 'oktaClientId', 'oktaClientSecret', 'oktaScope',
   'mcpSvcTokenUrl', 'mcpSvcClientId', 'mcpSvcClientSecret', 'mcpSvcScope',
 ]);

@@ -23,7 +23,8 @@ interface SetupOpts {
   /** Extra fields merged into the .distribution.yaml fixture. */
   distributionOverrides?: Record<string, unknown>;
   /** When omitted, server.json is written with two environmentVariables. */
-  envVars?: Array<{ name: string; description: string; isSecret: boolean; isRequired: boolean }>;
+  /** `isSecret` is optional so a fixture can exercise the name-suffix secret rule. */
+  envVars?: Array<{ name: string; description: string; isSecret?: boolean; isRequired: boolean }>;
   /** When false, no server.json is written so we can exercise the missing-file branch. */
   writeServerJson?: boolean;
   /** When false, no src/tools/*.ts REST annotations are written, so every tool
@@ -277,19 +278,15 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
 
       // Exposing MCP_AUTH_EMAIL makes this a user-facing product → session-login-or-token
-      // (a pasted JWT, or email/password login for Password-type accounts).
+      // (a User Key exchanged for a session JWT, or email/password login).
       expect(spec.authStyle).toBe('session-login-or-token');
-      // Credentials are the allowlisted auth fields (email + password) PLUS the
-      // node-only sessionToken; the MCP_HTTP_HOST server-runtime var is dropped.
-      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password', 'sessionToken']);
+      // Credentials are the allowlisted auth fields only; the MCP_HTTP_HOST
+      // server-runtime var is dropped.
+      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password']);
       const pw = spec.credentials.find((c) => c.envName === 'MCP_AUTH_PASSWORD')!;
       expect(pw.isSecret).toBe(true);
       expect(pw.displayName).toBe('Auth Password');
       expect(spec.credentials.find((c) => c.envName === 'MCP_AUTH_EMAIL')!.displayName).toBe('Auth Email');
-      // sessionToken is node-only (no backing env var) and secret.
-      const st = spec.credentials.find((c) => c.propName === 'sessionToken')!;
-      expect(st.envName).toBe('');
-      expect(st.isSecret).toBe(true);
       expect(spec.credentials.some((c) => c.envName === 'MCP_HTTP_HOST')).toBe(false);
     } finally {
       await cleanup();
@@ -371,9 +368,50 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       });
 
       expect(spec.authStyle).toBe('session-login-or-token');
-      // Surface = email + password + node-only sessionToken. NO mcpSvc* leaks in.
-      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password', 'sessionToken']);
+      // Surface = email + password. NO mcpSvc* leaks in.
+      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password']);
       expect(spec.credentials.some((c) => c.propName.startsWith('mcpSvc'))).toBe(false);
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
+  it('exposes MCP_AUTH_USER_KEY as the secret userKey credential (Epic 14)', async () => {
+    // The real gocertius / ead-enterprise-suite surface after the E14 propagation:
+    // email + password + user key, alongside the server's own service-account trio.
+    // The node must offer both sign-in flows and still drop the MCP_SVC_* and
+    // OpenID server config. MCP_AUTH_USER_KEY carries no `# isSecret:` guarantee
+    // from every generator, so the _KEY$ suffix rule must mark it secret anyway.
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      envVars: [
+        { name: 'MCP_AUTH_EMAIL', description: 'Account email.', isSecret: false, isRequired: false },
+        { name: 'MCP_AUTH_PASSWORD', description: 'Account password.', isSecret: true, isRequired: false },
+        { name: 'MCP_AUTH_USER_KEY', description: 'Long-lived user key, exchanged for a session token.', isRequired: false },
+        { name: 'MCP_SVC_TOKEN_URL', description: 'Service-account token endpoint (server-side).', isSecret: false, isRequired: false },
+        { name: 'MCP_OPENID_ISSUER', description: 'OpenID issuer (server config).', isSecret: false, isRequired: false },
+      ],
+    });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+
+      expect(spec.authStyle).toBe('session-login-or-token');
+      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password', 'userKey']);
+      const key = spec.credentials.find((c) => c.envName === 'MCP_AUTH_USER_KEY')!;
+      expect(key.propName).toBe('userKey');
+      expect(key.displayName).toBe('User Key');
+      expect(key.isSecret).toBe(true);
+      // Server config never reaches the credential form (fail-closed allowlist).
+      expect(spec.credentials.some((c) => c.envName.startsWith('MCP_OPENID'))).toBe(false);
+      expect(spec.credentials.some((c) => c.envName.startsWith('MCP_SVC'))).toBe(false);
     } finally {
       await cleanup();
     }
