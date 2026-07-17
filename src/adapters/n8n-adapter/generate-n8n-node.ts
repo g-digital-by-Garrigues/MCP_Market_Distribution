@@ -152,17 +152,26 @@ export async function generateN8nNode(opts: GenerateN8nNodeOptions): Promise<Gen
   // is unset OR the source file is missing, we silently skip — the
   // template falls back to no-icon and n8n shows the generic box
   // (still functional, just less branded).
+  // Story 15.2: the credential class needs its own `icon` too (the n8n linter's
+  // cred-class-field-icon-missing / icon-validation), and n8n resolves a credential
+  // icon relative to the credential file — so the logo is copied to BOTH places
+  // rather than reached for across directories.
   if (spec.iconBundled && opts.sourceLogoAbsPath) {
-    const iconRel = path.posix.join('nodes', spec.className, 'icon.png');
-    const iconAbs = path.join(outputDir, iconRel);
-    try {
-      await fs.mkdir(path.dirname(iconAbs), { recursive: true });
-      await fs.copyFile(opts.sourceLogoAbsPath, iconAbs);
-      filesWritten.push(iconRel);
-      filesWritten.sort((a, b) => a.localeCompare(b));
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+    const iconRels = [
+      path.posix.join('nodes', spec.className, 'icon.png'),
+      path.posix.join('credentials', 'icon.png'),
+    ];
+    for (const iconRel of iconRels) {
+      const iconAbs = path.join(outputDir, iconRel);
+      try {
+        await fs.mkdir(path.dirname(iconAbs), { recursive: true });
+        await fs.copyFile(opts.sourceLogoAbsPath, iconAbs);
+        filesWritten.push(iconRel);
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code !== 'ENOENT') throw err;
+      }
     }
+    filesWritten.sort((a, b) => a.localeCompare(b));
   }
 
   return { filesWritten };

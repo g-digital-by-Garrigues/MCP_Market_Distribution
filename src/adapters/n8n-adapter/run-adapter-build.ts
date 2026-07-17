@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { buildN8nNodeSpec } from './build-node-spec.js';
 import { refineWithLlm } from './refine-with-llm.js';
 import { generateN8nNode, copyN8nNodeSource } from './generate-n8n-node.js';
+import { normalizeGeneratedNode } from './normalize-generated-node.js';
 import { loadDistributionConfig } from '../../distribution/load-distribution-config.js';
 
 // Story 5.6b: orchestrator CLI that the publish.yml `generate-n8n-adapter`
@@ -159,6 +160,17 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
     outputDir,
     ...(sourceLogoAbsPath ? { sourceLogoAbsPath } : {}),
   });
+
+  // Story 15.3: apply n8n's own autofixes (sentence-case actions, trailing periods,
+  // ID casing, option ordering) to the generated tree BEFORE it is copied to the
+  // source repo, so the .ts in n8n-node/ is byte-identical to what produced the
+  // published package — that tree is what the Creator Portal reviewers lint.
+  const normalization = await normalizeGeneratedNode(outputDir);
+  if (normalization.skippedReason) {
+    process.stderr.write(
+      `[run-adapter-build] Warning: n8n copy normalization skipped — ${normalization.skippedReason}. The official_linter gate will fail on anything this would have fixed.\n`,
+    );
+  }
 
   // Copy the generated TypeScript source into <packageDir>/n8n-node/ so the
   // source MCP repository contains the exact .ts that produced the published
