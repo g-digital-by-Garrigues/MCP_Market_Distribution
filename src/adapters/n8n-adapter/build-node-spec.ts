@@ -163,28 +163,11 @@ const NODE_READABLE_CREDENTIAL_ENV_VARS: Record<AuthStyle, readonly string[]> = 
     'MCP_SVC_SCOPE',
   ],
   // User-facing products (GoCertius / EAD Enterprise Suite): the n8n user signs in
-  // as themselves, either with email+password (Password-type accounts) or by pasting
-  // a session JWT directly. `sessionToken` has no backing env var — it is a node-only
-  // credential field added in buildCredentials. See the session-login-or-token block
-  // in node.ts.hbs and docs/n8n-adapter-contract.md.
-  'session-login-or-token': ['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD'],
-};
-
-// Node-only credential fields that are NOT derived from a server env var, keyed by
-// auth style. Appended to the credential surface on top of the env-var allowlist.
-const EXTRA_CREDENTIAL_FIELDS: Partial<Record<AuthStyle, readonly N8nCredentialField[]>> = {
-  'session-login-or-token': [
-    {
-      envName: '',
-      propName: 'sessionToken',
-      displayName: 'Session Token (JWT)',
-      isSecret: true,
-      description:
-        'Optional. Paste a session JWT to authenticate directly (used as the Bearer token). ' +
-        'Leave empty to sign in with Email + Password instead. Required for OpenID/SSO accounts, ' +
-        'which cannot use email/password here.',
-    },
-  ],
+  // as themselves. Two flows, both minting the same session JWT used as the Bearer:
+  // a long-lived User Key exchanged at POST /user-keys/session (preferred), or
+  // email+password at POST /session. See the session-login-or-token block in
+  // node.ts.hbs and docs/n8n-adapter-contract.md.
+  'session-login-or-token': ['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD', 'MCP_AUTH_USER_KEY'],
 };
 
 function detectAuthStyle(server: ServerJsonShape): AuthStyle {
@@ -207,13 +190,16 @@ function detectAuthStyle(server: ServerJsonShape): AuthStyle {
 const CREDENTIAL_DISPLAY_NAME_MAP: Record<string, string> = {
   MCP_AUTH_EMAIL: 'Auth Email',
   MCP_AUTH_PASSWORD: 'Auth Password',
+  MCP_AUTH_USER_KEY: 'User Key',
   MCP_SVC_TOKEN_URL: 'OAuth Token URL',
   MCP_SVC_CLIENT_ID: 'Client ID',
   MCP_SVC_CLIENT_SECRET: 'Client Secret',
   MCP_SVC_SCOPE: 'Scope',
 };
 
-const SECRET_ENV_SUFFIX_RE = /_SECRET$|_PASSWORD$|_TOKEN$/;
+// Mirrors SECRET_SUFFIX_PATTERNS in generators/generate-environment-variables.ts,
+// so a var is treated as a secret here even if .env.example omits `# isSecret:`.
+const SECRET_ENV_SUFFIX_RE = /_SECRET$|_PASSWORD$|_TOKEN$|_KEY$/;
 
 // Maps SCREAMING_SNAKE_CASE env-var names to camelCase n8n credential property
 // names. n8n convention requires camelCase; env-var style names are surfaced
@@ -221,6 +207,7 @@ const SECRET_ENV_SUFFIX_RE = /_SECRET$|_PASSWORD$|_TOKEN$/;
 const CREDENTIAL_PROP_NAME_MAP: Record<string, string> = {
   MCP_AUTH_EMAIL: 'email',
   MCP_AUTH_PASSWORD: 'password',
+  MCP_AUTH_USER_KEY: 'userKey',
   OKTA_TOKEN_URL: 'oktaTokenUrl',
   OKTA_CLIENT_ID: 'oktaClientId',
   OKTA_CLIENT_SECRET: 'oktaClientSecret',
@@ -261,10 +248,7 @@ function buildCredentials(server: ServerJsonShape, authStyle: AuthStyle): N8nCre
       if (v.description) field.description = v.description;
       return field;
     });
-  // Node-only fields (no backing env var), e.g. the session token for
-  // session-login-or-token. Appended after the env-derived fields.
-  const extra = EXTRA_CREDENTIAL_FIELDS[authStyle] ?? [];
-  return [...envFields, ...extra];
+  return envFields;
 }
 
 // Story 12.2 (Epic 12): REST-direct architecture per ADR 0008.
