@@ -293,26 +293,17 @@ export class {{className}} implements INodeType {
           if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
           body[propName] = val;
         }
-        // Substitute any remaining {placeholder} patterns from credentials.
-        // First try exact credential key names, then common API→credential aliases
-        // (e.g. {email} in session_info maps to the 'email' credential field).
-        const credAliases: Record<string, string> = { email: 'email' };
+        // Substitute any remaining {placeholder} patterns from credential values,
+        // matched by credential key name (e.g. a {baseUrl} or {email} in a path).
         for (const [credKey, credVal] of Object.entries(creds)) {
           const placeholder = `{${credKey}}`;
           if (url.includes(placeholder) && credVal) {
             url = url.replace(placeholder, encodeURIComponent(String(credVal)));
           }
         }
-        for (const [alias, credKey] of Object.entries(credAliases)) {
-          const placeholder = `{${alias}}`;
-          if (url.includes(placeholder) && creds[credKey]) {
-            url = url.replace(placeholder, encodeURIComponent(String(creds[credKey])));
-          }
-        }
         // Nothing filled this placeholder — neither an input nor a credential. Firing
         // the URL with a literal `{name}` in it only yields an opaque 404, so name the
-        // missing input instead. Reachable e.g. for session_info's `{email}` when the
-        // credential authenticates with a User Key and carries no Auth Email.
+        // missing input instead.
         const unresolved = /\{([^}]+)\}/.exec(url);
         if (unresolved) {
           throw new NodeOperationError(
@@ -479,22 +470,7 @@ export class {{className}} implements INodeType {
             }
           } catch { /* non-fatal */ }
         }
-{{/if}}        // session_info: inject userId decoded from JWT sub claim so callers
-        // don't need a separate step to obtain the userId required by most operations.
-        if (operation === 'session_info' && bearer) {
-          try {
-            const parts = bearer.split('.');
-            if (parts.length === 3) {
-              const pad = (s: string) => s + '='.repeat((4 - s.length % 4) % 4);
-              const payload = JSON.parse(Buffer.from(pad(parts[1] ?? ''), 'base64').toString('utf8')) as IDataObject;
-              const sub = payload.sub ?? payload.userId ?? payload.user_id;
-              if (sub && !(json as IDataObject).userId) {
-                (json as IDataObject).userId = sub;
-              }
-            }
-          } catch { /* ignore decode errors */ }
-        }
-        out.push({ json: json as IDataObject });
+{{/if}}        out.push({ json: json as IDataObject });
       } catch (error) {
         if (this.continueOnFail()) {
           out.push({ json: this.getInputData(i)[0].json, error: error as NodeOperationError });
