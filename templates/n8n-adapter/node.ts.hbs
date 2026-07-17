@@ -153,15 +153,19 @@ export class {{className}} implements INodeType {
     const bearer = tokenBody.access_token ?? '';
 {{else}}
 {{#if (eq authStyle 'session-login-or-token')}}
-    // Auth: both flows mint the same short-lived session JWT used as the Bearer.
-    // The User Key (long-lived, issued out-of-band) is exchanged at
-    // POST /user-keys/session and wins when set; otherwise email + password at
-    // POST /session. Minting is wrapped in a function so a 401 mid-run can
-    // re-mint and replay the call (the session JWT is short-lived; a workflow
-    // may run longer than it lives).
+    // Auth: two mutually exclusive flows, both minting the same short-lived session
+    // JWT used as the Bearer. A User Key (long-lived, issued out-of-band) is
+    // exchanged at POST /user-keys/session; email + password logs in at POST /session.
+    // Exactly one must be configured — this mirrors the MCP server's own
+    // detectAuthAdapter, which rejects the combination with an AuthConfigError.
+    // Minting is wrapped in a function so a 401 mid-run can re-mint and replay the
+    // call (the JWT is short-lived; a workflow may run longer than it lives).
     const userKey = String(creds.userKey ?? '').trim();
     const email = String(creds.email ?? '');
     const password = String(creds.password ?? '');
+    if (userKey && (email || password)) {
+      throw new NodeOperationError(this.getNode(), 'Configure exactly one auth flow: either a User Key, or Auth Email + Auth Password — not both. Clear the fields of the flow you are not using.');
+    }
     if (!userKey && !(email && password)) {
       throw new NodeOperationError(this.getNode(), 'Authentication needs either a User Key, or both Auth Email and Auth Password.');
     }
