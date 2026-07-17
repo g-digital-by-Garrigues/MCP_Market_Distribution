@@ -541,10 +541,15 @@ async function checkOfficialLinter(
   }
 
   let result: AnalyzeResult;
+  // analyzePackage hands the dir to ESLint as its `cwd`, which rejects a relative
+  // path outright ("'cwd' must be an absolute path"). The pipeline invokes this gate
+  // with a repo-relative nodeDir, so resolve before calling — every local run used an
+  // absolute path and never hit it.
+  const absNodeDir = path.resolve(opts.nodeDir);
   try {
     result = sourceFilePatterns
-      ? await analyzePackage(opts.nodeDir, sourceFilePatterns)
-      : await analyzePackage(opts.nodeDir);
+      ? await analyzePackage(absNodeDir, sourceFilePatterns)
+      : await analyzePackage(absNodeDir);
   } catch (err) {
     return {
       name: 'official_linter',

@@ -122,6 +122,25 @@ describe('Track B — Layer 1 (structural lint)', () => {
     expect(result.log.event).toBe('gate.track_b_layer_1_passed');
   });
 
+  it('runs the official linter when handed a RELATIVE nodeDir (the pipeline always does)', async () => {
+    // Regression: the gate passed nodeDir straight to the scanner, which hands it to
+    // ESLint as `cwd` — and ESLint rejects a relative path ("'cwd' must be an absolute
+    // path"). Every local run used an absolute path, so this only surfaced in CI, on a
+    // real publish: gocertius v1.5.0 shipped its MCP server to every store while the
+    // n8n node failed this gate.
+    const spec = sampleSpec();
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+    const relativeNodeDir = path.relative(process.cwd(), nodeDir);
+    expect(path.isAbsolute(relativeNodeDir)).toBe(false);
+    const result = await withProductionNodeEnv(async () => {
+      await normalizeGeneratedNode(relativeNodeDir);
+      return runTrackBLayer1({ mcpName: 'multi-tool', nodeDir: relativeNodeDir, spec });
+    });
+    const linter = result.checks.find((c) => c.name === 'official_linter');
+    expect(linter?.error?.observation ?? '').not.toContain('absolute path');
+    expect(linter?.passed).toBe(true);
+  });
+
   it('fails file_layout when a generated file is missing', async () => {
     const spec = sampleSpec();
     await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
