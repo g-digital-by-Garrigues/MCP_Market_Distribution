@@ -57,8 +57,11 @@ export async function normalizeGeneratedNode(nodeDir: string): Promise<Normalize
   }
 
   const { ESLint } = (await import('eslint')) as typeof import('eslint');
+  // ESLint rejects a relative cwd outright, and the pipeline passes repo-relative
+  // paths.
+  const absNodeDir = path.resolve(nodeDir);
   const eslint = new ESLint({
-    cwd: nodeDir,
+    cwd: absNodeDir,
     fix: true,
     allowInlineConfig: false,
     overrideConfigFile: true,
@@ -72,7 +75,7 @@ export async function normalizeGeneratedNode(nodeDir: string): Promise<Normalize
   const filesFixed: string[] = [];
   const remaining = new Set<string>();
   for (const r of results) {
-    if (r.output !== undefined) filesFixed.push(path.relative(nodeDir, r.filePath));
+    if (r.output !== undefined) filesFixed.push(path.relative(absNodeDir, r.filePath));
     for (const m of r.messages) {
       if (m.ruleId) remaining.add(m.ruleId);
     }
