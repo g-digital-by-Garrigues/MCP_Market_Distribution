@@ -644,6 +644,10 @@ const ALLOWED_CREDENTIAL_PROPS: ReadonlySet<string> = new Set([
   'userKey', // session-login-or-token: long-lived key exchanged for a session JWT
   'oktaTokenUrl', 'oktaClientId', 'oktaClientSecret', 'oktaScope',
   'mcpSvcTokenUrl', 'mcpSvcClientId', 'mcpSvcClientSecret', 'mcpSvcScope',
+  // Epic 16: oauth2-client-credentials extends n8n's oAuth2Api. Client ID/Secret/
+  // Access Token URL/Scope come from the base type; the credential file only pins
+  // these two hidden fields (plus baseUrl for the REST gateway root).
+  'grantType', 'authentication',
 ]);
 // Match the `name: '...'` of each credential property (the credentials class
 // uses single-quoted prop names; the test-request body uses other strings).
