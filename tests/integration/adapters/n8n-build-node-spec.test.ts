@@ -293,11 +293,13 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
     }
   }, 30_000);
 
-  it('detects generic OAuth2 client_credentials (MCP_SVC_*) and builds the right credential surface', async () => {
+  it('detects generic OAuth2 client_credentials (MCP_SVC_*) and emits NO env-derived credential props (Epic 16: extends oAuth2Api)', async () => {
     // The generator generalized the hardcoded OKTA_* trio to a provider-agnostic
-    // MCP_SVC_* set. detectAuthStyle must recognize MCP_SVC_TOKEN_URL and the
-    // credential form must expose the four auth vars — never the introspect URL
-    // (inbound bearer validation) or transport config.
+    // MCP_SVC_* set. detectAuthStyle must recognize MCP_SVC_TOKEN_URL. Epic 16: the
+    // credential now extends n8n's oAuth2Api, so Client ID / Client Secret / Access
+    // Token URL / Scope come from the base type — build-node-spec emits an EMPTY
+    // credentials list (no mcpSvc* custom props), and never the introspect URL or
+    // transport config.
     const { repoRoot, packageDir, cleanup } = await setupFixture({
       mcpName: 'multi-tool',
       envVars: [
@@ -321,20 +323,13 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       });
 
       expect(spec.authStyle).toBe('oauth2-client-credentials');
-      expect(spec.credentials.map((c) => c.envName).sort()).toEqual([
-        'MCP_SVC_CLIENT_ID', 'MCP_SVC_CLIENT_SECRET', 'MCP_SVC_SCOPE', 'MCP_SVC_TOKEN_URL',
-      ]);
-      // camelCase prop names the template reads (creds.mcpSvc*).
-      expect(spec.credentials.map((c) => c.propName).sort()).toEqual([
-        'mcpSvcClientId', 'mcpSvcClientSecret', 'mcpSvcScope', 'mcpSvcTokenUrl',
-      ]);
-      const secret = spec.credentials.find((c) => c.envName === 'MCP_SVC_CLIENT_SECRET')!;
-      expect(secret.isSecret).toBe(true);
-      expect(secret.displayName).toBe('Client Secret');
-      expect(spec.credentials.find((c) => c.envName === 'MCP_SVC_TOKEN_URL')!.displayName).toBe('OAuth Token URL');
-      // Introspect URL is server config (inbound), not a node credential; transport too.
-      expect(spec.credentials.some((c) => c.envName === 'MCP_SVC_INTROSPECT_URL')).toBe(false);
-      expect(spec.credentials.some((c) => c.envName === 'MCP_HTTP_HOST')).toBe(false);
+      // Epic 16: no env-derived credential props — the oAuth2Api base owns the OAuth
+      // fields; the template renders only baseUrl + hidden grantType/authentication.
+      expect(spec.credentials).toEqual([]);
+      // Epic 16: OAuth2 credentials must follow n8n's naming convention
+      // (@n8n/community-nodes/cred-class-oauth2-naming) or the linter rejects them.
+      expect(spec.credentialClassName).toMatch(/OAuth2Api$/);
+      expect(spec.credentialParamName).toContain('OAuth2');
     } finally {
       await cleanup();
     }

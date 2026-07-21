@@ -357,3 +357,50 @@ describe('generateN8nNode', () => {
     await expect(fs.stat(stale)).rejects.toThrow();
   });
 });
+
+// Story 16.1/16.2 (Epic 16): the service-account (oauth2-client-credentials) style
+// adopts n8n's native oAuth2Api instead of fetching a token by hand.
+describe('generateN8nNode — oauth2-client-credentials → native oAuth2Api (Epic 16)', () => {
+  let outputDir: string;
+  beforeEach(async () => {
+    outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-gen-oauth-'));
+  });
+  afterEach(async () => {
+    await fs.rm(outputDir, { recursive: true, force: true });
+  });
+
+  function oauthSpec(): N8nNodeSpec {
+    // build-node-spec emits NO env-derived credential props for this style;
+    // clientId/clientSecret/accessTokenUrl/scope come from the oAuth2Api base.
+    return { ...sampleSpec(), authStyle: 'oauth2-client-credentials', credentials: [], defaultApiBaseUrl: 'https://api.example.com' };
+  }
+
+  it('AC1: credential extends oAuth2Api with clientCredentials, keeps baseUrl, drops mcpSvc* and the manual test block', async () => {
+    await generateN8nNode({ spec: oauthSpec(), outputDir });
+    const cred = await fs.readFile(
+      path.join(outputDir, 'credentials', 'MultiToolApi.credentials.ts'),
+      'utf8',
+    );
+    expect(cred).toContain("extends = ['oAuth2Api']");
+    expect(cred).toContain("name: 'grantType'");
+    expect(cred).toContain("default: 'clientCredentials'");
+    expect(cred).toMatch(/name: 'authentication'[\s\S]*?default: 'body'/);
+    expect(cred).toContain("name: 'baseUrl'");
+    // No leaked service-config props; no hand-rolled token-endpoint test.
+    expect(cred).not.toContain('mcpSvc');
+    expect(cred).not.toContain('ICredentialTestRequest');
+  });
+
+  it('AC2: node routes REST calls through httpRequestWithAuthentication and has no manual token fetch', async () => {
+    await generateN8nNode({ spec: oauthSpec(), outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).toContain('httpRequestWithAuthentication');
+    expect(node).toContain("'multiToolApi'");
+    // The manual client_credentials grant and the bearer header are gone.
+    expect(node).not.toContain("grant_type: 'client_credentials'");
+    expect(node).not.toContain('mcpSvcTokenUrl');
+  });
+});

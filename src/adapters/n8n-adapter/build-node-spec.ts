@@ -228,6 +228,11 @@ function envToCamelCase(envName: string): string {
 }
 
 function buildCredentials(server: ServerJsonShape, authStyle: AuthStyle): N8nCredentialField[] {
+  // Epic 16: the oauth2-client-credentials credential extends n8n's oAuth2Api, which
+  // supplies Client ID / Client Secret / Access Token URL / Scope from the base type.
+  // No env-derived custom props are emitted (the template renders only baseUrl + the
+  // hidden grantType/authentication), so there is nothing to build here.
+  if (authStyle === 'oauth2-client-credentials') return [];
   const declared = new Map(
     (server.packages?.[0]?.environmentVariables ?? []).map((v) => [v.name, v]),
   );
@@ -1143,8 +1148,12 @@ export async function buildN8nNodeSpec(
   const className = toPascalCase(bareTargetName);
   const resourceLabel = toTitleCase(bareTargetName);
   const paramName = className.charAt(0).toLowerCase() + className.slice(1);
-  const credentialClassName = `${className}Api`;
-  const credentialParamName = `${paramName}Api`;
+  // Epic 16: n8n's linter requires OAuth2 credentials (extends oAuth2Api) to follow the
+  // `<Name>OAuth2Api` naming convention — class ends with 'OAuth2Api', and the `name`/
+  // `displayName` fields contain 'OAuth2' (@n8n/community-nodes/cred-class-oauth2-naming).
+  const credSuffix = authStyle === 'oauth2-client-credentials' ? 'OAuth2Api' : 'Api';
+  const credentialClassName = `${className}${credSuffix}`;
+  const credentialParamName = `${paramName}${credSuffix}`;
 
   const rawMcpPkgName = distribution.npm_package_name;
   const fullMcpPackageName = rawMcpPkgName.startsWith('@')
