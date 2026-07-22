@@ -11,14 +11,14 @@
 - [x] **Active Development**: Latest release v{{version}}; main branch actively maintained
 - [x] **Docker Artifact**: Multi-stage Dockerfile published as `{{docker_image_name}}:{{version}}`
 - [x] **Documentation**: README + per-client install blocks + ONBOARDING docs
-- [x] **Security Contact**: security@gdigital.com (referenced in repo SECURITY.md)
+- [x] **Security Contact**: g-digital@garrigues.com (referenced in repo SECURITY.md)
 
 ## Submitter Checklist
 
 - [x] This server meets the basic requirements listed above
 - [x] I understand this will undergo automated and manual review
-- [x] I have tested the MCP Server using `task validate -- --name {{mcp_name}}`
-- [x] I have built the MCP Server using `task build -- --tools {{mcp_name}}`
+- [x] This server passes our release CI (TypeScript build, linter, and the n8n UX compliance gate) and its `server.yaml` is generated against Docker's schema
+- [x] The Docker image `{{docker_image_name}}:{{version}}` is built (multi-stage) and pushed to Docker Hub with build provenance
 - [x] Test credentials shared via [this form](https://forms.gle/6Lw3nsvu2d6nFg8e6)
 
 ## Additional Details

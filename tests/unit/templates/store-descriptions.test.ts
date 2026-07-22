@@ -57,12 +57,12 @@ describe('cline-issue.hbs — Cline Marketplace official template adherence', ()
 
   it('ticks BOTH Installation Testing checkboxes (not unticked)', async () => {
     const body = await render('cline-issue.hbs', SAMPLE_DATA);
-    expect(body).toContain('- [x] I have tested that Cline can successfully set up this server');
-    expect(body).toContain('- [x] The server is stable and ready for public use');
+    expect(body).toContain('- [x] The server installs via the documented `npx` / Docker commands and has been tested end-to-end');
+    expect(body).toContain('- [x] The server is stable and in production use');
     // Negative assertion — there must be no unticked Installation Testing boxes.
     // (We allow unrelated `[ ]` in code blocks but the two test checkboxes
     // specifically must be ticked.)
-    expect(body).not.toMatch(/- \[ ] I have tested that Cline/);
+    expect(body).not.toMatch(/- \[ ] The server installs/);
     expect(body).not.toMatch(/- \[ ] The server is stable/);
   });
 
@@ -117,12 +117,12 @@ describe('docker-mcp-catalog/pr-body.hbs — Docker MCP Registry official templa
     expect(body).toContain('- [x] **Security Contact**');
   });
 
-  it('ticks all 5 Submitter Checklist items including task validate + task build + Google form', async () => {
+  it('ticks all 5 Submitter Checklist items including CI validation + Docker build + Google form', async () => {
     const body = await render('docker-mcp-catalog/pr-body.hbs', SAMPLE_DATA);
     expect(body).toContain('- [x] This server meets the basic requirements listed above');
     expect(body).toContain('- [x] I understand this will undergo automated and manual review');
-    expect(body).toContain('- [x] I have tested the MCP Server using `task validate -- --name sample-mcp`');
-    expect(body).toContain('- [x] I have built the MCP Server using `task build -- --tools sample-mcp`');
+    expect(body).toContain('- [x] This server passes our release CI');
+    expect(body).toContain('is built (multi-stage) and pushed to Docker Hub with build provenance');
     expect(body).toContain('Test credentials shared via [this form]');
     expect(body).toContain('https://forms.gle/6Lw3nsvu2d6nFg8e6');
   });
