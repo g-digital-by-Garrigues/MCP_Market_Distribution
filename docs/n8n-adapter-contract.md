@@ -47,6 +47,16 @@ Each rule maps 1:1 to a real n8n Cloud verification rejection. Source: <https://
 4. **No dead chat code / copy.** A node without `chat_*` operations must not ship chat handling or advertise "certified chats" in its README. Gated by `spec.hasChat`.
 5. **Label casing.** Field labels use `IDs` (not `IDS`); operation labels are verb-first (`Create Case File`, not `Case File Create`). Both are produced automatically by the pipeline.
 
+## Which scanner version the `official_linter` gate runs
+
+**Always `latest`.** `package.json` declares `"@n8n/scan-community-package": "latest"` on purpose — the gate exists to predict the n8n Creator Portal's verdict, so it tracks whatever n8n publishes as stable rather than a version we pinned once and forgot. Do not pin it back to an exact version without a reason written here.
+
+Consequences to keep in mind:
+
+- **Do not read `beta` results as the portal's verdict.** As of 2026-07-22 the tags are `latest`/`stable` = `0.27.1` and `beta` = `0.29.1`. They behave very differently, and only the first is what n8n ships as stable.
+- **A floating dependency means the module's shape can change under us.** `SOURCE_FILE_PATTERNS` only exists from 0.29.x; both consumers (`run-track-b-layer-1.ts` and `normalize-generated-node.ts`) must therefore treat it as optional and fall back to `SOURCE_FILE_PATTERNS_FALLBACK`. Spreading the missing export threw `sourceFilePatterns is not iterable` and took the gate down. Same care applies to any other export or signature: `analyzePackage` gained a second parameter in 0.29.x, which is safe only because it is defaulted.
+- **Scanning a published tarball is NOT equivalent to scanning a source tree.** Up to 0.28.x the scanner globs `.ts`/`.d.ts`, and our tarballs ship only compiled `.js` (`files: ["dist"]`) — so `npx @n8n/scan-community-package <our-package>` matches nothing, every AST rule no-ops, and it reports a **false green** (it passed `ead-factory@1.2.1`, which had 96 real violations). The gate is unaffected because it scans the *generated source dir*, where the `.ts` globs match: verified on that same 1.2.1 tree, 0.27.1 reports 98 violations. When you want to check a *published* package, use 0.29.x, which resolves the npm provenance back to the GitHub source and lints that.
+
 ## Generator obligations (the 3 things we can't infer)
 
 When adding or regenerating a tool in the generator, ensure:

@@ -1,5 +1,6 @@
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
+import { SOURCE_FILE_PATTERNS_FALLBACK } from './scanner-source-file-patterns.js';
 
 // Story 15.3 (Epic 15, FR60): bring generated copy in line with n8n's presentation
 // rules before the linter gate ever sees it.
@@ -44,10 +45,12 @@ export async function normalizeGeneratedNode(nodeDir: string): Promise<Normalize
   try {
     const mod = (await import('@n8n/scan-community-package/scanner/scanner.mjs' as string)) as {
       buildScanConfig: typeof buildScanConfig;
-      SOURCE_FILE_PATTERNS: readonly string[];
+      SOURCE_FILE_PATTERNS?: readonly string[];
     };
     buildScanConfig = mod.buildScanConfig;
-    sourceFilePatterns = mod.SOURCE_FILE_PATTERNS;
+    // Absent below 0.29.x, and the dependency floats on `latest` — see the fallback's
+    // own docs. Spreading `undefined` here threw `sourceFilePatterns is not iterable`.
+    sourceFilePatterns = mod.SOURCE_FILE_PATTERNS ?? SOURCE_FILE_PATTERNS_FALLBACK;
   } catch (err) {
     return {
       filesFixed: [],

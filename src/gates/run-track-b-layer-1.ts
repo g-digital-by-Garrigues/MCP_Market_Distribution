@@ -4,6 +4,7 @@ import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import type { ErrorReport } from '../schemas/error-report.schema.js';
 import type { N8nNodeSpec } from '../adapters/n8n-adapter/types.js';
+import { SOURCE_FILE_PATTERNS_FALLBACK } from '../adapters/n8n-adapter/scanner-source-file-patterns.js';
 
 // Story 5.2: Track B — Layer 1 (structural lint).
 //
@@ -482,14 +483,17 @@ async function checkLanguage(opts: RunTrackBLayer1Options): Promise<TrackBLayer1
 // Deviations live ONLY here, named, with a reason. Anything not on this list blocks.
 const LINTER_RULE_ALLOWLIST: ReadonlyMap<string, string> = new Map([
   [
-    'n8n-nodes-base/node-class-description-icon-not-svg',
-    'We ship a PNG icon and have no SVG artwork. The rule is advisory ("Try to use an SVG icon") and the approved, live v1.4.2 ships PNG — the reviewers never raised it. Revisit if artwork is ever produced.',
-  ],
-  [
     '@n8n/community-nodes/icon-prefer-themed-variants',
-    'Light/dark icon variants need artwork we do not have. Reported by the scanner as a warning, which does not fail it anyway.',
+    'Light/dark icon variants need a second asset and a `.distribution.yaml` field to point at it, and that field is the generator\'s to emit. Reported by the scanner as a warning, which does not fail it anyway. Drop this entry once the themed pair is wired end to end.',
   ],
 ]);
+
+// `n8n-nodes-base/node-class-description-icon-not-svg` used to be allowlisted here,
+// on the grounds that we shipped PNG and had no SVG artwork. Both halves stopped
+// being true on 2026-07-22: every product now ships `icon.svg` (Epic 17 / P3). An
+// allowlist entry no longer needed is not harmless — it would let a silent
+// regression back to PNG through the gate, which is exactly what the n8n reviewers
+// rejected gocertius and ead-enterprise-suite for.
 
 /**
  * Rule id is the trailing token of a `stylish` violation line; severity is the token
@@ -527,7 +531,12 @@ async function checkOfficialLinter(
       SOURCE_FILE_PATTERNS?: readonly string[];
     };
     analyzePackage = m.analyzePackage;
-    sourceFilePatterns = m.SOURCE_FILE_PATTERNS;
+    // The dependency floats on `latest` (see package.json), so the export may or may
+    // not be there: SOURCE_FILE_PATTERNS only appears from 0.29.x. On the versions
+    // that lack it, fall back to the same literal rather than to analyzePackage's
+    // broader default — the intent is to mirror the reviewers' file set at EVERY
+    // scanner version, not only the ones that hand it to us.
+    sourceFilePatterns = m.SOURCE_FILE_PATTERNS ?? SOURCE_FILE_PATTERNS_FALLBACK;
   } catch (err) {
     return {
       name: 'official_linter',
