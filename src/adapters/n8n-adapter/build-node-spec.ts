@@ -1195,7 +1195,16 @@ export async function buildN8nNodeSpec(
     defaultApiBaseUrl,
     // authStyle drives both the credential allowlist and the execute() token flow.
     authStyle,
-    ...(distribution.logo_path ? { iconBundled: true } : {}),
+    // n8n review (2026-07): prefer an SVG when generation provides one via the
+    // n8n-only logo_svg_path (kept separate from logo_path so mcpb/smithery keep
+    // their PNG — see the schema comment). The node then ships icon.svg and the
+    // templates emit file:icon.svg; otherwise it falls back to logo_path (icon.png).
+    ...(distribution.logo_svg_path || distribution.logo_path
+      ? {
+          iconBundled: true,
+          iconFile: distribution.logo_svg_path ? 'icon.svg' : 'icon.png',
+        }
+      : {}),
     ...(computedResources ? { resources: computedResources } : {}),
     ...(autoIdOutputFields.length > 0 ? { autoIdOutputFields } : {}),
     ...(optionalDefaults.length > 0 ? { optionalDefaults } : {}),

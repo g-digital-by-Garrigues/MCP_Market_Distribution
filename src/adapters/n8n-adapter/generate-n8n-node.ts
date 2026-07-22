@@ -144,22 +144,23 @@ export async function generateN8nNode(opts: GenerateN8nNodeOptions): Promise<Gen
 
   const filesWritten = writes.map((w) => w.rel);
 
-  // Icon: copy the source MCP's logo to nodes/<Class>/icon.png so
-  // n8n's `description.icon = 'file:icon.png'` resolves at runtime.
-  // We always normalise the destination filename to `icon.png`
-  // regardless of how the source named its logo, so the manifest
-  // reference is deterministic. Best-effort: when sourceLogoAbsPath
-  // is unset OR the source file is missing, we silently skip — the
-  // template falls back to no-icon and n8n shows the generic box
-  // (still functional, just less branded).
+  // Icon: copy the source MCP's logo to nodes/<Class>/icon.<ext> so
+  // n8n's `description.icon = 'file:icon.<ext>'` resolves at runtime.
+  // We normalise the destination filename to `spec.iconFile` (icon.png or
+  // icon.svg — n8n review 2026-07 prefers SVG), so the manifest reference is
+  // deterministic and matches what the templates emit. Best-effort: when
+  // sourceLogoAbsPath is unset OR the source file is missing, we silently skip —
+  // the template falls back to no-icon and n8n shows the generic box (still
+  // functional, just less branded).
   // Story 15.2: the credential class needs its own `icon` too (the n8n linter's
   // cred-class-field-icon-missing / icon-validation), and n8n resolves a credential
   // icon relative to the credential file — so the logo is copied to BOTH places
   // rather than reached for across directories.
   if (spec.iconBundled && opts.sourceLogoAbsPath) {
+    const iconName = spec.iconFile ?? 'icon.png';
     const iconRels = [
-      path.posix.join('nodes', spec.className, 'icon.png'),
-      path.posix.join('credentials', 'icon.png'),
+      path.posix.join('nodes', spec.className, iconName),
+      path.posix.join('credentials', iconName),
     ];
     for (const iconRel of iconRels) {
       const iconAbs = path.join(outputDir, iconRel);
