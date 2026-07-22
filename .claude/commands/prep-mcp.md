@@ -26,8 +26,8 @@ You are the **g-digital MCP Distribution Pipeline Prep Agent**. Your job is to t
    8. Story 1.9: assemble the published README from the source README's markers.
    9. Story 1.10: ensure `package.json#files` includes the bundled Claude Code skills glob.
    10. Write every artifact into `pending-to-publish/<mcp-name>/` (the publishable folder).
-   11. Stage + commit the changes under `pending-to-publish/<mcp-name>/` (skipped with `--skip-commit`).
-   12. Story 1.11: create the annotated `v<semver>` tag at HEAD (skipped with `--skip-tag`).
+   11. Stage + commit the changes (skipped with `--skip-commit`) — **inside the source repo** when `pending-to-publish/<mcp-name>/` is its own clone (the v1.1 per-repo model), falling back to the pipeline repo for the v1.0 flat layout. Committing in the pipeline repo under v1.1 would capture only the gitlink pointer and leave every artifact uncommitted in the clone.
+   12. Story 1.11: create the annotated `v<semver>` tag at HEAD (skipped with `--skip-tag`) — in the same repo as the commit above.
 3. On success, the CLI prints a JSON result with `mcpName`, `version`, `artifacts`, `commitSha`, and `tagName`. Summarize that in the chat for the engineer in plain prose.
 4. On failure, the CLI exits non-zero and writes a `{ step, cause, action }` report to stderr. Surface the **action** line to the engineer verbatim as the next step.
 

@@ -296,10 +296,31 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
   }
 
   // Step 9: commit
+  //
+  // WHERE this commits matters, and it changed with the v1.1 per-repo model.
+  //
+  // Under v1.0 every MCP lived as plain files inside `pending-to-publish/` in THIS
+  // repo, so committing here captured the artifacts. Under v1.1 each MCP is its own
+  // source repo, cloned into `pending-to-publish/<mcp>` — so committing in the
+  // pipeline repo captures only the gitlink pointer (`pending-to-publish/<mcp> | 2 +-`)
+  // and leaves every regenerated artifact uncommitted in the clone. The tag then lands
+  // on a pipeline commit that publishes nothing, while the source repo — the one
+  // `publish.yml` clones at `v<version>` — never got the bump at all.
+  //
+  // So: commit (and tag) inside the source clone when there is one, and fall back to
+  // the pipeline repo for the v1.0-style layout that the tests still exercise.
+  const sourceIsOwnRepo = await fs
+    .stat(path.join(mcpFolder, '.git'))
+    .then(() => true)
+    .catch(() => false);
+  const commitRoot = sourceIsOwnRepo ? mcpFolder : repoRoot;
+
   let commitSha: string | null = null;
   if (!skipCommit) {
-    const stagePaths = [path.join('pending-to-publish', mcpName)];
-    const add = gitInRepo(repoRoot, ['add', '--', ...stagePaths]);
+    // In its own repo everything under the clone is the release; in the v1.0 layout
+    // only this MCP's folder is.
+    const stagePaths = sourceIsOwnRepo ? ['.'] : [path.join('pending-to-publish', mcpName)];
+    const add = gitInRepo(commitRoot, ['add', '--', ...stagePaths]);
     if (add.status !== 0) {
       throw new PrepMcpError(
         'commit',
@@ -307,12 +328,12 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
         'Resolve git state (e.g., conflicts, missing repo) and re-run /prep-mcp.',
       );
     }
-    const statusOut = gitInRepo(repoRoot, ['status', '--porcelain', '--', ...stagePaths]);
+    const statusOut = gitInRepo(commitRoot, ['status', '--porcelain', '--', ...stagePaths]);
     if (statusOut.stdout.trim().length === 0) {
       // No changes to commit — artifacts already match disk, treat as success-no-op
     } else {
       const summary = `chore(${mcpName}): prep v${version} artifacts\n\n${artifacts.map((a) => `- ${a.relativePath} (${a.bytes} bytes)`).join('\n')}\n`;
-      const commit = gitInRepo(repoRoot, ['commit', '--file=-'], summary);
+      const commit = gitInRepo(commitRoot, ['commit', '--file=-'], summary);
       if (commit.status !== 0) {
         throw new PrepMcpError(
           'commit',
@@ -320,7 +341,7 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
           'Resolve git state and re-run /prep-mcp.',
         );
       }
-      const revparse = gitInRepo(repoRoot, ['rev-parse', 'HEAD']);
+      const revparse = gitInRepo(commitRoot, ['rev-parse', 'HEAD']);
       commitSha = revparse.stdout.trim() || null;
     }
   }
@@ -331,7 +352,7 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
     const result = createReleaseTag({
       version,
       summaryLines: artifacts.map((a) => a.relativePath),
-      cwd: repoRoot,
+      cwd: commitRoot,
     });
     tagName = result.tagName;
   }

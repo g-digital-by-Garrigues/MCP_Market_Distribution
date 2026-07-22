@@ -78,6 +78,23 @@ This regenerates atomically:
 
 **Why this is non-negotiable:** every artifact must declare the same version. Manual bumps that touch only `package.json` will publish to npm fine but fail (silently in some cases) at the MCP Registry, Smithery, or n8n.
 
+### 2b. Trust `origin/main` only after checking the clone's refspec
+
+A clone made at a tag (`git clone --branch v1.0.0 --single-branch`) keeps a **narrowed fetch refspec**, so `git fetch origin` never updates `refs/remotes/origin/main` — it stays frozen at whatever the clone started from, silently, forever. On 2026-07-22 `pending-to-publish/{gocertius,ead-enterprise-suite}` were in exactly that state: `git reset --hard origin/main` threw both trees back to an ancient commit (`package.json` still 1.0.0) and produced release tags pointing at the wrong commit. Caught before pushing, by luck.
+
+```bash
+git config --get remote.origin.fetch
+#   Good: +refs/heads/*:refs/remotes/origin/*
+#   Bad:  +refs/tags/v1.0.0:...   or   +refs/heads/main:...   (narrowed)
+
+# Repair, then re-sync:
+git config remote.origin.fetch '+refs/heads/*:refs/remotes/origin/*'
+git fetch origin --prune
+
+# Belt and braces — the local ref must match the remote:
+[ "$(git rev-parse origin/main)" = "$(git ls-remote origin refs/heads/main | cut -f1)" ] && echo OK
+```
+
 ### 3. Inspect the diff and commit
 
 ```bash
