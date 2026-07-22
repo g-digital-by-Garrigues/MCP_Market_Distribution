@@ -30,6 +30,9 @@ function sampleSpec(): N8nNodeSpec {
     // iconBundled unset generates a node the official linter rejects, which is the
     // gate working, not a fixture quirk.
     iconBundled: true,
+    // Every product ships SVG since Epic 17 / P3, and `node-class-description-icon-not-svg`
+    // is no longer allowlisted in the gate — a PNG fixture would now (correctly) fail.
+    iconFile: 'icon.svg',
     defaultApiBaseUrl: '',
     credentialAcquisitionUrl: '',
     operations: [
@@ -66,7 +69,13 @@ function sampleSpec(): N8nNodeSpec {
   };
 }
 
-/** Smallest valid PNG — stands in for the product logo the real builds copy in. */
+/** Minimal valid SVG — stands in for the product logo the real builds copy in. */
+const TINY_SVG = Buffer.from(
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1"><rect width="1" height="1"/></svg>\n',
+  'utf8',
+);
+
+/** Smallest valid PNG — used only to prove the gate now rejects a raster icon. */
 const ONE_PX_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
   'base64',
@@ -97,8 +106,8 @@ describe('Track B — Layer 1 (structural lint)', () => {
   let logoPath: string;
   beforeEach(async () => {
     nodeDir = await fs.mkdtemp(path.join(os.tmpdir(), 'track-b-l1-'));
-    logoPath = path.join(nodeDir, '..', `logo-${path.basename(nodeDir)}.png`);
-    await fs.writeFile(logoPath, ONE_PX_PNG);
+    logoPath = path.join(nodeDir, '..', `logo-${path.basename(nodeDir)}.svg`);
+    await fs.writeFile(logoPath, TINY_SVG);
   });
   afterEach(async () => {
     await fs.rm(nodeDir, { recursive: true, force: true });
@@ -120,6 +129,31 @@ describe('Track B — Layer 1 (structural lint)', () => {
     expect(result.errors).toEqual([]);
     expect(result.checks.every((c) => c.passed)).toBe(true);
     expect(result.log.event).toBe('gate.track_b_layer_1_passed');
+  });
+
+  it('BLOCKS a raster icon — node-class-description-icon-not-svg is no longer allowlisted', async () => {
+    // The allowlist used to tolerate this rule ("we ship PNG and have no SVG artwork").
+    // Both halves stopped being true on 2026-07-22, and a stale entry is not harmless:
+    // shipping PNG is precisely what got gocertius and ead-enterprise-suite bounced by
+    // the n8n reviewers. Prove the gate now catches a regression back to raster.
+    const pngLogo = path.join(nodeDir, '..', `logo-raster-${path.basename(nodeDir)}.png`);
+    await fs.writeFile(pngLogo, ONE_PX_PNG);
+    try {
+      const spec = { ...sampleSpec(), iconFile: 'icon.png' };
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: pngLogo });
+      const result = await withProductionNodeEnv(async () => {
+        await normalizeGeneratedNode(nodeDir);
+        return runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
+      });
+      const linter = result.checks.find((c) => c.name === 'official_linter');
+      expect(linter?.passed).toBe(false);
+      expect(linter?.error?.observation ?? '').toContain(
+        'n8n-nodes-base/node-class-description-icon-not-svg',
+      );
+      expect(result.passed).toBe(false);
+    } finally {
+      await fs.rm(pngLogo, { force: true });
+    }
   });
 
   it('runs the official linter when handed a RELATIVE nodeDir (the pipeline always does)', async () => {

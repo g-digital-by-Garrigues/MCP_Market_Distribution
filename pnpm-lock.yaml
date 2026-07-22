@@ -12,8 +12,8 @@ importers:
         specifier: ^1.12.1
         version: 1.29.0(zod@3.25.76)
       '@n8n/scan-community-package':
-        specifier: 0.28.1
-        version: 0.28.1(n8n-workflow@2.16.0)
+        specifier: latest
+        version: 0.27.1(n8n-workflow@2.16.0)
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -454,8 +454,8 @@ packages:
   '@n8n/errors@0.6.0':
     resolution: {integrity: sha512-oVJ0lgRYJY6/aPOW2h37ea5T+nX7/wULRn5FymwYeaiYlsLdqwIQEtGwZrajpzxJB0Os74u4lSH3WWQgZCkgxQ==}
 
-  '@n8n/eslint-plugin-community-nodes@0.24.0':
-    resolution: {integrity: sha512-6iMlxbSOLPezEX4VrtG07ULOGSLGCEnU/cD+fdkToweWAvi+LNW40KvYbSJ6aNbODfH8ur+kF/NZOfyDW41/fg==}
+  '@n8n/eslint-plugin-community-nodes@0.25.0':
+    resolution: {integrity: sha512-qSOrldDCeZmV1eOds/SWqbS/YMyjZrnRRJI1/VDxBU7aa+Jk2jO4DkKp7R5hvhjRH3CosQ0+hW/4WP1xxxuWPw==}
     peerDependencies:
       eslint: 9.29.0
       n8n-workflow: '>=2'
@@ -463,8 +463,8 @@ packages:
   '@n8n/expression-runtime@0.8.0':
     resolution: {integrity: sha512-SnBLoLsrGUCS9cVrF20UuSyKcMv+y6Clc4+EA9zLjX85S0GPwOAdApUVSsi81ejPAqMlm42TW1L6r7NpcK/ztQ==}
 
-  '@n8n/scan-community-package@0.28.1':
-    resolution: {integrity: sha512-xqQES9mj0SYv3fOpG9Ofr26305WJ+WhzTPj6kJQKqeofXS6XIxtwc5SpDkC8LR4dGWMzPGtb+7HTjYrJSzkHQQ==}
+  '@n8n/scan-community-package@0.27.1':
+    resolution: {integrity: sha512-HgU6Bwb4nhh+NOJQwE9/1olGsHQhp4STTfGE8JspGAeXziHBREHwNFswOzA6I+xKVztqsVAoIIP6jg2zKPtXXQ==}
     hasBin: true
 
   '@n8n/tournament@1.0.6':
@@ -1082,8 +1082,8 @@ packages:
   fast-deep-equal@3.1.3:
     resolution: {integrity: sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==}
 
-  fast-glob@3.2.12:
-    resolution: {integrity: sha512-DVj4CQIYYow0BlaelwK1pHl5n5cRSJfM60UA0zK891sVInoPri2Ekj7+e1CT3/3qxXenpI+nBBmQAcJPJgaj4w==}
+  fast-glob@3.3.3:
+    resolution: {integrity: sha512-7MptL8U0cqcFdzIzwOTHoilX9x5BrNqye7Z/LuC7kCMRio1EMSyqRK3BEAUD7sXRq4iT4AzTVuZdhgQ2TCvYLg==}
     engines: {node: '>=8.6.0'}
 
   fast-json-stable-stringify@2.1.0:
@@ -2251,7 +2251,7 @@ snapshots:
     dependencies:
       callsites: 3.1.0
 
-  '@n8n/eslint-plugin-community-nodes@0.24.0(eslint@9.29.0)(n8n-workflow@2.16.0)(typescript@6.0.2)':
+  '@n8n/eslint-plugin-community-nodes@0.25.0(eslint@9.29.0)(n8n-workflow@2.16.0)(typescript@6.0.2)':
     dependencies:
       '@typescript-eslint/typescript-estree': 8.59.2(typescript@6.0.2)
       '@typescript-eslint/utils': 8.59.2(eslint@9.29.0)(typescript@6.0.2)
@@ -2274,14 +2274,14 @@ snapshots:
       title-case: 3.0.3
       transliteration: 2.3.5
 
-  '@n8n/scan-community-package@0.28.1(n8n-workflow@2.16.0)':
+  '@n8n/scan-community-package@0.27.1(n8n-workflow@2.16.0)':
     dependencies:
-      '@n8n/eslint-plugin-community-nodes': 0.24.0(eslint@9.29.0)(n8n-workflow@2.16.0)(typescript@6.0.2)
+      '@n8n/eslint-plugin-community-nodes': 0.25.0(eslint@9.29.0)(n8n-workflow@2.16.0)(typescript@6.0.2)
       '@typescript-eslint/parser': 8.59.2(eslint@9.29.0)(typescript@6.0.2)
       axios: 1.18.0
       eslint: 9.29.0
       eslint-plugin-n8n-nodes-base: 1.16.7(eslint@9.29.0)(typescript@6.0.2)
-      fast-glob: 3.2.12
+      fast-glob: 3.3.3
       semver: 7.7.3
       tmp: 0.2.4
       typescript: 6.0.2
@@ -3071,7 +3071,7 @@ snapshots:
 
   fast-deep-equal@3.1.3: {}
 
-  fast-glob@3.2.12:
+  fast-glob@3.3.3:
     dependencies:
       '@nodelib/fs.stat': 2.0.5
       '@nodelib/fs.walk': 1.2.8
@@ -3137,7 +3137,7 @@ snapshots:
       asynckit: 0.4.0
       combined-stream: 1.0.8
       es-set-tostringtag: 2.1.0
-      hasown: 2.0.3
+      hasown: 2.0.4
       mime-types: 2.1.35
 
   form-data@4.0.6:
@@ -3303,7 +3303,7 @@ snapshots:
       call-bound: 1.0.4
       gopd: 1.2.0
       has-tostringtag: 1.0.2
-      hasown: 2.0.3
+      hasown: 2.0.4
 
   is-typed-array@1.1.15:
     dependencies:
