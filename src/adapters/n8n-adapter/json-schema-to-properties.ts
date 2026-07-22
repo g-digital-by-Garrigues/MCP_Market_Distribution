@@ -234,7 +234,17 @@ export function jsonSchemaToProperties(
     // UUID v4 for empty 'id' on _create/_add ops, and a required+empty field otherwise
     // raises "workflow has issues" and blocks execution.
     if (required.has(name) && name !== 'id') prop.required = true;
-    if (options) prop.options = options;
+    if (options) {
+      // n8n review (2026-07): option arrays must be alphabetical by display name
+      // (@n8n/community-nodes/options-sorted-alphabetically / node-param-options-type-
+      // unsorted-items). This mirrors Story 15.3 (FR60), which sorts the Resource/
+      // Operation dropdowns in build-node-spec — here we extend it to every enum
+      // property's own options, including those that end up under Additional Fields.
+      // Sort AFTER `default` is computed above (from the UNSORTED options[0]) so a
+      // field with no explicit schema default keeps its original first-enum value
+      // rather than silently drifting to the new alphabetical head.
+      prop.options = [...options].sort((a, b) => a.name.localeCompare(b.name, 'en'));
+    }
 
     if (type === 'number') {
       const constraints: NonNullable<N8nProperty['numberConstraints']> = {};

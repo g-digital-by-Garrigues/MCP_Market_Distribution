@@ -151,8 +151,12 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
   let sourceLogoAbsPath: string | undefined;
   if (refinement.spec.iconBundled) {
     const distribution = await loadDistributionConfig(repoRoot, opts.mcpName);
-    if (distribution.logo_path) {
-      sourceLogoAbsPath = path.resolve(packageDir, distribution.logo_path);
+    // n8n review (2026-07): prefer the SVG (logo_svg_path) when generation ships one;
+    // fall back to logo_path (PNG). The destination name is spec.iconFile, kept in
+    // sync by build-node-spec. mcpb/smithery still copy logo_path (PNG) themselves.
+    const logoRel = distribution.logo_svg_path ?? distribution.logo_path;
+    if (logoRel) {
+      sourceLogoAbsPath = path.resolve(packageDir, logoRel);
     }
   }
   await generateN8nNode({

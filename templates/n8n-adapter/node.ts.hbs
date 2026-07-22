@@ -32,7 +32,7 @@ export class {{className}} implements INodeType {
     name: '{{paramName}}',
     group: ['transform'],
     version: 1,{{#if iconBundled}}
-    icon: 'file:icon.png',{{/if}}
+    icon: 'file:{{#if iconFile}}{{iconFile}}{{else}}icon.png{{/if}}',{{/if}}
     usableAsTool: true,
     description: {{json description}},
     subtitle: '=\{{$parameter["operation"]}}',

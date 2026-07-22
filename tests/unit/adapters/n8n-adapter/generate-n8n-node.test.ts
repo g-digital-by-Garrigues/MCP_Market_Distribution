@@ -175,8 +175,35 @@ describe('generateN8nNode', () => {
     // `file:icon.png` resolver looks for it post-install.
     expect(pkg.scripts.build).toContain('copyfiles');
     expect(pkg.scripts.build).toContain('nodes/**/*.png');
+    // n8n review 2026-07: SVG icons must also land in dist.
+    expect(pkg.scripts.build).toContain('nodes/**/*.svg');
+    expect(pkg.scripts.build).toContain('credentials/**/*.svg');
     expect(pkg.scripts.build).toContain('dist');
     expect(pkg.devDependencies.copyfiles).toBeDefined();
+  });
+
+  it("ships icon.svg (not icon.png) and emits file:icon.svg when iconFile is icon.svg (n8n review 2026-07)", async () => {
+    const tmpLogo = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-logo-svg-'));
+    const logoPath = path.join(tmpLogo, 'logo.svg');
+    await fs.writeFile(logoPath, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    try {
+      const spec = sampleSpec();
+      spec.iconBundled = true;
+      spec.iconFile = 'icon.svg';
+      const result = await generateN8nNode({ spec, outputDir, sourceLogoAbsPath: logoPath });
+      // Copied to BOTH the node and the credential dir under the svg name.
+      expect(result.filesWritten).toContain('nodes/MultiTool/icon.svg');
+      expect(result.filesWritten).toContain('credentials/icon.svg');
+      expect(result.filesWritten).not.toContain('nodes/MultiTool/icon.png');
+      // Templates reference the svg.
+      const node = await fs.readFile(path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'), 'utf8');
+      const cred = await fs.readFile(path.join(outputDir, 'credentials', 'MultiToolApi.credentials.ts'), 'utf8');
+      expect(node).toContain("icon: 'file:icon.svg'");
+      expect(node).not.toContain("icon: 'file:icon.png'");
+      expect(cred).toContain("icon = 'file:icon.svg' as const;");
+    } finally {
+      await fs.rm(tmpLogo, { recursive: true, force: true });
+    }
   });
 
   it('package.json has zero runtime deps (n8n Verified) and no source-MCP devDep (REST-direct, Epic 12)', async () => {
@@ -402,5 +429,62 @@ describe('generateN8nNode — oauth2-client-credentials → native oAuth2Api (Ep
     // The manual client_credentials grant and the bearer header are gone.
     expect(node).not.toContain("grant_type: 'client_credentials'");
     expect(node).not.toContain('mcpSvcTokenUrl');
+  });
+});
+
+describe('generateN8nNode — session-login-or-token credential imports (n8n review 2026-07)', () => {
+  let outputDir: string;
+  beforeEach(async () => {
+    outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-gen-session-'));
+  });
+  afterEach(async () => {
+    await fs.rm(outputDir, { recursive: true, force: true });
+  });
+
+  function sessionSpec(): N8nNodeSpec {
+    // gocertius / ead-enterprise-suite: the credential uses a PROGRAMMATIC test
+    // (testAuth in the node) — it renders NO declarative `test: ICredentialTestRequest`.
+    return {
+      ...sampleSpec(),
+      authStyle: 'session-login-or-token',
+      credentials: [
+        { envName: 'MCP_AUTH_USER_KEY', propName: 'userKey', displayName: 'User Key', isSecret: true },
+        { envName: 'MCP_AUTH_EMAIL', propName: 'email', displayName: 'Auth Email', isSecret: false },
+        { envName: 'MCP_AUTH_PASSWORD', propName: 'password', displayName: 'Auth Password', isSecret: true },
+      ],
+    };
+  }
+
+  it('does NOT import ICredentialTestRequest (no declarative test is rendered — testAuth is programmatic)', async () => {
+    await generateN8nNode({ spec: sessionSpec(), outputDir });
+    const cred = await fs.readFile(
+      path.join(outputDir, 'credentials', 'MultiToolApi.credentials.ts'),
+      'utf8',
+    );
+    // The n8n scanner flagged this as an unused IMPORT in v1.5.0/v1.6.0 — assert on
+    // the import statement itself, not comment mentions (the session-login-or-token
+    // comment legitimately names the type when explaining why there is no test).
+    const importBlock = cred.match(/import \{([\s\S]*?)\} from 'n8n-workflow';/)?.[1] ?? '';
+    expect(importBlock).not.toContain('ICredentialTestRequest');
+    // And there is genuinely no declarative test that would need it.
+    expect(cred).not.toMatch(/test:\s*ICredentialTestRequest/);
+    // The programmatic test lives in the node, wired via testedBy.
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).toContain('testAuth');
+  });
+
+  it('email-password still imports ICredentialTestRequest (it DOES render a declarative test)', async () => {
+    // Guards the other direction: the fix must not strip the import where it is used.
+    await generateN8nNode({ spec: sampleSpec(), outputDir }); // sampleSpec is email-password
+    const cred = await fs.readFile(
+      path.join(outputDir, 'credentials', 'MultiToolApi.credentials.ts'),
+      'utf8',
+    );
+    const importBlock = cred.match(/import \{([\s\S]*?)\} from 'n8n-workflow';/)?.[1] ?? '';
+    expect(importBlock).toContain('ICredentialTestRequest');
+    expect(cred).toMatch(/test:\s*ICredentialTestRequest/);
   });
 });
