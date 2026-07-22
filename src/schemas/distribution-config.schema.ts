@@ -73,6 +73,13 @@ export const distributionConfigSchema = z
     // match canonical target ids from src/schemas/target-ids.ts.
     skip_targets: z.array(z.string().min(1)).optional(),
     logo_path: z.string().min(1).optional(),
+    // n8n verified-community review (2026-07) asks for SVG icons over PNG. This is
+    // an n8n-ONLY, SVG-only pointer kept SEPARATE from logo_path on purpose: the
+    // .mcpb bundle (Claude Desktop) and Smithery copy logo_path into `icon.png` with
+    // a hardcoded .png name/manifest, so repointing logo_path at an .svg would ship a
+    // mislabelled icon there. When present, the n8n adapter prefers this SVG (shipping
+    // `icon.svg` + `icon: 'file:icon.svg'`); mcpb/smithery keep using logo_path (PNG).
+    logo_svg_path: z.string().min(1).optional(),
     bundled_skills: z.array(z.string().min(1)).optional(),
     // Story 13.3 (FR53): per-manager API base-path prefixes for MULTI-MANAGER
     // products (e.g. EAD Factory: { evidence: '/digital-trust', signature:

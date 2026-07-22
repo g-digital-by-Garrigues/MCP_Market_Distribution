@@ -224,15 +224,23 @@ export interface N8nNodeSpec {
    */
   author: { name: string; email: string };
   /**
-   * When set, the generator copies the source MCP's logo PNG into
-   * `<output>/nodes/<className>/icon.png` and emits
-   * `icon: 'file:icon.png'` on the node's description so the n8n
+   * When set, the generator copies the source MCP's logo into
+   * `<output>/nodes/<className>/icon.<ext>` and emits
+   * `icon: 'file:icon.<ext>'` on the node's description so the n8n
    * catalogue + workflow editor render the MCP's logo instead of a
    * generic box. Set from `.distribution.yaml#logo_path` by
    * `build-node-spec.ts`; left undefined when the source MCP ships no
    * logo.
    */
   iconBundled?: boolean;
+  /**
+   * Destination icon filename (`icon.png` or `icon.svg`), derived from the
+   * extension of `.distribution.yaml#logo_path`. n8n's verified-community review
+   * asks for SVG over PNG; when generation repoints `logo_path` at an `.svg`, the
+   * node ships `icon.svg` and the templates emit `file:icon.svg`. Defaults to
+   * `icon.png` (back-compat) when unset. Only meaningful alongside `iconBundled`.
+   */
+  iconFile?: string;
   /**
    * Default (production) API base URL, extracted from the source MCP's
    * session_login.ts fallback value. Used as the default in the credential

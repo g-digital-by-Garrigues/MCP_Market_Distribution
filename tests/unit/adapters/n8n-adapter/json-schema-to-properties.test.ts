@@ -73,12 +73,15 @@ describe('jsonSchemaToProperties', () => {
     };
     const { properties } = jsonSchemaToProperties(schema, { operationName: 'set_status' });
     expect(properties[0]?.type).toBe('options');
+    // Options are sorted alphabetically by display name (n8n review 2026-07 /
+    // @n8n/community-nodes/options-sorted-alphabetically): Active, Closed, Draft.
     expect(properties[0]?.options).toEqual([
-      { name: 'Draft', value: 'DRAFT' },
       { name: 'Active', value: 'ACTIVE' },
       { name: 'Closed', value: 'CLOSED' },
+      { name: 'Draft', value: 'DRAFT' },
     ]);
-    // Default lands on the first option.
+    // Default is preserved from the schema's FIRST enum value (DRAFT), not the
+    // alphabetical head — sorting the options never drifts the default.
     expect(properties[0]?.default).toBe('DRAFT');
   });
 
