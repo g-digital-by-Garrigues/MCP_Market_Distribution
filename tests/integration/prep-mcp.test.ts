@@ -166,4 +166,48 @@ describe('prepMcp orchestrator (integration)', () => {
       .trim();
     expect(tags).toBe('');
   });
+
+  it('v1.1 layout: commits and tags inside the SOURCE clone, not the pipeline repo', async () => {
+    // Under v1.1 each MCP is its own repo, cloned into pending-to-publish/<mcp>.
+    // Committing in the pipeline repo would capture only the gitlink pointer and leave
+    // every regenerated artifact uncommitted in the clone — the tag would then land on
+    // a pipeline commit that publishes nothing, while the source repo that publish.yml
+    // clones at v<version> never got the bump. That is what happened during the
+    // 2026-07-22 releases and forced --skip-commit plus manual commits.
+    const git = (args: string[], cwd: string) =>
+      spawnSync('git', args, { cwd, stdio: ['ignore', 'pipe', 'pipe'] });
+
+    // Turn the MCP folder into its own repo with its own initial commit.
+    git(['init', '-q', '-b', 'main'], fixture.mcpFolder);
+    git(['config', 'user.email', 'test@example.com'], fixture.mcpFolder);
+    git(['config', 'user.name', 'Test'], fixture.mcpFolder);
+    git(['add', '.'], fixture.mcpFolder);
+    git(['commit', '-q', '-m', 'source repo initial'], fixture.mcpFolder);
+
+    const pipelineHeadBefore = git(['rev-parse', 'HEAD'], fixture.repoRoot).stdout.toString().trim();
+
+    const result = await prepMcp({ mcpName: MCP_NAME, repoRoot: fixture.repoRoot });
+    expect(result.commitSha).not.toBeNull();
+    expect(result.tagName).toBe(`v${VERSION}`);
+
+    // The commit and the tag are in the source clone…
+    expect(git(['rev-parse', 'HEAD'], fixture.mcpFolder).stdout.toString().trim()).toBe(
+      result.commitSha,
+    );
+    expect(git(['tag', '-l'], fixture.mcpFolder).stdout.toString().trim()).toBe(`v${VERSION}`);
+
+    // …and the pipeline repo was left untouched: no new commit, no tag.
+    expect(git(['rev-parse', 'HEAD'], fixture.repoRoot).stdout.toString().trim()).toBe(
+      pipelineHeadBefore,
+    );
+    expect(git(['tag', '-l'], fixture.repoRoot).stdout.toString().trim()).toBe('');
+
+    // And the artifacts themselves are committed, not just a pointer.
+    const committed = git(
+      ['show', '--name-only', '--pretty=format:', 'HEAD'],
+      fixture.mcpFolder,
+    ).stdout.toString();
+    expect(committed).toContain('server.json');
+    expect(committed).toContain('smithery.yaml');
+  });
 });
