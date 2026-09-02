@@ -21,6 +21,31 @@ const validConfig = {
   target_overrides: {},
 };
 
+describe('distributionConfigSchema — logo fields (generation-owned, pipeline reads)', () => {
+  // Regression for a six-week release outage: generation started emitting
+  // logo_svg_dark_path on 2026-07-22, the schema is .strict(), and nothing read a
+  // product config again until 2026-09-02 — so prep/bump/publish failed for all three
+  // products with "Unrecognized key(s) in object: 'logo_svg_dark_path'".
+  it('accepts the full logo trio generation emits today (png + svg + dark svg)', () => {
+    const result = distributionConfigSchema.safeParse({
+      ...validConfig,
+      logo_path: 'assets/logo-400x400.png',
+      logo_svg_path: 'assets/logo.svg',
+      logo_svg_dark_path: 'assets/logo.dark.svg',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('still rejects an unknown key — the fix declares one field, it does not loosen .strict()', () => {
+    const result = distributionConfigSchema.safeParse({
+      ...validConfig,
+      logo_svg_chartreuse_path: 'assets/logo.chartreuse.svg',
+    });
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error?.issues ?? [])).toContain('logo_svg_chartreuse_path');
+  });
+});
+
 describe('distributionConfigSchema — valid fixtures', () => {
   it('parses minimal config with only required fields', () => {
     const result = distributionConfigSchema.safeParse(validConfig);
@@ -33,6 +58,8 @@ describe('distributionConfigSchema — valid fixtures', () => {
       track_a_targets: 'default',
       track_b_targets: ['n8n', 'make-rom'],
       logo_path: 'assets/logo-400x400.png',
+      logo_svg_path: 'assets/logo.svg',
+      logo_svg_dark_path: 'assets/logo.dark.svg',
       bundled_skills: [
         '.claude/commands/create-internal-evidence.md',
         '.claude/commands/create-signature-request.md',
