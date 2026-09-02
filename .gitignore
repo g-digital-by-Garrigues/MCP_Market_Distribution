@@ -34,18 +34,21 @@ Thumbs.db
 *.swp
 *.swo
 
-# Generated artifacts inside per-MCP source folders
-# (Prep Agent commits server.json, smithery.yaml, README.md, install-blocks/
-# back into pending-to-publish/<mcp>/, but build outputs from the MCP itself
-# are gitignored)
-pending-to-publish/*/dist/
-pending-to-publish/*/node_modules/
-pending-to-publish/*/coverage/
-pending-to-publish/*/.cache/
-
-# Generated n8n node source (Track B output, regenerated each release)
-pending-to-publish/*/n8n/dist/
-pending-to-publish/*/n8n/node_modules/
+# Per-MCP source clones — LOCAL WORKING COPIES ONLY, never tracked here.
+#
+# In the v1.1 per-repo model each MCP lives in its own public repo and
+# `actions/checkout-mcp-source` clones it over pending-to-publish/<mcp>/ on every
+# run, so nothing in CI depends on a copy committed here (every MCP in
+# mcp-pipeline.yaml has a repo_url). Three of these directories used to be tracked
+# as bare gitlinks (mode 160000) with no .gitmodules entry, which meant:
+#   * `git status` was permanently dirty on a clean checkout,
+#   * every actions/checkout step logged `fatal: No url found for submodule path
+#     'pending-to-publish/<mcp>' in .gitmodules` and exited 128 (a warning),
+#   * and a commit made from the pipeline repo captured a pointer instead of the
+#     artifacts — the v1.0-model residue behind the /prep-mcp bug fixed in #241.
+# Untracked in the same cleanup. tests/unit/ci/no-tracked-gitlinks.test.ts keeps it
+# that way.
+pending-to-publish/*/
 
 # Local cache (e.g., pinned MCP schema fetched once and reused)
 .cache/
