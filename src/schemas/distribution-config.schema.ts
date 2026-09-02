@@ -80,6 +80,18 @@ export const distributionConfigSchema = z
     // mislabelled icon there. When present, the n8n adapter prefers this SVG (shipping
     // `icon.svg` + `icon: 'file:icon.svg'`); mcpb/smithery keep using logo_path (PNG).
     logo_svg_path: z.string().min(1).optional(),
+    // Dark-theme companion to logo_svg_path, emitted by generation since 2026-07-22 for
+    // all three products. READ-ONLY here and deliberately NOT consumed yet: shipping a
+    // themed pair needs `{light,dark}` support in the n8n templates (Epic 17 item 4,
+    // still cosmetic — the Creator Portal accepted v1.3.1 while reporting
+    // `icon-prefer-themed-variants`, so it is a warning that does not block
+    // verification). It is declared because this object is `.strict()`: without the
+    // field, EVERY read of a product's .distribution.yaml fails with "Unrecognized
+    // key(s) in object: 'logo_svg_dark_path'", which took prep/bump/publish down for all
+    // three products from 2026-07-22 until PR #242's CI run surfaced it on 2026-09-02.
+    // Accepting a field we do not use is the same contract stance as logo_svg_path in
+    // Story 17.1: `.distribution.yaml` is generation's to emit, the pipeline's to read.
+    logo_svg_dark_path: z.string().min(1).optional(),
     bundled_skills: z.array(z.string().min(1)).optional(),
     // Story 13.3 (FR53): per-manager API base-path prefixes for MULTI-MANAGER
     // products (e.g. EAD Factory: { evidence: '/digital-trust', signature:
