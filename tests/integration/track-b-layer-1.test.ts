@@ -131,6 +131,47 @@ describe('Track B — Layer 1 (structural lint)', () => {
     expect(result.log.event).toBe('gate.track_b_layer_1_passed');
   });
 
+  // Action A4 of the Epic 17 retrospective: a green check must say what it looked at.
+  it('reports what it inspected, so a green gate cannot mean "nothing was checked"', async () => {
+    const spec = sampleSpec();
+    await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+    const result = await withProductionNodeEnv(async () => {
+      await normalizeGeneratedNode(nodeDir);
+      return runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
+    });
+    expect(result.passed).toBe(true);
+    expect(result.log.checks_run).toBe(result.checks.length);
+    expect(result.log.checks_run).toBeGreaterThan(0);
+
+    const linter = result.checks.find((c) => c.name === 'official_linter');
+    // The scanner's own contract returns passed:true when its glob matches nothing, so
+    // the count is the only thing separating "clean" from "never read a file".
+    expect(linter?.inspected).toMatch(/^[1-9]\d* source files?$/);
+    expect(result.log.inspected?.official_linter).toBe(linter?.inspected);
+    expect(result.log.inspected?.language).toMatch(/operations?$/);
+  });
+
+  it('makes a SKIPPED check visible: an empty tree runs 7 checks, not 8', async () => {
+    // The orchestration short-circuits the official linter when any structural check
+    // fails ("avoid noise"), which is sound — but before checks_run existed, a failed
+    // gate and a fully-checked gate were indistinguishable in the log. The count is
+    // what separates "7 checks ran and one failed" from "8 checks ran".
+    const emptyDir = await fs.mkdtemp(path.join(os.tmpdir(), 'track-b-l1-empty-'));
+    try {
+      const spec = sampleSpec();
+      const result = await withProductionNodeEnv(() =>
+        runTrackBLayer1({ mcpName: 'multi-tool', nodeDir: emptyDir, spec }),
+      );
+      expect(result.passed).toBe(false);
+      expect(result.checks.find((c) => c.name === 'official_linter')).toBeUndefined();
+      expect(result.log.checks_run).toBe(result.checks.length);
+      expect(result.log.checks_run).toBe(7);
+      expect(result.log.event).toBe('gate.track_b_layer_1_failed');
+    } finally {
+      await fs.rm(emptyDir, { recursive: true, force: true });
+    }
+  });
+
   it('BLOCKS a raster icon — node-class-description-icon-not-svg is no longer allowlisted', async () => {
     // The allowlist used to tolerate this rule ("we ship PNG and have no SVG artwork").
     // Both halves stopped being true on 2026-07-22, and a stale entry is not harmless:
