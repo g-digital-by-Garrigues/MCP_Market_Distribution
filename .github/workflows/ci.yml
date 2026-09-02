@@ -1,0 +1,128 @@
+name: ci
+
+# Story 13.10 (Epic 13) / action A1 of the Epic 17 retrospective: run THIS repo's own
+# typecheck, unit tests and lint against a pull request's own code.
+#
+# The gap this closes. Until this file existed, nothing verified a pipeline-code PR:
+#   * publish.yml has exactly one step that runs our checks — `pnpm run typecheck &&
+#     pnpm run test` — but its job checks out `repository: g-digital-by-Garrigues/
+#     MCP_Market_Distribution` + `ref: main`, as do all 24 checkouts in that file.
+#   * regression-e2e.yml IS pull_request-triggered, but reaches publish.yml through a
+#     cross-repo `uses: .../publish.yml@main`, so it also runs main's code. Its own
+#     header says as much: "PR-pre-merge validation against the candidate pipeline code
+#     is therefore not possible with this workflow as-is ... The unit-test suite covers
+#     these" — while no workflow ran that suite on a PR.
+#   Net effect: for a change to src/ or templates/, the only automated evidence was
+#   whatever the author happened to run locally. A PR adding four test files still
+#   reported main's test count, not its own.
+#
+# It also closes the official-linter gap for free. tests/integration/track-b-layer-1.test.ts
+# drives @n8n/scan-community-package for real against a freshly generated node tree: the
+# happy path runs WITHOUT `skipLinter`, and a sibling test asserts that a raster icon
+# FAILS the gate. So `pnpm run test` below is the first time the n8n official linter runs
+# on every change rather than only during a release.
+#
+# Deliberate choices — please do not "tidy" these away:
+#   * No `paths:` / `paths-ignore:` filter. The job finishes well inside a minute, and a
+#     path-filtered check that is later marked *required* deadlocks every PR that touches
+#     no matching path: the check never reports a status, so the PR can never merge.
+#     Story 13.10's acceptance criterion names src/, templates/, tests/ and .github/;
+#     running on every PR is a strict superset of that, with no deadlock to reason about.
+#   * No `branches:` filter, so a PR targeting any branch is verified — not only main.
+#   * `pull_request`, never `pull_request_target`. This checks out and executes PR code,
+#     which must never see this repo's secrets or its npm OIDC publishing identity.
+#   * `permissions: contents: read` and no secrets at all. publish.yml runs these same
+#     commands with no `env:` block, which is the evidence that nothing else is needed.
+#     `actions: write` must NOT be added here: GitHub rejects a pull_request workflow
+#     that requests it at startup, with no log (see the note in regression-e2e.yml).
+#   * pnpm is pinned to 9.15.0 to match package.json#packageManager, and that pin is
+#     load-bearing: pnpm 10+ no longer reads the `pnpm` field in package.json, so it
+#     ignores `neverBuiltDependencies: [isolated-vm]` and tries to node-gyp-build the
+#     scanner's native dependency during install.
+#   * `timeout-minutes: 15` is a conscious departure from the repo's other workflows,
+#     which set none. A hung vitest child process would otherwise burn GitHub's
+#     360-minute default.
+#   * The lint step calls `pnpm run lint` exactly as declared in package.json. It fails
+#     on errors and tolerates warnings — there are 8 pre-existing warnings across 7
+#     files, so adding `--max-warnings=0` here would paint this gate red the day it
+#     lands. Tightening to zero warnings is its own cleanup PR.
+#
+# ADVISORY UNTIL MADE REQUIRED: `main` has no branch protection and the repo's single
+# active ruleset only blocks deletion and non-fast-forward pushes. Until a
+# required-status-check rule names this workflow's `verify` job, a red X here does not
+# prevent a merge. That is a repository-settings change, not a change to this file.
+
+on:
+  pull_request:
+  # Post-merge signal for the pipeline's own code. regression-e2e only runs on
+  # pull_request / workflow_dispatch, so main had no automated verification at all
+  # after a merge (finding 4 of the Epic 17 release review).
+  push:
+    branches: [main]
+
+# One run per ref: a new push to the same PR cancels the superseded run, while other PRs
+# and main are untouched. Keyed on github.ref rather than github.event.pull_request.number,
+# which is empty outside PR events and caused real startup failures in this repo.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck + tests + lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # Bare checkout on purpose. On a pull_request event this resolves to the PR's merge
+      # ref — the PR's own code, which is the entire point of this workflow. Never add
+      # `repository:` or `ref:` here: that pinning is the defect being fixed.
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+
+      # Must come AFTER pnpm/action-setup: setup-node's `cache: pnpm` resolution shells
+      # out to pnpm and fails with "Unable to locate executable file: pnpm" otherwise.
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # --frozen-lockfile also fails when package.json and pnpm-lock.yaml disagree. That
+      # is wanted: a dependency change has to land together with its lockfile.
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm run typecheck
+
+      # The JSON report is not decoration. This project's recurring defect is a check
+      # that could not run and reported success — the official_linter gate did exactly
+      # that for every release until Story 15.1. vitest already exits 1 when it matches
+      # no test files; the next step turns the test count into positive evidence in the
+      # run log, so "green" can never mean "verified nothing".
+      - name: Unit + integration tests
+        run: |
+          pnpm run test \
+            --reporter=default \
+            --reporter=json \
+            --outputFile.json="$RUNNER_TEMP/vitest-report.json"
+
+      - name: Prove the suite actually ran something
+        run: |
+          total=$(jq -r '.numTotalTests' "$RUNNER_TEMP/vitest-report.json")
+          if [ -z "$total" ] || [ "$total" = "null" ] || [ "$total" -lt 1 ]; then
+            echo "::error::vitest reported ${total:-no} tests — a green run that verified nothing"
+            exit 1
+          fi
+          echo "::notice::$total tests ran against ${GITHUB_SHA}"
+
+      - name: Lint
+        run: pnpm run lint
