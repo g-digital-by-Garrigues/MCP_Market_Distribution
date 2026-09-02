@@ -53,6 +53,7 @@ Each rule maps 1:1 to a real n8n Cloud verification rejection. Source: <https://
 
 Consequences to keep in mind:
 
+- **`latest` only moves when the lockfile does.** `--frozen-lockfile` installs whatever `pnpm-lock.yaml` resolved — `0.27.1` today — so the specifier alone does not keep the gate current. Refresh it deliberately (`pnpm update @n8n/scan-community-package`, commit the lockfile) when you want the gate to track a newer stable, and re-measure the gate against a known-bad tree afterwards. Observed 2026-09-02.
 - **Do not read `beta` results as the portal's verdict.** As of 2026-07-22 the tags are `latest`/`stable` = `0.27.1` and `beta` = `0.29.1`. They behave very differently, and only the first is what n8n ships as stable.
 - **A floating dependency means the module's shape can change under us.** `SOURCE_FILE_PATTERNS` only exists from 0.29.x; both consumers (`run-track-b-layer-1.ts` and `normalize-generated-node.ts`) must therefore treat it as optional and fall back to `SOURCE_FILE_PATTERNS_FALLBACK`. Spreading the missing export threw `sourceFilePatterns is not iterable` and took the gate down. Same care applies to any other export or signature: `analyzePackage` gained a second parameter in 0.29.x, which is safe only because it is defaulted.
 - **Scanning a published tarball is NOT equivalent to scanning a source tree.** Up to 0.28.x the scanner globs `.ts`/`.d.ts`, and our tarballs ship only compiled `.js` (`files: ["dist"]`) — so `npx @n8n/scan-community-package <our-package>` matches nothing, every AST rule no-ops, and it reports a **false green** (it passed `ead-factory@1.2.1`, which had 96 real violations). The gate is unaffected because it scans the *generated source dir*, where the `.ts` globs match: verified on that same 1.2.1 tree, 0.27.1 reports 98 violations. When you want to check a *published* package, use 0.29.x, which resolves the npm provenance back to the GitHub source and lints that.
@@ -75,7 +76,17 @@ When adding or regenerating a tool in the generator, ensure:
 
    `manager_api_base_paths` is a plain string→string map; `query_param_style` is `'bracket'` (default, omit it) or `'flat'`. Only a product whose managers sit behind different gateway prefixes needs the first; single-API products (gocertius, ead-enterprise-suite) correctly omit both and are unaffected.
 
-   *Status 2026-07-15: EAD Factory needs both and emits neither, so 13.3/13.4/13.6 are inert in production. The data already exists in the generator (`products/ead-factory/product.config.ts#managerApiBasePaths`) — it just isn't rendered into `.distribution.yaml`. Tracked in Suite-GoCertius-MCP-Generator#66.*
+   **Status 2026-09-02: both fields are now emitted for EAD Factory — 13.3/13.4/13.6 are NO LONGER inert.** Verified against `EAD-Factory-MCP@main`'s `.distribution.yaml`: `manager_api_base_paths` carries four managers (`evidence: /digital-trust`, `signature: /signature-manager`, `notification: /notifications`, **`chat: /chat-bot-manager`** — one more than the Epic 13 design listed) and `query_param_style: flat` is set. `Suite-GoCertius-MCP-Generator#66` delivered.
+
+   **Read this before the next EAD Factory release.** All three behaviours flip on the next regeneration, with no pipeline change to announce them:
+
+   - the credential's base URL becomes the **gateway root** (13.3) → an existing EF credential pointed at a manager-specific URL now builds wrong URLs;
+   - resources are renamed `… Manager` and operations gain `EM`/`SM`/`NM` prefixes (13.4) → saved workflows that pin `resource`/`operation` break;
+   - query serialization becomes flat (13.6) → this one is a **fix**; filters start working.
+
+   So EF's next publish is breaking for saved credentials *and* saved workflows, stacked on top of Epic 16's credential rename. It needs the Epic 14/16 treatment — explicit release notes and a user warning — not a routine regen. Registered in `_bmad-output/implementation-artifacts/contract-register-2026-09-02.md`.
+
+   *Historical note: from 2026-07-15 to 2026-09-02 this section said the fields were absent and the stories inert. They stopped being inert without anyone noticing, which is the same blind spot that let `logo_svg_dark_path` block every release for six weeks (#243). The weekly `regression-e2e` schedule (#245) is what now reads these files on a cadence; it still cannot tell us that a **behavioural** field appeared, only that the schema still parses.*
 
 4. **`.env.example` may contain any MCP-server runtime config — no n8n obligation.** Transport/CORS/OpenID/PORT vars belong in `.env.example` because the Docker/self-hosted MCP server reads them; **keep them**. The n8n adapter derives its credential surface from an allowlist (rule 3 above), so it is immune to whatever the generator adds here. There is nothing the generator must do for n8n credential hygiene — this is intentionally a pipeline-owned boundary, removing a standing coordination cost.
 

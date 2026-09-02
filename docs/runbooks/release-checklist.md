@@ -200,6 +200,24 @@ Open the latest release report in `_bmad-output/release-reports/<mcp>-v<version>
 
 The Docker MCP Catalog, Cline Marketplace, and mcp.so submissions are open queues — they'll only show the new version after maintainer review.
 
+## Submitting a new version to the n8n Creator Portal
+
+Learned the hard way on 2026-07-22, when the portal rejected `ead-factory` hours after a clean release (Story 17.4). Four rules:
+
+1. **The portal only re-runs its automated pre-check against a NEW published version.** Explaining that the previous rejection was stale does nothing; ship a bump.
+2. **Wait for the published version to be fully resolvable before submitting.** The rejection was consistent with npm's packument propagation still serving the previous version at `latest`. Verify on the *published* package, not locally:
+
+   ```bash
+   docker run --rm -it node:22-bookworm \
+     npx @n8n/scan-community-package@0.29.1 <package-name>
+   # want: ✅ Provenance   ✅ Fetched source from …@<sha>   ✅ passed
+   ```
+
+3. **Never cite `npx @n8n/scan-community-package <package>` at `latest` as evidence about a published package.** Up to 0.28.x it globs `.ts` while our tarballs ship only compiled `.js`, so it matches nothing and prints "passed" — it did exactly that for a package with 96 real violations. Use `0.29.x`, which follows the provenance attestation back to the GitHub source and lints that.
+4. **Run the scanner in `node:22`.** On newer Node the `isolated-vm` postinstall fails under node-gyp and `npx` exits 1 **with no output at all**, which reads like a pass if you are not watching exit codes.
+
+A single warning in the report does not block verification: `icon-prefer-themed-variants` was being reported when the portal **accepted** ead-factory v1.3.1.
+
 ## Recovery: fixing a tag that points at a stale commit
 
 **Do not force-move the tag.** Moving published tags rewrites the SHA they point at, which can break caches, CDN mirrors, downstream consumers, and GitHub releases. The safer pattern: **bump again to the next patch version**.
