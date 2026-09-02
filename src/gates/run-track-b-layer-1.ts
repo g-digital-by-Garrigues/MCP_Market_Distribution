@@ -39,6 +39,15 @@ export interface TrackBLayer1CheckResult {
   name: string;
   passed: boolean;
   error?: ErrorReport;
+  /**
+   * What the check actually looked at, when the check scans a population whose size
+   * is not fixed by the codegen (e.g. "4 source files"). Action A4 of the Epic 17
+   * retrospective: a green check that inspected nothing is this project's recurring
+   * defect — `official_linter` reported `passed: true` from a catch block for a year,
+   * and the scanner has its own "no files found → passed" path. Where the population
+   * is a hardcoded list (file_layout's required files) there is nothing to report.
+   */
+  inspected?: string;
 }
 
 export interface TrackBLayer1Result {
@@ -49,6 +58,14 @@ export interface TrackBLayer1Result {
   log: {
     event: 'gate.track_b_layer_1_passed' | 'gate.track_b_layer_1_failed';
     pipeline_run_id?: string;
+    /**
+     * How many checks ran. The official linter is skipped when a structural check
+     * has already failed, so this is 7 on a structural failure and 8 otherwise —
+     * previously indistinguishable from a green run in the log.
+     */
+    checks_run: number;
+    /** Per-check evidence, for the checks that scan a variable population. */
+    inspected?: Record<string, string>;
   };
 }
 
@@ -446,7 +463,12 @@ async function checkLanguage(opts: RunTrackBLayer1Options): Promise<TrackBLayer1
     }
   }
 
-  if (violations.length === 0) return { name: 'language', passed: true };
+  if (violations.length === 0)
+    return {
+      name: 'language',
+      passed: true,
+      inspected: `${opts.spec.operations.length} operation${opts.spec.operations.length === 1 ? '' : 's'}`,
+    };
   return {
     name: 'language',
     passed: false,
@@ -510,10 +532,70 @@ function parseLinterViolations(details: string): Array<{ ruleId: string; severit
   return out;
 }
 
+/**
+ * Count the files the scanner will lint: `package.json` plus the shippable sources
+ * under nodes/ and credentials/. Deliberately a walk rather than a glob dependency —
+ * it mirrors SOURCE_FILE_PATTERNS closely enough to answer one question, "is there
+ * anything here at all", and it is the number reported as the check's evidence.
+ */
+async function countScannableSources(nodeDir: string): Promise<number> {
+  let count = 0;
+  try {
+    await fs.access(path.join(nodeDir, 'package.json'));
+    count += 1;
+  } catch {
+    // Absent package.json is file_layout's finding to report, not this counter's.
+  }
+  for (const sub of ['nodes', 'credentials']) {
+    const root = path.join(nodeDir, sub);
+    const stack = [root];
+    while (stack.length > 0) {
+      const dir = stack.pop()!;
+      let entries;
+      try {
+        entries = await fs.readdir(dir, { withFileTypes: true });
+      } catch {
+        continue;
+      }
+      for (const entry of entries) {
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) stack.push(full);
+        else if (/\.(js|ts|json)$/.test(entry.name)) count += 1;
+      }
+    }
+  }
+  return count;
+}
+
 async function checkOfficialLinter(
   opts: RunTrackBLayer1Options,
 ): Promise<TrackBLayer1CheckResult> {
   if (opts.skipLinter) return { name: 'official_linter', passed: true };
+
+  // Positive evidence BEFORE delegating: the scanner's own contract is to return
+  // `passed: true` when its glob matches nothing, so an empty or wrongly-addressed
+  // tree scores clean. Counting first means the count is available as evidence on the
+  // pass paths below, and that a zero names the number rather than relying on the
+  // scanner's message string, which changes between versions.
+  //
+  // Reachability, stated honestly: runTrackBLayer1 short-circuits this check when any
+  // structural check has already failed, and file_layout requires the very files this
+  // counter counts — so a zero here is unreachable through the gate today. It is a
+  // guard for direct callers (and for a future reordering), not a live path. The
+  // `checks_run` field on the result is what surfaces the short-circuit itself.
+  const scannableCount = await countScannableSources(opts.nodeDir);
+  if (scannableCount === 0) {
+    return {
+      name: 'official_linter',
+      passed: false,
+      inspected: '0 source files',
+      error: gateError('official_linter', {
+        observation: `No lintable source files under ${opts.nodeDir} (looked for package.json + nodes/ + credentials/).`,
+        cause: 'The gate was pointed at a directory the adapter build never populated, or the build produced nothing. Handing this to the scanner would score it clean without reading a file.',
+        action: 'Check that the adapter build wrote nodes/ and credentials/ under the node dir before the gate ran.',
+      }),
+    };
+  }
 
   type AnalyzeResult = { passed: boolean; message?: string; details?: string };
   let analyzePackage: (dir: string, filePatterns?: readonly string[]) => Promise<AnalyzeResult>;
@@ -585,7 +667,12 @@ async function checkOfficialLinter(
     };
   }
 
-  if (result.passed) return { name: 'official_linter', passed: true };
+  if (result.passed)
+    return {
+      name: 'official_linter',
+      passed: true,
+      inspected: `${scannableCount} source file${scannableCount === 1 ? '' : 's'}`,
+    };
 
   const details = result.details ?? '';
   const found = parseLinterViolations(details);
@@ -601,7 +688,11 @@ async function checkOfficialLinter(
         `[official_linter] Passing with non-blocking findings: ${tolerated.join(', ')}\n`,
       );
     }
-    return { name: 'official_linter', passed: true };
+    return {
+      name: 'official_linter',
+      passed: true,
+      inspected: `${scannableCount} source file${scannableCount === 1 ? '' : 's'}`,
+    };
   }
 
   const counts = new Map<string, number>();
@@ -754,7 +845,12 @@ async function checkN8nUxCompliance(opts: RunTrackBLayer1Options): Promise<Track
     issues.push(`a field displayName reads "IDS"; the n8n UX guideline plural of ID is "IDs".`);
   }
 
-  if (issues.length === 0) return { name: 'n8n_ux_compliance', passed: true };
+  if (issues.length === 0)
+    return {
+      name: 'n8n_ux_compliance',
+      passed: true,
+      inspected: `${opts.spec.operations.length} operation${opts.spec.operations.length === 1 ? '' : 's'}`,
+    };
   return {
     name: 'n8n_ux_compliance',
     passed: false,
@@ -788,6 +884,9 @@ export async function runTrackBLayer1(
 
   const errors = checks.filter((c) => !c.passed).map((c) => c.error!);
   const passed = errors.length === 0;
+  const inspected = checks
+    .filter((c) => c.inspected !== undefined)
+    .map((c) => [c.name, c.inspected!] as const);
   return {
     passed,
     mcpName: opts.mcpName,
@@ -796,6 +895,8 @@ export async function runTrackBLayer1(
     log: {
       event: passed ? 'gate.track_b_layer_1_passed' : 'gate.track_b_layer_1_failed',
       ...(opts.pipelineRunId ? { pipeline_run_id: opts.pipelineRunId } : {}),
+      checks_run: checks.length,
+      ...(inspected.length > 0 ? { inspected: Object.fromEntries(inspected) } : {}),
     },
   };
 }
