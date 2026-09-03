@@ -19,7 +19,7 @@
     "init-state-branch": "tsx src/setup/init-state-branch.ts"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.12.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@n8n/scan-community-package": "latest",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
@@ -27,17 +27,34 @@
     "ajv-formats": "^3.0.1",
     "eslint": "^9.18.0",
     "handlebars": "^4.7.8",
-    "js-yaml": "^4.1.0",
+    "js-yaml": "^4.3.2",
     "prettier": "^3.4.2",
-    "tsx": "^4.19.2",
+    "tsx": "^4.23.13",
     "typescript": "^5.7.3",
     "typescript-eslint": "^8.21.0",
-    "vitest": "^2.1.8",
+    "vitest": "^3.2.7",
     "zod": "^3.24.1"
   },
   "pnpm": {
     "neverBuiltDependencies": [
       "isolated-vm"
-    ]
+    ],
+    "overrides": {
+      "vite": "^6.4.3",
+      "hono": "^4.12.34",
+      "@hono/node-server": "^1.19.15",
+      "lodash": "^4.18.0",
+      "form-data": "^4.0.6",
+      "ip-address": "^10.3.1",
+      "tmp": "^0.2.6",
+      "brace-expansion@1": "^1.1.18",
+      "brace-expansion@5": "^5.0.9",
+      "qs": "^6.16.0",
+      "body-parser": "^2.3.0",
+      "fast-uri": "^3.1.6",
+      "postcss": "^8.5.23",
+      "nanoid@3": "^3.3.18",
+      "uuid@10": "^11.1.1"
+    }
   }
 }

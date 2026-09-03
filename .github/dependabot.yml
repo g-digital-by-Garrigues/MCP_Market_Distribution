@@ -1,0 +1,48 @@
+# Dependabot — version updates.
+#
+# Why this file exists (2026-09-03): the default branch had accumulated 45 open
+# security alerts (2 critical, 17 high) with nobody triaging them, because the repo
+# had no dependabot config and nothing else read the alert feed. GitHub kept
+# printing the count on every `git push`; it took the Epic 17 cleanup to look.
+#
+# Security updates are always on regardless of this file. What this adds is the
+# routine version bumps that keep transitive trees from ageing into that state
+# again — grouped, so a Monday brings one PR per ecosystem, not fifteen.
+#
+# The `ci` workflow (typecheck + tests + lint on the PR's own code) is what makes
+# merging these safe: every bump PR is verified against the full suite, including
+# the n8n official linter driven by the Track B L1 integration test.
+
+version: 2
+updates:
+  - package-ecosystem: npm            # pnpm is handled by the npm ecosystem
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC             # same slot as the weekly regression sweep
+    open-pull-requests-limit: 5
+    groups:
+      # One PR for all minor + patch bumps. Majors arrive individually so a
+      # breaking change (vitest 2→3, eslint 9→10) gets its own review.
+      minor-and-patch:
+        update-types: [minor, patch]
+    # The n8n scanner is a deliberate policy decision, not a routine bump: the gate
+    # tracks `latest`, but a new scanner version must be re-measured against a
+    # known-bad tree before it lands (see docs/n8n-adapter-contract.md, "Which scanner
+    # version the official_linter gate runs"). Dependabot must not do that by reflex.
+    ignore:
+      - dependency-name: "@n8n/scan-community-package"
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Etc/UTC
+    open-pull-requests-limit: 3
+    groups:
+      actions:
+        patterns: ["*"]
