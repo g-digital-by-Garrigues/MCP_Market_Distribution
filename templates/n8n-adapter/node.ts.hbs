@@ -19,7 +19,7 @@ import {
   NodeApiError,
   NodeConnectionTypes,
   NodeOperationError,
-{{#if (eq authStyle 'session-login-or-token')}}
+{{#if (eq authStyle 'user-key')}}
   ICredentialsDecrypted,
   ICredentialTestFunctions,
   INodeCredentialTestResult,
@@ -39,7 +39,7 @@ export class {{className}} implements INodeType {
     defaults: { name: '{{displayName}}' },
     inputs: [NodeConnectionTypes.Main],
     outputs: [NodeConnectionTypes.Main],
-{{#if (eq authStyle 'session-login-or-token')}}
+{{#if (eq authStyle 'user-key')}}
     credentials: [{ name: '{{credentialParamName}}', required: true, testedBy: 'testAuth' }],
 {{else}}
     credentials: [{ name: '{{credentialParamName}}', required: true }],
@@ -123,12 +123,13 @@ export class {{className}} implements INodeType {
 {{/if}}{{/each}}    ],
   };
 
-{{#if (eq authStyle 'session-login-or-token')}}
-  // Credential test. The auth here branches (User Key exchange vs email/password
-  // login), which ICredentialTestRequest cannot express — hence a programmatic test
-  // wired up via `testedBy` above. It mirrors execute()'s auth block so the green
-  // check means the same thing the node will do at run time, and it reports the
-  // misconfigurations the user can actually fix rather than a bare HTTP code.
+{{#if (eq authStyle 'user-key')}}
+  // Credential test. The User Key exchange posts the key in the request BODY and
+  // reads the session token out of the response, which ICredentialTestRequest cannot
+  // express — hence a programmatic test wired up via `testedBy` above. It mirrors
+  // execute()'s auth block so the green check means the same thing the node will do
+  // at run time, and it reports the misconfigurations the user can actually fix
+  // rather than a bare HTTP code.
   methods = {
     credentialTest: {
       async testAuth(
@@ -138,56 +139,32 @@ export class {{className}} implements INodeType {
         const creds = (credential.data ?? {}) as IDataObject;
         const baseUrl = String(creds.baseUrl ?? '').replace(/\/$/, '');
         const userKey = String(creds.userKey ?? '').trim();
-        const email = String(creds.email ?? '');
-        const password = String(creds.password ?? '');
         if (!baseUrl) {
           return { status: 'Error', message: 'Base URL is empty.' };
         }
-        if (userKey && (email || password)) {
-          return {
-            status: 'Error',
-            message: 'Configure exactly one auth flow: either a User Key, or Auth Email + Auth Password — not both. Clear the fields of the flow you are not using.',
-          };
-        }
-        if (!userKey && !(email && password)) {
-          return {
-            status: 'Error',
-            message: 'Authentication needs either a User Key, or both Auth Email and Auth Password.',
-          };
+        // n8n's `required: true` is a form hint, not an enforced non-empty value —
+        // without this guard an empty key is POSTed and the user gets a bare 401.
+        if (!userKey) {
+          return { status: 'Error', message: 'A User Key is required.' };
         }
         try {
-          if (userKey) {
-            const keyRes = await fetch(`${baseUrl}/user-keys/session`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ key: userKey }),
-            });
-            if (keyRes.status === 404) {
-              return {
-                status: 'Error',
-                message: 'User Key sign-in is not available on this environment (POST /user-keys/session returned 404). Point Base URL at an environment where User Keys are enabled, or use Auth Email + Auth Password.',
-              };
-            }
-            if (!keyRes.ok) {
-              return { status: 'Error', message: `User Key rejected (HTTP ${keyRes.status}).` };
-            }
-            const keyBody = await keyRes.json() as { jwt?: string; token?: string };
-            if (!(keyBody.jwt ?? keyBody.token)) {
-              return { status: 'Error', message: 'The User Key exchange returned no session token.' };
-            }
-            return { status: 'OK', message: 'Authentication successful.' };
-          }
-          const loginRes = await fetch(`${baseUrl}/session`, {
+          const keyRes = await fetch(`${baseUrl}/user-keys/session`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password }),
+            body: JSON.stringify({ key: userKey }),
           });
-          if (!loginRes.ok) {
-            return { status: 'Error', message: `Sign-in failed (HTTP ${loginRes.status}). Check Auth Email and Auth Password.` };
+          if (keyRes.status === 404) {
+            return {
+              status: 'Error',
+              message: 'User Key sign-in is not available on this environment (POST /user-keys/session returned 404). Point Base URL at an environment where User Keys are enabled.',
+            };
           }
-          const loginBody = await loginRes.json() as { jwt?: string; token?: string };
-          if (!(loginBody.jwt ?? loginBody.token)) {
-            return { status: 'Error', message: 'Sign-in returned no session token.' };
+          if (!keyRes.ok) {
+            return { status: 'Error', message: `User Key rejected (HTTP ${keyRes.status}).` };
+          }
+          const keyBody = await keyRes.json() as { jwt?: string; token?: string };
+          if (!(keyBody.jwt ?? keyBody.token)) {
+            return { status: 'Error', message: 'The User Key exchange returned no session token.' };
           }
           return { status: 'OK', message: 'Authentication successful.' };
         } catch (error) {
@@ -230,52 +207,33 @@ export class {{className}} implements INodeType {
     // this.helpers.httpRequestWithAuthentication — there is no manual token fetch and no
     // Bearer constructed here.
 {{else}}
-{{#if (eq authStyle 'session-login-or-token')}}
-    // Auth: two mutually exclusive flows, both minting the same short-lived session
-    // JWT used as the Bearer. A User Key (long-lived, issued out-of-band) is
-    // exchanged at POST /user-keys/session; email + password logs in at POST /session.
-    // Exactly one must be configured — this mirrors the MCP server's own
-    // detectAuthAdapter, which rejects the combination with an AuthConfigError.
+{{#if (eq authStyle 'user-key')}}
+    // Auth: one flow. A User Key (long-lived, issued out-of-band) is exchanged at
+    // POST /user-keys/session for the short-lived session JWT used as the Bearer.
     // Minting is wrapped in a function so a 401 mid-run can re-mint and replay the
     // call (the JWT is short-lived; a workflow may run longer than it lives).
     const userKey = String(creds.userKey ?? '').trim();
-    const email = String(creds.email ?? '');
-    const password = String(creds.password ?? '');
-    if (userKey && (email || password)) {
-      throw new NodeOperationError(this.getNode(), 'Configure exactly one auth flow: either a User Key, or Auth Email + Auth Password — not both. Clear the fields of the flow you are not using.');
-    }
-    if (!userKey && !(email && password)) {
-      throw new NodeOperationError(this.getNode(), 'Authentication needs either a User Key, or both Auth Email and Auth Password.');
+    // n8n's `required: true` is a form hint, not an enforced non-empty value —
+    // without this guard an empty key is POSTed and the user gets a bare 401.
+    if (!userKey) {
+      throw new NodeOperationError(this.getNode(), 'A User Key is required.');
     }
     const obtainBearer = async (): Promise<string> => {
-      if (userKey) {
-        const keyRes = await fetch(`${baseUrl}/user-keys/session`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          // The key travels in the BODY, not as a Bearer header.
-          body: JSON.stringify({ key: userKey }),
-        });
-        if (keyRes.status === 404) {
-          throw new NodeOperationError(this.getNode(), 'User Key sign-in is not available on this environment (POST /user-keys/session returned 404). Clear the User Key and use Auth Email + Auth Password, or point Base URL at an environment where User Keys are enabled.');
-        }
-        if (!keyRes.ok) {
-          const keyErr = await keyRes.json().catch(() => ({ message: `HTTP ${keyRes.status}` }));
-          throw new NodeApiError(this.getNode(), keyErr as never, { httpCode: String(keyRes.status) });
-        }
-        const keyBody = await keyRes.json() as { jwt?: string; token?: string };
-        return keyBody.jwt ?? keyBody.token ?? '';
-      }
-      const loginRes = await fetch(`${baseUrl}/session`, {
+      const keyRes = await fetch(`${baseUrl}/user-keys/session`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        // The key travels in the BODY, not as a Bearer header.
+        body: JSON.stringify({ key: userKey }),
       });
-      if (!loginRes.ok) {
-        const loginErr = await loginRes.json().catch(() => ({ message: `HTTP ${loginRes.status}` }));
-        throw new NodeApiError(this.getNode(), loginErr as never, { httpCode: String(loginRes.status) });
+      if (keyRes.status === 404) {
+        throw new NodeOperationError(this.getNode(), 'User Key sign-in is not available on this environment (POST /user-keys/session returned 404). Point Base URL at an environment where User Keys are enabled.');
       }
-      const loginBody = await loginRes.json() as { jwt?: string; token?: string };
-      return loginBody.jwt ?? loginBody.token ?? '';
+      if (!keyRes.ok) {
+        const keyErr = await keyRes.json().catch(() => ({ message: `HTTP ${keyRes.status}` }));
+        throw new NodeApiError(this.getNode(), keyErr as never, { httpCode: String(keyRes.status) });
+      }
+      const keyBody = await keyRes.json() as { jwt?: string; token?: string };
+      return keyBody.jwt ?? keyBody.token ?? '';
     };
     let bearer = await obtainBearer();
 {{else}}
@@ -372,7 +330,7 @@ export class {{className}} implements INodeType {
           body[propName] = val;
         }
         // Substitute any remaining {placeholder} patterns from credential values,
-        // matched by credential key name (e.g. a {baseUrl} or {email} in a path).
+        // matched by credential key name (e.g. a {baseUrl} or {userKey} in a path).
         for (const [credKey, credVal] of Object.entries(creds)) {
           const placeholder = `{${credKey}}`;
           if (url.includes(placeholder) && credVal) {
@@ -525,7 +483,7 @@ export class {{className}} implements INodeType {
           },
           ...(isBodyless ? {} : { body: JSON.stringify(body) }),
         });
-{{#if (eq authStyle 'session-login-or-token')}}
+{{#if (eq authStyle 'user-key')}}
         let apiRes = await callApi();
         // The session JWT is short-lived and minted once per execute() — a long
         // workflow can outlive it. Re-mint once and replay before surfacing a 401.
@@ -557,7 +515,23 @@ export class {{className}} implements INodeType {
         if (generatedId) {
           const semanticId = AUTO_ID_OUTPUT_FIELD[operation];
           if (semanticId && !json[semanticId]) json[semanticId] = generatedId;
-          if (!json['id']) json['id'] = generatedId;
+{{#if autoIdRoleFields}}          // The same id also answers to a role-specific name on some operations
+          // (e.g. a participant created with role SIGNATORY is a signatoryId).
+          // The role is read from the request body we just sent. Emitted only for
+          // products that actually have such an operation, so a product without one
+          // keeps the byte-for-byte output it had before this table existed.
+          const roleRule = AUTO_ID_ROLE_FIELD[operation];
+          if (roleRule) {
+            // Own-property lookup only: `role` is caller-supplied, and a plain
+            // object literal inherits Object.prototype, so an unguarded index
+            // would resolve 'constructor'/'toString'/... to a prototype member.
+            const roleKey = String(body[roleRule.param] ?? '');
+            const roleField = Object.prototype.hasOwnProperty.call(roleRule.byValue, roleKey)
+              ? roleRule.byValue[roleKey]
+              : undefined;
+            if (roleField && !json[roleField]) json[roleField] = generatedId;
+          }
+{{/if}}          if (!json['id']) json['id'] = generatedId;
         }
 {{#if hasChatCertificateGet}}        // chat_certificate_get: when CERTIFIED, fetch documentUrl via a second call
         if (operation === 'chat_certificate_get' && (json as IDataObject).status === 'CERTIFIED' && !json['documentUrl']) {
@@ -611,6 +585,20 @@ const AUTO_ID_OUTPUT_FIELD: Record<string, string> = {
 {{#each autoIdOutputFields}}  '{{this.operation}}': '{{this.fieldName}}',
 {{/each}}
 };
+{{#if autoIdRoleFields}}
+
+// Role-specific alias for the same auto-generated 'id'. Emitted alongside
+// AUTO_ID_OUTPUT_FIELD because one operation can hand back one id under two
+// names: signature_participant_create's id IS the participantId, and it is
+// ALSO the signatoryId when role=SIGNATORY or the validatorId when
+// role=VALIDATOR. A role with no entry (OBSERVER) adds nothing. Absent
+// entirely — declaration and lookup both — for products with no such
+// operation, which keeps their node file byte-identical.
+const AUTO_ID_ROLE_FIELD: Record<string, { param: string; byValue: Record<string, string> }> = {
+{{#each autoIdRoleFields}}  '{{this.operation}}': { param: '{{this.param}}', byValue: {{json this.byValue}} },
+{{/each}}
+};
+{{/if}}
 
 // HTTP metadata per operation — method + URL template.
 // 'stub: true' means the tool has no REST annotation and requires self-hosted n8n.

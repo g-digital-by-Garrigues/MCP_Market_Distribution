@@ -41,6 +41,38 @@ function registerHelpers(): void {
   // 'safe' helper: returns a SafeString so the value is NOT HTML-escaped.
   // Used for pre-rendered string fragments like stubSuffix (', stub: true' or '').
   Handlebars.registerHelper('safe', (value: unknown) => new Handlebars.SafeString(String(value ?? '')));
+  // Story 18.4 (FR62): 'mdCell' encodes an authored string for a markdown TABLE
+  // CELL — the one README surface whose syntax the text can collide with. The
+  // emitted tool descriptions document enum states inline ('COMPLETED|IN_PROCESS
+  // |ERROR'), and a bare '|' splits the 2-column Operations row into 5 cells, so
+  // every renderer drops the surplus and the sentence is truncated mid-word in
+  // the published connector README.
+  //
+  // Two of the three transforms are an ENCODING, one is not, and the difference
+  // matters to whoever reads this next:
+  //   - backslash and '|' are ESCAPED, and unescaping restores the authored bytes;
+  //   - '\r?\n' -> ' ' is a deliberate LOSSY FLATTENING with no inverse, forced by
+  //     the markdown grammar (a table row IS one line). A reader cannot recover
+  //     where the line breaks were, so never treat mdCell output as a round-trip
+  //     of the authored text.
+  // The flattening is a no-op on the descriptions emitted today — the three
+  // published connector READMEs have no spilled line in their Operations table,
+  // so no description carries a newline — and it exists so that the day one does,
+  // the table survives instead of the row being torn in half.
+  // Order matters — backslashes first (otherwise the '\' we add for '|' would be
+  // re-escaped), then the delimiter, then newlines.
+  // SafeString follows the 'safe' precedent above; templates are compiled with
+  // noEscape so a raw string would behave identically, but the type states intent.
+  Handlebars.registerHelper(
+    'mdCell',
+    (value: unknown) =>
+      new Handlebars.SafeString(
+        String(value ?? '')
+          .replace(/\\/g, '\\\\')
+          .replace(/\|/g, '\\|')
+          .replace(/\r?\n/g, ' '),
+      ),
+  );
   helpersRegistered = true;
 }
 

@@ -2,8 +2,8 @@
   "tools": [
 {{#each tools}}
     {
-      "name": "{{name}}",
-      "description": "{{description}}"
+      "name": {{json name}},
+      "description": {{json description}}
     }{{#unless @last}},{{/unless}}
 {{/each}}
   ]

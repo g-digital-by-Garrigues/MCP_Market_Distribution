@@ -166,6 +166,14 @@ export interface N8nCredentialField {
   displayName: string;
   /** Whether this field is a secret (renders masked, stored encrypted). */
   isSecret: boolean;
+  /**
+   * Whether the emitted contract declares this variable mandatory
+   * (`# isRequired: true` in the MCP's .env.example). Renders `required: true` on
+   * the n8n credential property. Optional member: an unset value behaves exactly
+   * like `false`, so pre-existing spec literals stay valid. Never inferred from
+   * `isSecret` — the two are independent in the emitted contract (FR61).
+   */
+  isRequired?: boolean;
   /** Optional explanation surfaced to the user creating the credential. */
   description?: string;
 }
@@ -250,6 +258,40 @@ export interface N8nNodeSpec {
    */
   defaultApiBaseUrl: string;
   /**
+   * Whether the emitted contract declares `MCP_API_BASE_URL` mandatory. Renders
+   * `required: true` on the template-emitted `baseUrl` credential property.
+   * `MCP_API_BASE_URL` is deliberately NOT an allowlisted credential env var — the
+   * base URL already has its own property — so its requiredness travels as this
+   * scalar rather than as an N8nCredentialField. Optional: unset behaves as false,
+   * which is what EAD Factory (`# isRequired: false`) needs to stay byte-identical.
+   */
+  baseUrlRequired?: boolean;
+  /**
+   * The AUTHORED description of `MCP_API_BASE_URL`, carried verbatim from the
+   * emitted `.env.example` (FR62: the pipeline transports contract text, it does
+   * not write it). The connector README used to state its own version of this
+   * ("Leave blank only if you know your environment uses a different endpoint"),
+   * which contradicted a contract that declares the variable required.
+   *
+   * `MCP_API_BASE_URL` is deliberately NOT an allowlisted credential env var, so
+   * like `baseUrlRequired` its description travels as a scalar. Absent when the
+   * contract declares none — the README then renders the same em dash it renders
+   * for any other credential row without a description, rather than prose of ours.
+   */
+  baseUrlDescription?: string;
+  /**
+   * Story 18.7 (AC6): the "Upgrading from 1.x" section of the connector README,
+   * taken VERBATIM from the span between `<!-- N8N_UPGRADE -->` and
+   * `<!-- /N8N_UPGRADE -->` in the source repo's `.github/RELEASE_NOTES.md`.
+   *
+   * Authored by the operator on the bump branch, never composed here (FR62):
+   * the pipeline carries the bytes, it does not write them. Optional, and
+   * spread conditionally into the spec so the key is ABSENT (not `undefined`)
+   * when the product ships no note — EAD Factory has none, and its published
+   * README must stay byte-identical.
+   */
+  upgradeNotes?: string;
+  /**
    * Resource groups for the n8n resource+operation two-level UI pattern.
    * When present, the template renders one resource dropdown + one operation
    * dropdown per resource (scoped via displayOptions.show.resource).
@@ -263,6 +305,19 @@ export interface N8nNodeSpec {
    * Computed from AUTO_ID_MAP in build-node-spec.ts for operations in the spec.
    */
   autoIdOutputFields?: Array<{ operation: string; fieldName: string }>;
+  /**
+   * Story 18.4 (AC4): per-operation, per-ROLE alias for the auto-generated id,
+   * injected in ADDITION to `autoIdOutputFields`. Derived from the emitted
+   * description of `signature_participant_create`: "the id you generated IS the
+   * participantId, and it is the signatoryId if you passed role SIGNATORY or the
+   * validatorId if you passed role VALIDATOR". `param` is the request field the
+   * role is read from at execute() time; a value with no entry in `byValue`
+   * (OBSERVER) adds nothing — the contract names no field for it.
+   *
+   * Optional: a required member would have to be added at every N8nNodeSpec
+   * literal in tests/ (tsconfig includes tests/**\/*) for no behavioural gain.
+   */
+  autoIdRoleFields?: Array<{ operation: string; param: string; byValue: Record<string, string> }>;
   /**
    * Story 13.1 (FR51): per-operation default values for OPTIONAL body parameters.
    * At execute() time a value equal to its default is treated as "unset" and omitted
@@ -313,19 +368,23 @@ export interface N8nNodeSpec {
   hasChat?: boolean;
   /**
    * Authentication style for the REST-direct execute() body.
-   * 'email-password' → POST /session with email+password → Bearer JWT.
+   * 'user-key' → POST /user-keys/session with a long-lived User Key in the body
+   *   → short-lived session JWT used as the Bearer (GoCertius / EAD Enterprise
+   *   Suite; Epic 18 collapsed these products to this single flow).
    * 'okta-client-credentials' → POST OKTA_TOKEN_URL with
    *   grant_type=client_credentials → Bearer access_token.
-   * 'oauth2-client-credentials' → POST MCP_SVC_TOKEN_URL with
-   *   grant_type=client_credentials → Bearer access_token (provider-agnostic;
-   *   the generator generalized the hardcoded OKTA_* trio to MCP_SVC_*).
-   * Detected from server env vars: MCP_SVC_TOKEN_URL → 'oauth2-client-credentials';
-   * else OKTA_TOKEN_URL → 'okta-client-credentials'; else 'email-password'.
+   * 'oauth2-client-credentials' → n8n's native oAuth2Api acquires the
+   *   client_credentials token (Epic 16; EAD Factory).
+   * 'email-password' → POST /session with email+password → Bearer JWT. No emitted
+   *   product declares MCP_AUTH_EMAIL any more, so detection never selects it.
+   * Detected from server env vars: MCP_AUTH_USER_KEY → 'user-key'; else
+   * MCP_SVC_TOKEN_URL → 'oauth2-client-credentials'; else OKTA_TOKEN_URL →
+   * 'okta-client-credentials'; else the build fails (FR61 — no silent default).
    * Story 12.2 (Epic 12): REST-direct architecture per ADR 0008.
    */
   authStyle:
     | 'email-password'
     | 'okta-client-credentials'
     | 'oauth2-client-credentials'
-    | 'session-login-or-token';
+    | 'user-key';
 }

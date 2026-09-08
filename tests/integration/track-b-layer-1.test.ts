@@ -7,6 +7,12 @@ import { runTrackBLayer1 } from '../../src/gates/run-track-b-layer-1.js';
 import { generateN8nNode } from '../../src/adapters/n8n-adapter/generate-n8n-node.js';
 import { normalizeGeneratedNode } from '../../src/adapters/n8n-adapter/normalize-generated-node.js';
 import type { N8nNodeSpec } from '../../src/adapters/n8n-adapter/types.js';
+import { POST_E18_ENV_VARS } from '../fixtures/env-sets/post-e18-user-key.js';
+
+/** The single upstream credential the post-E18 contract declares, read from the
+ *  fixture 18.1 pinned to GoCertius_MCP origin/main:.env.example — so the gate
+ *  fixture and the emitted contract cannot drift apart. */
+const USER_KEY = POST_E18_ENV_VARS.find((v) => v.name === 'MCP_AUTH_USER_KEY')!;
 
 function sampleSpec(): N8nNodeSpec {
   return {
@@ -23,7 +29,11 @@ function sampleSpec(): N8nNodeSpec {
     credentialParamName: 'multiToolApi',
     sourceRepoUrl: 'https://github.com/test/test-mcp',
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
-    authStyle: 'email-password',
+    // Epic 18: the products this gate guards (GoCertius / EAD Enterprise Suite)
+    // collapsed to a single upstream credential. The fixture follows the emitted
+    // contract, not the deleted email/password flow — a gate fixture built from a
+    // style no product can select would only ever prove the gate accepts fiction.
+    authStyle: 'user-key',
     // n8n requires an icon on BOTH the node and the credential class
     // (@n8n/community-nodes/icon-validation, cred-class-field-icon-missing). Every
     // real product bundles its logo, so the fixture must too — a spec with
@@ -62,9 +72,16 @@ function sampleSpec(): N8nNodeSpec {
         properties: [],
       },
     ],
+    // Derived from the pinned contract fixture rather than hand-written, so this
+    // fixture and the emitted .env.example cannot drift apart (Story 18.2).
     credentials: [
-      { envName: 'MCP_AUTH_EMAIL', propName: 'email', displayName: 'Auth Email', isSecret: false },
-      { envName: 'MCP_AUTH_PASSWORD', propName: 'password', displayName: 'Auth Password', isSecret: true },
+      {
+        envName: USER_KEY.name,
+        propName: 'userKey',
+        displayName: 'User Key',
+        isSecret: USER_KEY.isSecret,
+        isRequired: USER_KEY.isRequired,
+      },
     ],
   };
 }
@@ -310,14 +327,15 @@ describe('Track B — Layer 1 (structural lint)', () => {
     await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
     const credPath = path.join(nodeDir, 'credentials', 'MultiToolApi.credentials.ts');
     const original = await fs.readFile(credPath, 'utf8');
-    // The sample fixture has propName: 'email' so the generated file has name: 'email'
-    const tampered = original.replace(/name: 'email'/, "name: 'wrongName'");
+    // The sample fixture has propName: 'userKey' so the generated file has name: 'userKey'
+    const tampered = original.replace(/name: 'userKey'/, "name: 'wrongName'");
     await fs.writeFile(credPath, tampered);
     const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec });
     expect(result.passed).toBe(false);
     const credError = result.errors.find((e) => e.check === 'credentials');
     expect(credError).toBeDefined();
-    expect(credError!.observation).toContain('email');
+    // The missing half names the ENV VAR, which is what the operator greps for.
+    expect(credError!.observation).toContain('MCP_AUTH_USER_KEY');
   });
 
   it('fails readme when an operation is not mentioned in the README', async () => {
@@ -450,6 +468,205 @@ describe('Track B — Layer 1 (structural lint)', () => {
       const uxCheck = result.checks.find((c) => c.name === 'n8n_ux_compliance');
       expect(uxCheck).toBeDefined();
       expect(uxCheck!.passed).toBe(true);
+    });
+  });
+
+  // Epic 18 / Story 18.2 (FR59 + FR61). Before this block the `credentials` check
+  // had exactly one per-field assertion — `for (const cred of spec.credentials)` —
+  // which is vacuous on an empty array. A user-key product whose allowlist
+  // intersected the declared env vars to nothing therefore generated a credential
+  // form containing only the API base URL and scored 8/8. These four cases pin the
+  // two directions of the equality plus the OAuth2 exemption.
+  describe('credential gate fails closed (Epic 18)', () => {
+    /** A user-key spec: the post-E18 shape of GoCertius / EAD Enterprise Suite.
+     *  `sampleSpec()` already is one since Task 2; the alias keeps these cases
+     *  readable and independent of the shared fixture's future. */
+    const userKeySpec = (): N8nNodeSpec => sampleSpec();
+
+    /** EAD Factory's shape: n8n's oAuth2Api base type supplies the auth fields. */
+    function oauth2Spec(): N8nNodeSpec {
+      return {
+        ...sampleSpec(),
+        authStyle: 'oauth2-client-credentials',
+        credentialClassName: 'MultiToolOAuth2Api',
+        credentialParamName: 'multiToolOAuth2Api',
+        credentials: [],
+      };
+    }
+
+    async function tamperCredential(className: string, from: RegExp, to: string): Promise<void> {
+      const credPath = path.join(nodeDir, 'credentials', `${className}.credentials.ts`);
+      const original = await fs.readFile(credPath, 'utf8');
+      const tampered = original.replace(from, to);
+      expect(tampered).not.toBe(original);
+      await fs.writeFile(credPath, tampered);
+    }
+
+    // AC1 / FR61. The regression exactly as it would have shipped.
+    it('FAILS when a non-oauth2 credential offers no way to authenticate (only baseUrl)', async () => {
+      const spec: N8nNodeSpec = { ...userKeySpec(), credentials: [] };
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const credError = result.errors.find((e) => e.check === 'credentials');
+      expect(credError).toBeDefined();
+      // Name the product, the auth style and what was actually emitted — the gate
+      // cannot name the missing env var (the allowlist lives in build-node-spec and
+      // is deliberately not exported), so it must at least say whose form is empty.
+      expect(credError!.observation).toContain('multi-tool');
+      expect(credError!.observation).toContain('user-key');
+      expect(credError!.observation).toContain('baseUrl');
+      expect(result.passed).toBe(false);
+      // A structural failure short-circuits the official linter: 7 checks, not 8.
+      expect(result.log.checks_run).toBe(7);
+    });
+
+    // AC2, the unexpected half. `oktaTokenUrl` stays in ALLOWED_CREDENTIAL_PROPS, so
+    // the n8n_ux_compliance superset backstop can never see it — only the equality can.
+    it('FAILS when the emitted file carries a stale property the spec no longer declares', async () => {
+      const spec = userKeySpec();
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      await tamperCredential(
+        spec.credentialClassName,
+        /name: 'userKey',/,
+        "name: 'userKey',\n    },\n    {\n      displayName: 'Okta Token Url',\n      name: 'oktaTokenUrl',",
+      );
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const credError = result.errors.find((e) => e.check === 'credentials');
+      expect(credError).toBeDefined();
+      expect(credError!.observation).toContain('oktaTokenUrl');
+      // The UX allowlist backstop is blind to it — this is the case only AC2 catches.
+      expect(result.errors.find((e) => e.check === 'n8n_ux_compliance')).toBeUndefined();
+      expect(result.passed).toBe(false);
+    });
+
+    // AC2, the cheaper variant: after Task 4 this one fails twice over. Assert the
+    // `credentials` error specifically so the test still means something if the
+    // allowlist is ever widened again.
+    it('FAILS on a stale `password` property left behind by the deleted email/password flow', async () => {
+      const spec = userKeySpec();
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      await tamperCredential(
+        spec.credentialClassName,
+        /name: 'userKey',/,
+        "name: 'userKey',\n    },\n    {\n      displayName: 'Auth Password',\n      name: 'password',",
+      );
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const credError = result.errors.find((e) => e.check === 'credentials');
+      expect(credError).toBeDefined();
+      expect(credError!.observation).toContain('password');
+      expect(result.passed).toBe(false);
+    });
+
+    // AC4. EAD Factory: buildCredentials returns [] by design; the authentication
+    // fields come from n8n's oAuth2Api base type. AC1 must not fire here.
+    it('PASSES an oauth2-client-credentials credential with no per-property auth field (EAD Factory)', async () => {
+      const spec = oauth2Spec();
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const credCheck = result.checks.find((c) => c.name === 'credentials');
+      expect(credCheck).toBeDefined();
+      expect(credCheck!.passed).toBe(true);
+      expect(result.errors.find((e) => e.check === 'credentials')).toBeUndefined();
+      // AC5: the check says what it looked at — baseUrl + the two hidden fields.
+      expect(credCheck!.inspected).toBe('3 credential properties');
+    });
+
+    // AC5. A green `credentials` check must report the population it scanned.
+    it('reports how many credential properties it inspected on the success path', async () => {
+      const spec = userKeySpec();
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const credCheck = result.checks.find((c) => c.name === 'credentials');
+      expect(credCheck!.passed).toBe(true);
+      expect(credCheck!.inspected).toBe('2 credential properties');
+      expect(result.log.inspected?.credentials).toBe('2 credential properties');
+    });
+  });
+
+  // Epic 18 / Story 18.1 (FR61) — remediation of review finding F13. The block above
+  // pins the credential property NAME set in both directions, but nothing looked at
+  // the `required: true` marker, which is the entire point of carrying `isRequired`
+  // across from the emitted .env.example. A template regression that dropped
+  // `{{#if this.isRequired}}` (or the `baseUrlRequired` arm) emitted a form that no
+  // longer expresses requiredness and still scored 8/8 — a gate that cannot verify
+  // the thing it exists for.
+  describe('credential requiredness matches the emitted contract (Epic 18 / F13)', () => {
+    async function tamper(className: string, from: string, to: string): Promise<void> {
+      const credPath = path.join(nodeDir, 'credentials', `${className}.credentials.ts`);
+      const original = await fs.readFile(credPath, 'utf8');
+      expect(original).toContain(from);
+      await fs.writeFile(credPath, original.replace(from, to));
+    }
+
+    /** The contract fixture declares MCP_AUTH_USER_KEY required AND MCP_API_BASE_URL
+     *  required (post-e18-user-key.ts), so the real GoCertius/Suite shape carries both
+     *  markers. `sampleSpec()` omits baseUrlRequired; this adds it. */
+    function requiredSpec(): N8nNodeSpec {
+      const spec = sampleSpec();
+      return { ...spec, baseUrlRequired: true };
+    }
+
+    it('PASSES when both emitted `required: true` markers match the contract', async () => {
+      const spec = requiredSpec();
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      expect(result.errors.find((e) => e.check === 'credentials')).toBeUndefined();
+    });
+
+    it('FAILS when the auth field loses its `required: true` marker', async () => {
+      const spec = requiredSpec();
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      await tamper(
+        spec.credentialClassName,
+        "typeOptions: { password: true },\n      required: true,\n",
+        "typeOptions: { password: true },\n",
+      );
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const credError = result.errors.find((e) => e.check === 'credentials');
+      expect(credError).toBeDefined();
+      expect(credError!.observation).toContain('userKey');
+      expect(credError!.observation).toContain('MCP_AUTH_USER_KEY');
+      expect(result.passed).toBe(false);
+    });
+
+    it('FAILS when the base URL loses its `required: true` marker', async () => {
+      const spec = requiredSpec();
+      await generateN8nNode({ spec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      await tamper(
+        spec.credentialClassName,
+        "name: 'baseUrl',\n      type: 'string',\n      required: true,\n",
+        "name: 'baseUrl',\n      type: 'string',\n",
+      );
+      const result = await runTrackBLayer1({ mcpName: 'multi-tool', nodeDir, spec, skipLinter: true });
+      const credError = result.errors.find((e) => e.check === 'credentials');
+      expect(credError).toBeDefined();
+      expect(credError!.observation).toContain('baseUrl');
+      expect(result.passed).toBe(false);
+    });
+
+    // The other direction: EAD Factory declares MCP_API_BASE_URL optional, and an
+    // emitted `required: true` there would silently make the form stricter than the
+    // contract the product ships.
+    it('FAILS when the emitted file marks a field the contract declares optional', async () => {
+      const emittedSpec = requiredSpec();
+      await generateN8nNode({ spec: emittedSpec, outputDir: nodeDir, sourceLogoAbsPath: logoPath });
+      // Same artefact, but the contract the gate is handed says both are optional.
+      const contractSpec: N8nNodeSpec = {
+        ...emittedSpec,
+        baseUrlRequired: false,
+        credentials: emittedSpec.credentials.map((c) => ({ ...c, isRequired: false })),
+      };
+      const result = await runTrackBLayer1({
+        mcpName: 'multi-tool',
+        nodeDir,
+        spec: contractSpec,
+        skipLinter: true,
+      });
+      const credError = result.errors.find((e) => e.check === 'credentials');
+      expect(credError).toBeDefined();
+      expect(credError!.observation).toContain('baseUrl');
+      expect(credError!.observation).toContain('userKey');
+      expect(result.passed).toBe(false);
     });
   });
 });

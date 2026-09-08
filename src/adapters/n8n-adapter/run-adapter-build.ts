@@ -2,14 +2,13 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
-import { buildN8nNodeSpec } from './build-node-spec.js';
-import { refineWithLlm } from './refine-with-llm.js';
+import { buildN8nNodeSpec, BuildN8nNodeSpecError } from './build-node-spec.js';
 import { generateN8nNode, copyN8nNodeSource } from './generate-n8n-node.js';
 import { normalizeGeneratedNode } from './normalize-generated-node.js';
 import { loadDistributionConfig } from '../../distribution/load-distribution-config.js';
 
 // Story 5.6b: orchestrator CLI that the publish.yml `generate-n8n-adapter`
-// job invokes. Chains the 4 atomic adapter pieces (build spec → refine →
+// job invokes. Chains the 3 atomic adapter pieces (build spec →
 // generate node tree → optionally dry-run-substitute the source-MCP dep
 // to a local file: path so downstream gates + publish work without the
 // source MCP being live on npmjs yet) and emits:
@@ -34,11 +33,6 @@ interface AdapterBuildSummary {
   operations: string[];
   credentials: string[];
   unsupported_notes: string[];
-  refine: {
-    applied: boolean;
-    change_count: number;
-    warning?: string;
-  };
   dry_run: boolean;
   source_substituted: boolean;
   /** Set when dry_run=true AND substitution couldn't fire; explains why. */
@@ -119,6 +113,29 @@ interface RunAdapterBuildOptions {
   repoRoot?: string;
 }
 
+/**
+ * Is this adapter failure one a caller may legitimately continue past?
+ *
+ * TRUE for exactly one case: the source MCP could not be STARTED or could not
+ * complete the MCP initialize handshake (`stage: 'launch'`). That is an environment
+ * fact — an unbuilt `dist/`, uninstalled dependencies, a dev box — not a statement
+ * about the product's contract, and it is the case `prepMcp`'s catch-all was added
+ * for in #202: the bump's server.json / smithery.yaml / README / install blocks are
+ * already written and valid, so the operator gets them and re-runs once the MCP
+ * builds.
+ *
+ * FALSE for everything else, including the three hard-fails Epic 18 added inside
+ * `buildN8nNodeSpec` — an unmatched auth contract (FR61), an operation that fell back
+ * to the wrong resource (Story 18.4) and an unparseable `.github/RELEASE_NOTES.md`
+ * (`ReleaseNotesError`, Story 18.7). Those are the adapter REFUSING a contract it
+ * cannot honour: continuing past them drops `n8n-node/` from the bump and exits
+ * green, which is the fail-open shape FR59 forbids. Unrecognised errors are FALSE
+ * too — a failure this function cannot classify is not a failure it may excuse.
+ */
+export function isRecoverableAdapterFailure(err: unknown): boolean {
+  return err instanceof BuildN8nNodeSpecError && err.stage === 'launch';
+}
+
 export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<AdapterBuildSummary> {
   // Resolve to absolute paths upfront. The substitution step delegates
   // to `npm pack --pack-destination <outputDir>` from a subprocess whose
@@ -140,16 +157,13 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
     version: opts.version,
   });
 
-  // 2. Optional LLM refine — silent no-op when ANTHROPIC_API_KEY isn't set.
-  const refinement = await refineWithLlm({ spec });
-
-  // 3. Render the n8n node tree (with source logo when shipped).
+  // 2. Render the n8n node tree (with source logo when shipped).
   //    Re-loading .distribution.yaml is cheap; the spec only carries a
   //    boolean flag (iconBundled), the absolute logo path lives on the
   //    source-side filesystem and stays out of the spec to keep it
   //    IO-pure for unit tests.
   let sourceLogoAbsPath: string | undefined;
-  if (refinement.spec.iconBundled) {
+  if (spec.iconBundled) {
     const distribution = await loadDistributionConfig(repoRoot, opts.mcpName);
     // n8n review (2026-07): prefer the SVG (logo_svg_path) when generation ships one;
     // fall back to logo_path (PNG). The destination name is spec.iconFile, kept in
@@ -160,7 +174,7 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
     }
   }
   await generateN8nNode({
-    spec: refinement.spec,
+    spec,
     outputDir,
     ...(sourceLogoAbsPath ? { sourceLogoAbsPath } : {}),
   });
@@ -185,9 +199,9 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
   // Drop the spec next to the generated tree so Layer 1 (lint) has its
   // truth source without re-running buildN8nNodeSpec.
   const specPath = path.join(outputDir, '.spec.json');
-  await fs.writeFile(specPath, JSON.stringify(refinement.spec, null, 2) + '\n');
+  await fs.writeFile(specPath, JSON.stringify(spec, null, 2) + '\n');
 
-  // 4. Dry-run dep substitution so Layer 2/3/publisher don't require the
+  // 3. Dry-run dep substitution so Layer 2/3/publisher don't require the
   //    source MCP to already be on the npm registry.
   let sourceSubstituted = false;
   let substitutionWarning: string | undefined;
@@ -195,7 +209,7 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
     const r = await substituteSourceMcpForDryRun({
       outputDir,
       packageDir,
-      sourceMcpPackageName: refinement.spec.sourceMcpPackageName,
+      sourceMcpPackageName: spec.sourceMcpPackageName,
     });
     sourceSubstituted = r.substituted;
     if (!r.substituted) {
@@ -206,18 +220,13 @@ export async function runAdapterBuild(opts: RunAdapterBuildOptions): Promise<Ada
   const summary: AdapterBuildSummary = {
     mcp_name: opts.mcpName,
     version: opts.version,
-    package_name: refinement.spec.packageName,
-    source_mcp_package_name: refinement.spec.sourceMcpPackageName,
+    package_name: spec.packageName,
+    source_mcp_package_name: spec.sourceMcpPackageName,
     output_dir: outputDir,
     spec_path: specPath,
-    operations: refinement.spec.operations.map((o) => o.name),
-    credentials: refinement.spec.credentials.map((c) => c.envName),
+    operations: spec.operations.map((o) => o.name),
+    credentials: spec.credentials.map((c) => c.envName),
     unsupported_notes: unsupportedNotes,
-    refine: {
-      applied: refinement.applied,
-      change_count: refinement.changes.length,
-      ...(refinement.warning ? { warning: refinement.warning } : {}),
-    },
     dry_run: opts.dryRun,
     source_substituted: sourceSubstituted,
     ...(substitutionWarning ? { substitution_warning: substitutionWarning } : {}),

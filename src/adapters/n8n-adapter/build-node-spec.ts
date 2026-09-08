@@ -13,6 +13,8 @@ import type {
   N8nProperty,
 } from './types.js';
 import { resolveMcpEntryRelPath } from '../../utils/resolve-mcp-entry.js';
+import { readEmittedEnvDefaults } from '../../utils/read-emitted-env-defaults.js';
+import { readReleaseNotes } from '../../utils/release-notes.js';
 
 // Story 5.1b: assemble the N8nNodeSpec for a single MCP.
 //
@@ -29,7 +31,7 @@ import { resolveMcpEntryRelPath } from '../../utils/resolve-mcp-entry.js';
 // The output spec is consumed by the Handlebars codegen step (5.1c).
 // Unsupported-schema notes from the converter are aggregated and
 // surfaced via `unsupportedNotes` so the generator can write them
-// into the README / hand them to the LLM-refine pass (5.1d).
+// into the README.
 
 export interface BuildN8nNodeSpecInput {
   /** Path to the MCP source folder (clone target: pending-to-publish/<id>/). */
@@ -130,7 +132,7 @@ type AuthStyle =
   | 'email-password'
   | 'okta-client-credentials'
   | 'oauth2-client-credentials'
-  | 'session-login-or-token';
+  | 'user-key';
 
 // ALLOWLIST (not a denylist): the exact env vars the REST-direct execute()
 // reads as credentials, keyed by auth style. The n8n credential surface is
@@ -164,24 +166,38 @@ const NODE_READABLE_CREDENTIAL_ENV_VARS: Record<AuthStyle, readonly string[]> = 
     'MCP_SVC_SCOPE',
   ],
   // User-facing products (GoCertius / EAD Enterprise Suite): the n8n user signs in
-  // as themselves. Two flows, both minting the same session JWT used as the Bearer:
-  // a long-lived User Key exchanged at POST /user-keys/session (preferred), or
-  // email+password at POST /session. See the session-login-or-token block in
-  // node.ts.hbs and docs/n8n-adapter-contract.md.
-  'session-login-or-token': ['MCP_AUTH_EMAIL', 'MCP_AUTH_PASSWORD', 'MCP_AUTH_USER_KEY'],
+  // as themselves with a single credential — a long-lived User Key, issued
+  // out-of-band and exchanged at POST /user-keys/session for the short-lived
+  // session JWT used as the Bearer. Epic 18: the email/password flow was deleted
+  // from the server, so MCP_AUTH_EMAIL / MCP_AUTH_PASSWORD are no longer emitted
+  // and no longer readable here. See the user-key block in node.ts.hbs and
+  // docs/n8n-adapter-contract.md.
+  'user-key': ['MCP_AUTH_USER_KEY'],
 };
 
 function detectAuthStyle(server: ServerJsonShape): AuthStyle {
   const names = new Set((server.packages?.[0]?.environmentVariables ?? []).map((v) => v.name));
-  // A product that exposes MCP_AUTH_EMAIL is user-facing: the n8n user authenticates
-  // as themselves (email/password → session JWT, or a pasted token). This is checked
-  // BEFORE MCP_SVC_* because such products also expose a service-account trio for their
-  // OWN server-side use (GoCertius/EAD-ES do) — but that is NOT how an n8n user signs in.
-  // Only a product with NO email surface (EAD Factory) is a pure service account.
-  if (names.has('MCP_AUTH_EMAIL')) return 'session-login-or-token';
+  // A product that declares MCP_AUTH_USER_KEY is user-facing: the n8n user
+  // authenticates as themselves with their own long-lived key. Checked BEFORE
+  // MCP_SVC_* because such products also declare a MCP_SVC_* trio for their OWN
+  // server-side use — inbound token introspection (GoCertius/EAD-ES do) — and that
+  // is NOT how an n8n user signs in. Only a product with no user-key surface
+  // (EAD Factory) is a pure service account.
+  //
+  // FR61: there is no default. A descriptor that declares none of the three
+  // discriminators is a contract we cannot build a credential form from, so the
+  // build fails loudly instead of emitting a form with zero authentication fields.
+  if (names.has('MCP_AUTH_USER_KEY')) return 'user-key';
   if (names.has('MCP_SVC_TOKEN_URL')) return 'oauth2-client-credentials';
   if (names.has('OKTA_TOKEN_URL')) return 'okta-client-credentials';
-  return 'email-password';
+  throw new BuildN8nNodeSpecError(
+    'server_json',
+    'Cannot determine the n8n authentication style: server.json declares none of ' +
+      'MCP_AUTH_USER_KEY (user key), MCP_SVC_TOKEN_URL (OAuth2 client credentials) ' +
+      'or OKTA_TOKEN_URL (Okta client credentials). The n8n credential form is derived ' +
+      'exclusively from the emitted .env.example, so an unrecognised auth contract must ' +
+      'fail the build rather than produce a credential with no authentication fields.',
+  );
 }
 
 // Human-readable credential field display names. The generic
@@ -250,6 +266,11 @@ function buildCredentials(server: ServerJsonShape, authStyle: AuthStyle): N8nCre
           CREDENTIAL_DISPLAY_NAME_MAP[envName] ??
           toTitleCase(envName.toLowerCase().replace(/_/g, '-')),
         isSecret: v.isSecret === true || SECRET_ENV_SUFFIX_RE.test(envName),
+        // FR61: requiredness comes from the emitted contract and is never inferred
+        // from secrecy (MCP_API_BASE_URL is required and non-secret;
+        // MCP_SVC_CLIENT_SECRET is secret and optional). Contrast isSecret above,
+        // whose suffix rule is a deliberate fail-closed masking backstop.
+        isRequired: v.isRequired === true,
       };
       if (v.description) field.description = v.description;
       return field;
@@ -264,21 +285,6 @@ function buildCredentials(server: ServerJsonShape, authStyle: AuthStyle): N8nCre
 //   1. `// Sourced from operation: Foo_run (POST /path)` — auto-generated by @suite/generator
 //   2. `// n8n-http: POST /path` — manual override for custom/handwritten tools
 //   3. STUB — neither comment present; tool gets a "use self-hosted" error at runtime
-// Extract the production API base URL from the MCP's session_login.ts.
-// Looks for: MCP_API_BASE_URL ?? "https://..." or MCP_API_BASE_URL ?? 'https://...'
-const BASE_URL_RE = /MCP_API_BASE_URL\s*\?\?\s*["'](https?:\/\/[^"']+)["']/;
-
-async function readDefaultApiBaseUrl(packageDir: string): Promise<string> {
-  const loginFile = path.join(packageDir, 'src', 'tools', 'session_login.ts');
-  try {
-    const content = await fs.readFile(loginFile, 'utf8');
-    const m = BASE_URL_RE.exec(content);
-    return m?.[1] ?? '';
-  } catch {
-    return '';
-  }
-}
-
 const SOURCED_RE = /\/\/ Sourced from operation: \S+ \((\w+) ([^)]+)\)/;
 const N8N_HTTP_RE = /\/\/ n8n-http: (\w+) (.+)/;
 
@@ -680,6 +686,91 @@ function verbFirstLabel(toolName: string, titleCaseFn: (s: string) => string): s
   return titleCaseFn(tokens.join('-'));
 }
 
+// Story 18.4 (AC4): operations whose auto-generated id ALSO answers to a
+// role-specific field name. Every name here is quoted from the emitted contract:
+// signature_participant_create's description says the generated id "is the
+// signatoryId if you passed role SIGNATORY or the validatorId if you passed role
+// VALIDATOR"; `role` is z.enum(['SIGNATORY','OBSERVER','VALIDATOR']);
+// assign_validator_to_signatory consumes signatoryId + validatorId. OBSERVER maps
+// to nothing on purpose — the contract names no field for it.
+const AUTO_ID_ROLE_MAP: ReadonlyArray<{
+  operation: string;
+  param: string;
+  byValue: Record<string, string>;
+}> = [
+  {
+    operation: 'signature_participant_create',
+    param: 'role',
+    byValue: { SIGNATORY: 'signatoryId', VALIDATOR: 'validatorId' },
+  },
+];
+
+// --- Resource routing for the n8n resource+operation two-level UI pattern ---
+// Story 18.4 (AC3): hoisted out of buildN8nNodeSpec to module scope so it is
+// unit-testable (the managerAwareLabel precedent below), and typed so that the
+// three tables cannot drift apart.
+//
+// RESOURCE_ORDER is NOT an ordering any more — since Story 15.3 (FR60) the
+// dropdown is sorted by display name. It is a pure MEMBERSHIP ALLOWLIST: the
+// resource list is built with `RESOURCE_ORDER.filter((r) => resourceMap.has(r))`,
+// so a slug that detectResource returns but this array omits is dropped along
+// with every operation under it — and those operations become unreachable in
+// n8n, because the Operation dropdown is emitted per-resource. Deriving
+// ResourceSlug from it makes "detection without membership" and "membership
+// without a display name" both a tsc error instead of a story to remember.
+export const RESOURCE_ORDER = [
+  'caseFile',
+  'evidence',
+  'dossierEvidence',
+  'dossier',
+  'notification',
+  'signature',
+  'idVerification',
+  'chat',
+  'session',
+  'useCase',
+] as const;
+
+export type ResourceSlug = (typeof RESOURCE_ORDER)[number];
+
+export const RESOURCE_DISPLAY: Record<ResourceSlug, string> = {
+  caseFile: 'Case File',
+  evidence: 'Evidence',
+  dossierEvidence: 'Dossier Evidence',
+  dossier: 'Dossier',
+  notification: 'Notification',
+  signature: 'Signature',
+  // 'Identity Verification' / 'idVerification' are read off the emitted contract:
+  // the descriptions call it identity verification and the upstream permit flag is
+  // permit.idVerifications. Before Story 18.4 there was no rule at all and the
+  // Suite's three tools sat under the Signature dropdown.
+  idVerification: 'Identity Verification',
+  chat: 'Chat',
+  session: 'Session',
+  useCase: 'Use Case',
+};
+
+export function detectResource(opName: string): ResourceSlug {
+  // Legacy EAD Factory evidence tools that don't carry the 'evidence_' prefix but
+  // belong to the evidence manager (/digital-trust). Without this they fall through
+  // to the 'signature' default — wrong for both the dropdown grouping and, under
+  // Story 13.3, the per-manager base path.
+  if (opName === 'generate_evidence' || opName === 'get_evidence') return 'evidence';
+  if (opName.startsWith('dossier_evidence_')) return 'dossierEvidence';
+  if (opName.startsWith('dossier_')) return 'dossier';
+  if (opName.startsWith('evidence_') || opName.startsWith('large_evidence_')) return 'evidence';
+  if (opName.startsWith('notification_')) return 'notification';
+  if (opName.startsWith('case_file_')) return 'caseFile';
+  if (opName.startsWith('use_case_')) return 'useCase';
+  // Identity/session domain: session_login + profile_get (Epic 14 — /profile is how a
+  // User-Key user resolves their userId, since session_info is keyed on the email).
+  if (opName.startsWith('session_') || opName.startsWith('profile_')) return 'session';
+  if (opName.startsWith('chat_')) return 'chat';
+  // Must sit ABOVE the signature fallback.
+  if (opName.startsWith('id_verification_')) return 'idVerification';
+  return 'signature';
+}
+
 // Story 13.4 (FR54): "<Verb> <Object>" label with the intercalated manager word
 // dropped. Strip the leading manager token; if only the verb remains, re-add the
 // manager word as the object. Caller prefixes the manager initials.
@@ -962,61 +1053,30 @@ export async function buildN8nNodeSpec(
   // Operations are grouped by name prefix into logical resource domains.
   // Only generated for nodes with many operations (>=8) to avoid adding
   // a redundant dropdown to small nodes like EAD Factory.
-  const RESOURCE_ORDER = [
-    'caseFile',
-    'evidence',
-    'dossierEvidence',
-    'dossier',
-    'notification',
-    'signature',
-    'chat',
-    'session',
-    'useCase',
-  ];
-  const RESOURCE_DISPLAY: Record<string, string> = {
-    caseFile: 'Case File',
-    evidence: 'Evidence',
-    dossierEvidence: 'Dossier Evidence',
-    dossier: 'Dossier',
-    notification: 'Notification',
-    signature: 'Signature',
-    chat: 'Chat',
-    session: 'Session',
-    useCase: 'Use Case',
-  };
-  const detectResource = (opName: string): string => {
-    // Legacy EAD Factory evidence tools that don't carry the 'evidence_' prefix but
-    // belong to the evidence manager (/digital-trust). Without this they fall through
-    // to the 'signature' default — wrong for both the dropdown grouping and, under
-    // Story 13.3, the per-manager base path.
-    if (opName === 'generate_evidence' || opName === 'get_evidence') return 'evidence';
-    if (opName.startsWith('dossier_evidence_')) return 'dossierEvidence';
-    if (opName.startsWith('dossier_')) return 'dossier';
-    if (opName.startsWith('evidence_') || opName.startsWith('large_evidence_')) return 'evidence';
-    if (opName.startsWith('notification_')) return 'notification';
-    if (opName.startsWith('case_file_')) return 'caseFile';
-    if (opName.startsWith('use_case_')) return 'useCase';
-    // Identity/session domain: session_login + profile_get (Epic 14 — /profile is how a
-    // User-Key user resolves their userId, since session_info is keyed on the email).
-    if (opName.startsWith('session_') || opName.startsWith('profile_')) return 'session';
-    if (opName.startsWith('chat_')) return 'chat';
-    return 'signature';
-  };
+  // RESOURCE_ORDER / RESOURCE_DISPLAY / detectResource live at module scope
+  // (Story 18.4) so they can be unit-tested and so the type system ties them
+  // together — see their definitions above managerAwareLabel.
 
-  // The 'signature' return above is a FALLBACK, not a match: EAD Factory's signature
-  // tools carry no common prefix (create_signature_request, add_signatory_to_document,
-  // activate_signature_request…), so anything unrecognized lands in Signature silently.
-  // That is fail-open: profile_get (Epic 14) was filed under Signature for a whole
-  // release cycle and only surfaced when a human went looking for it in the UI. Flag any
-  // operation that reaches the fallback without looking like a signature op at all, so
-  // the next unprefixed tool is caught at build time instead of in review.
+  // The 'signature' return in detectResource is a FALLBACK, not a match: EAD Factory's
+  // signature tools carry no common prefix (create_signature_request,
+  // add_signatory_to_document, activate_signature_request…), so anything unrecognized
+  // lands in Signature silently. That is fail-open: profile_get (Epic 14) was filed under
+  // Signature for a whole release cycle and only surfaced when a human went looking for
+  // it in the UI. Story 18.4 (FR59 house rule) makes it FATAL — the diagnostic note this
+  // used to push went to .adapter-build.json#unsupported_notes, which nothing in src/
+  // reads, so it was invisible in the flow that ships.
+  //
+  // Gated on the same >= 8 threshold that produces `resources` at all (below): under it
+  // there is no Resource dropdown, the flat Operation list renders, and a fallback
+  // grouping is neither visible nor harmful.
   const SIGNATURE_SHAPED_RE = /signat|document|observer|validator/i;
   const miscategorized = operations
     .filter((op) => detectResource(op.name) === 'signature' && !SIGNATURE_SHAPED_RE.test(op.name))
     .map((op) => op.name);
-  if (miscategorized.length > 0) {
-    unsupportedNotes.push(
-      `Operations ${miscategorized.map((n) => `'${n}'`).join(', ')} matched no resource prefix and fell back to the 'Signature' resource — they will be buried under the wrong dropdown entry in n8n. Add an explicit rule to detectResource() in build-node-spec.ts.`,
+  if (operations.length >= 8 && miscategorized.length > 0) {
+    throw new BuildN8nNodeSpecError(
+      'tools_list',
+      `Operations ${miscategorized.map((n) => `'${n}'`).join(', ')} matched no resource prefix and fell back to the 'Signature' resource — they would be buried under the wrong dropdown entry in n8n. Add an explicit rule to detectResource() in src/adapters/n8n-adapter/build-node-spec.ts (and its slug to RESOURCE_ORDER + RESOURCE_DISPLAY).`,
     );
   }
 
@@ -1026,19 +1086,21 @@ export async function buildN8nNodeSpec(
   // <Object>" so operations stay unambiguous when the node is used as an AI tool
   // (no Resource context). Slugs are untouched. Single-API products are unaffected.
   const isMultiManager = !!distribution.manager_api_base_paths;
-  const MANAGER_INITIALS: Record<string, string> = {
+  // Partial by design: four managers against ten-plus slugs. The `?? RESOURCE_DISPLAY[r]`
+  // fallback below covers every slug these two omit.
+  const MANAGER_INITIALS: Partial<Record<ResourceSlug, string>> = {
     evidence: 'EM',
     signature: 'SM',
     notification: 'NM',
     chat: 'CM',
   };
-  const RESOURCE_DISPLAY_MULTI: Record<string, string> = {
+  const RESOURCE_DISPLAY_MULTI: Partial<Record<ResourceSlug, string>> = {
     evidence: 'Evidence Manager',
     signature: 'Signature Manager',
     notification: 'Notice Manager',
     chat: 'Chat Manager',
   };
-  const resourceDisplayName = (r: string): string =>
+  const resourceDisplayName = (r: ResourceSlug): string =>
     (isMultiManager ? RESOURCE_DISPLAY_MULTI[r] : undefined) ?? RESOURCE_DISPLAY[r] ?? r;
   // "<Initials> <Verb> <Object>" via the module-level managerAwareLabel (unit-tested):
   // evidence_search → "EM Search Evidence"; evidence_case_file_search → "EM Search Case File".
@@ -1050,7 +1112,7 @@ export async function buildN8nNodeSpec(
     }
   }
 
-  const resourceMap = new Map<string, typeof operations>();
+  const resourceMap = new Map<ResourceSlug, typeof operations>();
   for (const op of operations) {
     const res = detectResource(op.name);
     if (!resourceMap.has(res)) resourceMap.set(res, []);
@@ -1091,11 +1153,27 @@ export async function buildN8nNodeSpec(
     chat_certificate_create: 'certificateId',
     signature_request_create: 'requestId',
     signature_group_create: 'groupId',
-    signature_participant_create: 'signatoryId',
+    // Story 18.4 (AC4). The emitted description is explicit: "the id you generated IS
+    // the participantId, and it is the signatoryId if you passed role SIGNATORY or the
+    // validatorId if you passed role VALIDATOR". participantId is the name that is
+    // always correct (signature_participant_update/delete consume it); the role-specific
+    // alias is added on top, from AUTO_ID_ROLE_MAP below.
+    signature_participant_create: 'participantId',
+    // Story 18.4 (AC4). Same class of defect: the operation ends with '_create', takes a
+    // caller-generated `id` and returns 201 with NO body, so the generated UUID is the
+    // only handle a workflow ever gets. Its description names that handle verificationId,
+    // and id_verification_contract_url's path param is literally verificationId.
+    id_verification_video_create: 'verificationId',
   };
   const autoIdOutputFields = operations
     .filter((op) => AUTO_ID_MAP[op.name])
     .map((op) => ({ operation: op.name, fieldName: AUTO_ID_MAP[op.name]! }));
+  // Story 18.4 (AC4): the same generated id ALSO answers to a role-specific name.
+  // OBSERVER is deliberately absent — the contract names no field for it, and
+  // inventing one is the fallback FR62 forbids.
+  const autoIdRoleFields = AUTO_ID_ROLE_MAP.filter((rule) =>
+    operations.some((op) => op.name === rule.operation),
+  );
 
   // Story 13.1 (FR51): per-operation defaults for OPTIONAL body params. A boolean
   // 'false', a number '0', or a defaulted non-empty string (e.g. language 'es_ES')
@@ -1143,7 +1221,34 @@ export async function buildN8nNodeSpec(
 
   const authStyle = detectAuthStyle(server);
   const credentials = buildCredentials(server, authStyle);
-  const defaultApiBaseUrl = await readDefaultApiBaseUrl(input.packageDir);
+  // Story 18.5: the scrape now lives in src/utils/read-emitted-env-defaults.ts and is
+  // shared with the install-block generator. `?? ''` preserves N8nNodeSpec's documented
+  // contract (types.ts: '' when nothing is discoverable), which keeps EAD Factory's
+  // credential render byte-identical.
+  const defaultApiBaseUrl = (await readEmittedEnvDefaults(input.packageDir)).MCP_API_BASE_URL ?? '';
+  // AC5 (FR61): the credential's base-URL property is emitted by the template, not by
+  // the env-var allowlist, so its requiredness has to be carried across as a scalar.
+  // Derived from the DECLARED MCP_API_BASE_URL — goc/suite declare it required (the
+  // user-key exchange has no built-in host), EAD Factory declares it optional, so its
+  // credential renders exactly as before.
+  const declaredBaseUrlVar = (server.packages?.[0]?.environmentVariables ?? []).find(
+    (v) => v.name === 'MCP_API_BASE_URL',
+  );
+  const baseUrlRequired = declaredBaseUrlVar?.isRequired === true;
+  // The authored description of the same variable, carried verbatim to the README
+  // row (FR62). Previously that row said "Leave blank only if you know your
+  // environment uses a different endpoint" — pipeline-invented copy that a
+  // contract declaring the variable REQUIRED flatly contradicts. Absent when the
+  // contract declares no description; we do not substitute our own.
+  const baseUrlDescription = declaredBaseUrlVar?.description?.trim();
+  // Story 18.7 (AC6): the connector README's "Upgrading from 1.x" section, read
+  // from the source repo's `.github/RELEASE_NOTES.md` — the same
+  // "discover it from the tree we were handed" move as readEmittedEnvDefaults
+  // above. An absent file is `undefined` and renders nothing; an unparseable one
+  // throws, which a real publish has already caught in `setup` via
+  // src/ci/check-release-notes.ts (prep-mcp swallows adapter failures, the
+  // workflow does not).
+  const upgradeNotes = (await readReleaseNotes(input.packageDir))?.n8nUpgrade;
   const bareTargetName = distribution.n8n_adapter_target_name.replace(/^n8n-nodes-/, '');
   const className = toPascalCase(bareTargetName);
   const resourceLabel = toTitleCase(bareTargetName);
@@ -1193,6 +1298,8 @@ export async function buildN8nNodeSpec(
     })(),
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     defaultApiBaseUrl,
+    baseUrlRequired,
+    ...(baseUrlDescription ? { baseUrlDescription } : {}),
     // authStyle drives both the credential allowlist and the execute() token flow.
     authStyle,
     // n8n review (2026-07): prefer an SVG when generation provides one via the
@@ -1205,8 +1312,10 @@ export async function buildN8nNodeSpec(
           iconFile: distribution.logo_svg_path ? 'icon.svg' : 'icon.png',
         }
       : {}),
+    ...(upgradeNotes ? { upgradeNotes } : {}),
     ...(computedResources ? { resources: computedResources } : {}),
     ...(autoIdOutputFields.length > 0 ? { autoIdOutputFields } : {}),
+    ...(autoIdRoleFields.length > 0 ? { autoIdRoleFields } : {}),
     ...(optionalDefaults.length > 0 ? { optionalDefaults } : {}),
     ...(operationBasePrefix.length > 0 ? { operationBasePrefix } : {}),
     ...(preflightGuards.length > 0 ? { preflightGuards } : {}),

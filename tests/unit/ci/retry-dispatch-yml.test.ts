@@ -58,4 +58,16 @@ describe('.github/workflows/retry-dispatch.yml', () => {
     expect(script).toContain('createWorkflowDispatch');
     expect(script).toContain('listComments');
   });
+
+  // Epic 18 review (F4): the release-note gate is fail-closed on every
+  // non-dry-run, and this dispatcher sets `dry_run: 'false'`. A retry targets a
+  // tag that already exists and the note must ride the tag, so without an
+  // explicit advisory flag a retry of any release published before Epic 18
+  // could only pass by re-tagging a published version — the one thing
+  // docs/runbooks/release-checklist.md forbids.
+  it("dispatches with release_note_check: 'advisory' so a retry of a published tag is not blocked", () => {
+    const script = JSON.stringify(parsed.jobs.dispatch!.steps);
+    expect(script).toContain("dry_run: 'false'");
+    expect(script).toContain("release_note_check: 'advisory'");
+  });
 });

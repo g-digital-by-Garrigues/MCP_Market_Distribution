@@ -15,7 +15,7 @@ This is referenced in the PR body our pipeline now renders ([`templates/store-de
 ## When to submit the form
 
 - **Within 24 hours of opening a fresh PR** (or shortly after). Maintainers triage in batches; a freshly-opened PR with the credentials already linked-in-form gets reviewed faster than one that waits.
-- **Whenever the test credentials rotate.** If a credential changes (password reset, OAuth client rotated), resubmit the form referencing the same server name. The catalog team will reach out via the email you provide.
+- **Whenever the test credentials rotate.** If a credential changes (user key re-issued, OAuth client secret rotated), resubmit the form referencing the same server name. The catalog team will reach out via the email you provide.
 
 ## What to put in each form field
 
@@ -29,36 +29,40 @@ The form has changed over time; what follows is the field-by-field guidance as o
 | Your email | A real Garrigues human email, NOT a `+bot@` alias — the maintainer may reply to follow up |
 | GitHub PR URL | The URL of the OPEN PR on `docker/mcp-registry` for this server |
 | Server name | Match `server.yaml#name` exactly (kebab-case): `ead-factory`, `gocertius`, `ead-enterprise-suite` |
-| Test credentials | The env-var block from `server.yaml#config.secrets` rendered with sandbox values. See below per MCP |
+| Test credentials | The `config.env` block of the **rendered** `server.yaml` for this server, filled in with sandbox values. Derive it; do not copy a list out of this runbook — see below |
 | Notes for the reviewer | How to invoke the MCP for a smoke test (e.g., the `task validate` command from our PR body) and any non-obvious "test this tool first" guidance |
 
-### Test credential shapes (sandbox / non-prod values only)
+### Which credentials to submit — derive them, do not copy a list
 
-**ead-factory** uses Okta `client_credentials` grant. Submit the following env vars from the sandbox Okta tenant (never production credentials):
+**The set to submit is the `config.env` entries of the *rendered* `server.yaml` for that server.** Render it (or read the one the publisher committed) and submit every entry the reviewer must fill in. The chain behind that field is worth knowing, because it is why a hardcoded list in a runbook goes stale — this one has now gone stale twice:
 
-```
-OKTA_TOKEN_URL=https://<sandbox-okta-tenant>.okta.com/oauth2/<authServer>/v1/token
-OKTA_CLIENT_ID=<sandbox-client-id>
-OKTA_CLIENT_SECRET=<sandbox-client-secret>
-OKTA_SCOPE=token
-API_BASE_URL=https://api.int.gcloudfactory.com/digital-trust
-SIGNATURE_API_BASE_URL=https://api.int.gcloudfactory.com/signature-manager
-```
+`.env.example` (generator-owned, in the MCP source repo) → `server.json#packages[0].environmentVariables` → `config.env[]` in the rendered `server.yaml` (`src/publishers/publish-docker-mcp-catalog.ts:137-179`; `templates/store-descriptions/docker-mcp-catalog/server.yaml.hbs:12-20`). The template renders `config.description` and `config.env[]` with `name` / `example` / `description`, and has **no** `config.secrets` key.
 
-**gocertius** and **ead-enterprise-suite** use email/password against the sandbox auth server:
+The emitted `.env.example` also annotates every variable with `# isSecret:` and `# isRequired:`. Those tell you which values must be handled as secrets and which the reviewer cannot leave blank.
 
-```
-MCP_AUTH_EMAIL=<sandbox-email-alias>
-MCP_AUTH_PASSWORD=<sandbox-password>
-```
+> **On `gocertius` and `ead-enterprise-suite`, do NOT supply `MCP_SVC_INTROSPECT_URL` / `MCP_SVC_CLIENT_ID` / `MCP_SVC_CLIENT_SECRET`.** On those two products that trio configures the server's **inbound** Bearer verification for HTTP hosting and authenticates nothing upstream (`GoCertius_MCP:.env.example:13-29`); a smoke test needs none of it. On `ead-factory` the same-looking `MCP_SVC_*` names are the **outbound** service-account credential and are exactly what the reviewer needs. Same names, opposite meaning — this is how a copy-paste error happens.
 
-(or, alternatively, OIDC refresh-token: `MCP_OPENID_ISSUER` + `MCP_OPENID_CLIENT_ID` + `MCP_OPENID_REFRESH_TOKEN`)
+#### Worked example (verified 2026-09-07 against each repo's `origin/main` `.env.example` — re-derive before submitting)
+
+| Server | Variable | Secret? | Required? |
+|---|---|---|---|
+| `gocertius`, `ead-enterprise-suite` | `MCP_AUTH_USER_KEY` | yes | yes |
+| `gocertius`, `ead-enterprise-suite` | `MCP_API_BASE_URL` | **no** | yes |
+| `ead-factory` | `MCP_SVC_TOKEN_URL` | no | yes |
+| `ead-factory` | `MCP_SVC_CLIENT_ID` | no | yes |
+| `ead-factory` | `MCP_SVC_CLIENT_SECRET` | yes | yes |
+| `ead-factory` | `MCP_SVC_SCOPE` | no | optional |
+| `ead-factory` | `MCP_API_BASE_URL` | no | optional |
+
+`gocertius` and `ead-enterprise-suite` take a **single** upstream credential: a long-lived user key, exchanged automatically for a short-lived session token. `ead-factory` uses an OAuth2 `client_credentials` service account (Okta is one configured instance of it, not the protocol).
+
+Sandbox / non-prod values only — never a production key, never a real customer tenant.
 
 ## Post-submission
 
 1. **Comment on the PR**: a short "Credentials submitted via the Google Form" note so the maintainer sees confirmation without needing to ask. Example:
-   > Test credentials submitted via the Google form (sandbox Okta tenant) on 2026-MM-DD. Happy to address review feedback.
-2. **Rotate the sandbox credentials AFTER review concludes** (or sooner if they're shared more broadly). Update the test account password / OAuth secret and stop sharing the old set.
+   > Test credentials submitted via the Google form (sandbox tenant) on 2026-MM-DD. Happy to address review feedback.
+2. **Rotate the sandbox credentials AFTER review concludes** (or sooner if they're shared more broadly). Re-issue the test user key / rotate the OAuth client secret and stop sharing the old set.
 3. **Track the rotation** in `docs/runbooks/bot-pat-rotation.md` (or its successor) so we don't accumulate dormant test credentials with broad knowledge.
 
 ## What if there's no public sandbox?

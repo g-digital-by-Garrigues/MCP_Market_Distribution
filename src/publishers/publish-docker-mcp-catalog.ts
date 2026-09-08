@@ -5,6 +5,7 @@ import path from 'node:path';
 import process from 'node:process';
 
 import Handlebars from 'handlebars';
+import yaml from 'js-yaml';
 
 import { dryRunEnabled } from '../ci/dry-run.js';
 import { logger as defaultLogger } from '../utils/logger.js';
@@ -96,6 +97,31 @@ function defaultExec(
   });
 }
 
+// Story 18.4 (FR62): a PRIVATE Handlebars environment for the catalog templates.
+//
+// Not `Handlebars.registerHelper` on the shared default instance: three other
+// modules already register a GLOBAL `json` with different semantics —
+// generate-n8n-node.ts and generate-mcpb-bundle.ts register a plain
+// JSON.stringify, generate-server-json.ts registers a key-SORTING one — so
+// which implementation this publisher would get depends on import order.
+// A private environment makes the encoding of a published artifact a property
+// of the publisher, not of whoever happened to be imported first.
+const catalogHb = Handlebars.create();
+// `json` emits a complete JSON string literal, quotes included. The tool
+// descriptions carry literal `"` (and `|`, and `—`), which hand-quoting in
+// tools.json.hbs turned into invalid JSON for all three products.
+catalogHb.registerHelper('json', (value: unknown) => new catalogHb.SafeString(JSON.stringify(value)));
+// `yamlScalar` emits a YAML double-quoted scalar. A JSON string literal IS one:
+// it is single-line (so it is indentation-safe wherever it is spliced, including
+// the 6-space nesting under env[].description) and it escapes the `"` and `\`
+// that would otherwise break the document. Deliberately NOT yaml.dump — that is
+// the right tool for a whole document but may emit a block scalar, whose validity
+// depends on the indent of the splice point.
+catalogHb.registerHelper(
+  'yamlScalar',
+  (value: unknown) => new catalogHb.SafeString(JSON.stringify(String(value ?? ''))),
+);
+
 async function renderTemplate(
   repoRoot: string,
   fileName: string,
@@ -105,7 +131,7 @@ async function renderTemplate(
     path.join(repoRoot, 'templates', 'store-descriptions', 'docker-mcp-catalog', fileName),
     'utf8',
   );
-  return Handlebars.compile(tpl, { noEscape: true })(data);
+  return catalogHb.compile(tpl, { noEscape: true })(data);
 }
 
 async function readEnvironmentVariables(packageDir: string): Promise<Array<{ name: string; example: string; description: string }>> {
@@ -315,6 +341,32 @@ export async function publishDockerMcpCatalog(
   const toolsJson = await renderTemplate(input.repo_root, 'tools.json.hbs', data);
   const readmeMd = await renderTemplate(input.repo_root, 'readme.md.hbs', data);
   const prBody = await renderTemplate(input.repo_root, 'pr-body.hbs', data);
+
+  // Story 18.4 (FR62): refuse to submit a catalog entry that does not parse.
+  // The two machine-read files are rendered from Handlebars, so a description
+  // carrying a character the template did not encode produces a syntactically
+  // broken artifact that only the Docker reviewer ever sees. Both files were
+  // unparseable for all three products before this gate existed. It sits after
+  // renderTemplate and BEFORE fs.mkdtemp/fork/clone deliberately: a bad render
+  // must cost zero `gh` calls, exactly like the metadata gates above.
+  for (const [fileName, parse] of [
+    ['tools.json', () => JSON.parse(toolsJson) as unknown],
+    ['server.yaml', () => yaml.load(serverYaml)],
+  ] as const) {
+    try {
+      parse();
+    } catch (err) {
+      return failedOutput(
+        input,
+        isDryRun,
+        now() - started,
+        1,
+        `Docker MCP Catalog render gate failed: ${fileName} does not parse — ${(err as Error).message.split('\n')[0]}`,
+        'A tool or env-var description carries a character the template did not encode for this file format (a literal quote, a pipe, a colon-space, a newline).',
+        `Encode it in templates/store-descriptions/docker-mcp-catalog/${fileName}.hbs (the json / yamlScalar helpers) — do NOT edit the authored text in .distribution.yaml#tools or server.json#packages[0].environmentVariables[].description.`,
+      );
+    }
+  }
 
   const tmp = await fs.mkdtemp(path.join(os.tmpdir(), 'docker-mcp-catalog-'));
   try {

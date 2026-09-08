@@ -46,13 +46,21 @@ on:
         required: false
         type: boolean
         default: false
+      release_note_check:
+        description: "enforce (default) | advisory. Advisory is for RETRIES of an already-published tag: the note must ride the tag, so a published version cannot gain one without re-tagging. /retry-publish sets it."
+        required: false
+        type: choice
+        options:
+          - enforce
+          - advisory
+        default: enforce
 
   workflow_call:
     # Called from each source MCP repo thin publish.yml wrapper.
     # The calling workflow must grant id-token:write, contents:write,
     # and pull-requests:write. All pipeline secrets (BOT_PAT, NPM_TOKEN,
-    # DOCKERHUB_*, SMITHERY_TOKEN, ANTHROPIC_API_KEY) must be org-level
-    # or per-repo secrets in the calling repo so secrets: inherit works.
+    # DOCKERHUB_*, SMITHERY_TOKEN) must be org-level or per-repo secrets
+    # in the calling repo so secrets: inherit works.
     inputs:
       mcp_name:
         description: "MCP name (kebab-case key in mcp-pipeline.yaml#mcps)"
@@ -82,6 +90,11 @@ on:
         required: false
         type: boolean
         default: false
+      release_note_check:
+        description: "enforce (default) | advisory — advisory only for retries of an already-published tag"
+        required: false
+        type: string
+        default: enforce
 
 # `cancel-in-progress: false` is deliberate: a publish in flight must not be
 # pre-empted by a follow-up tag — we'd rather queue and process serially per
@@ -102,6 +115,10 @@ jobs:
       pipeline_run_id: ${{ steps.resolve.outputs.pipeline_run_id }}
       source: ${{ steps.resolve.outputs.source }}
       dry_run: ${{ steps.resolve.outputs.dry_run }}
+      # 'enforce' | 'advisory' for the Story 18.7 release-note gate. Resolved
+      # once, in `setup`, so the `github-release` job cannot disagree with the
+      # job that gate-kept the run.
+      release_note_mode: ${{ steps.resolve.outputs.release_note_mode }}
       # Per-MCP source repo (v1.1 per-MCP-repo refactor — Phase B). Empty
       # string when the MCP hasn't migrated yet (back-compat: pipeline
       # then uses the copy committed under pending-to-publish/<id>/).
@@ -139,6 +156,7 @@ jobs:
           INPUT_MCP_NAME: ${{ inputs.mcp_name }}
           INPUT_VERSION: ${{ inputs.version }}
           INPUT_DRY_RUN: ${{ inputs.dry_run }}
+          INPUT_RELEASE_NOTE_CHECK: ${{ inputs.release_note_check }}
         run: |
           set -euo pipefail
           pnpm tsx src/ci/resolve-workflow-context.ts > resolved.json
@@ -158,6 +176,24 @@ jobs:
           echo "pipeline_run_id=$pipeline_run_id" >> "$GITHUB_OUTPUT"
           echo "source=$source" >> "$GITHUB_OUTPUT"
           echo "dry_run=$dry_run" >> "$GITHUB_OUTPUT"
+          # Release-note gate mode (Story 18.7 + Epic 18 review F4/F11).
+          #   enforce  — the note is required; a missing/stale/markerless note
+          #              fails the run in this job, before anything publishes.
+          #   advisory — report it, warn, do not fail. Only legitimate when the
+          #              tag already exists and therefore cannot gain a note
+          #              without re-tagging a published version: a retry
+          #              (/retry-publish sets the input) or a dry-run, which
+          #              clones `main` and publishes nothing.
+          # An unrecognised value is a hard error, not a silent downgrade: a
+          # typo must never quietly turn the gate off.
+          notes_mode_raw="${INPUT_RELEASE_NOTE_CHECK:-enforce}"
+          case "$notes_mode_raw" in
+            enforce|"") release_note_mode=enforce ;;
+            advisory) release_note_mode=advisory ;;
+            *) echo "::error::release_note_check must be 'enforce' or 'advisory', got '$notes_mode_raw'."; exit 1 ;;
+          esac
+          if [ "$dry_run" = "true" ]; then release_note_mode=advisory; fi
+          echo "release_note_mode=$release_note_mode" >> "$GITHUB_OUTPUT"
           {
             echo "## Resolved context"
             echo "- mcp_name: \`$mcp_name\`"
@@ -167,6 +203,7 @@ jobs:
             echo "- dry_run: \`${{ inputs.dry_run }}\`"
             echo "- step: \`${{ inputs.step || 'all' }}\`"
             echo "- track: \`${{ inputs.track || 'both' }}\`"
+            echo "- release_note_check: \`$release_note_mode\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
       # Resolve the MCP's own source repo (if it has migrated to its own
@@ -210,6 +247,33 @@ jobs:
           repo_url: ${{ steps.resolve-mcp-repo.outputs.repo_url }}
           repo_ref: ${{ steps.resolve-mcp-repo.outputs.repo_ref }}
 
+      # Epic 18 review (F14): the pipeline resolves `repo_ref` as `v<version>`
+      # BEFORE it can read the product's config (the clone needs the ref), but
+      # `.distribution.yaml` declares `git_tag_prefix` per product and
+      # 'ead-factory-v' is a legal value. Prove the assumption against the
+      # contract now, in the first job, rather than discovering it at
+      # `gh release create --verify-tag` after every store has published.
+      - name: Verify the resolved tag ref matches the declared git_tag_prefix
+        if: steps.resolve.outputs.dry_run != 'true'
+        env:
+          MCP_NAME: ${{ steps.resolve.outputs.mcp_name }}
+          MCP_VERSION: ${{ steps.resolve.outputs.version }}
+          REPO_REF: ${{ steps.resolve-mcp-repo.outputs.repo_ref }}
+        run: |
+          set -euo pipefail
+          pnpm tsx src/ci/verify-release-tag-ref.ts "$MCP_NAME" "$MCP_VERSION" "$REPO_REF" \
+            > tag-ref-check.json || exit_code=$?
+          cat tag-ref-check.json
+          if [ "${exit_code:-0}" -ne 0 ]; then
+            {
+              echo "## ❌ Resolved tag ref disagrees with the product's declared \`git_tag_prefix\`"
+              echo ""
+              jq -r '.problems[] | "- " + .' tag-ref-check.json
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "✓ Tag ref $REPO_REF matches the declared git_tag_prefix."
+
       - name: Verify artifact version coherence (Story 8.2 — stale-tag pre-hoc detection)
         env:
           MCP_NAME: ${{ steps.resolve.outputs.mcp_name }}
@@ -237,6 +301,90 @@ jobs:
             exit 1
           fi
           echo "✓ All artifact versions coherent at $MCP_VERSION."
+
+      # Story 18.7 (AC7): the release note is REQUIRED on every real publish, and
+      # it is checked HERE — after the clone (it needs the tree) and before
+      # preflight and Track A, so nothing external has happened yet.
+      #
+      # Failing later would be worse than useless: a `github-release` job that
+      # fails after npm, Docker Hub, the registry, Smithery and n8n have all
+      # published cannot be fixed without another version bump. And failing
+      # nowhere is what we had — zero GitHub Releases on two of three products.
+      #
+      # `prep-mcp` cannot be the enforcement point: it wraps the adapter build in
+      # a non-fatal try/catch, so a bad note there is a printed warning and an
+      # exit 0. Nothing swallows it in this job.
+      #
+      # Epic 18 review (F4/F11): the step now runs on EVERY run and takes its
+      # severity from `release_note_mode`. Two things were wrong with "hard-fail
+      # on every non-dry-run":
+      #   - it broke `/retry-publish`. A retry targets a tag that already exists;
+      #     the note must ride that tag; so a retry of any release published
+      #     before Epic 18 could only pass by re-tagging a published version,
+      #     which the runbook forbids. Retries now dispatch with
+      #     `release_note_check: advisory`.
+      #   - it was invisible until the first real publish. Dry-runs skipped it
+      #     entirely, so `regression-e2e` stayed green while all three source
+      #     repos had no note at all. Dry-runs now run it advisory and warn.
+      # The fresh-publish path — the one Story 18.7 targets — is unchanged and
+      # still fail-closed.
+      - name: Verify the release note is present and named for this version (Story 18.7)
+        env:
+          MCP_NAME: ${{ steps.resolve.outputs.mcp_name }}
+          MCP_VERSION: ${{ steps.resolve.outputs.version }}
+          RELEASE_NOTE_MODE: ${{ steps.resolve.outputs.release_note_mode }}
+        run: |
+          set -euo pipefail
+          ADVISORY=""
+          if [ "$RELEASE_NOTE_MODE" = "advisory" ]; then ADVISORY="--advisory"; fi
+          pnpm tsx src/ci/check-release-notes.ts \
+            "pending-to-publish/$MCP_NAME" \
+            "$MCP_VERSION" \
+            $ADVISORY \
+            > release-notes-check.json || exit_code=$?
+          cat release-notes-check.json
+          # Advisory runs exit 0, so `.ok` — not the exit code — is the signal.
+          # A dry-run reaches this line too, on purpose: it is what tells the
+          # operator the source repo still has no note, BEFORE the real publish
+          # that would be blocked by it.
+          if [ "$(jq -r '.ok' release-notes-check.json)" != "true" ] && [ "$RELEASE_NOTE_MODE" = "advisory" ]; then
+            echo "::warning::No usable .github/RELEASE_NOTES.md for v$MCP_VERSION. Advisory mode ($RELEASE_NOTE_MODE), so this run continues — but no GitHub Release body will be written and the n8n connector README will carry no \"Upgrading from 1.x\" section."
+            {
+              echo "## ⚠️ Release note missing, unparseable or stale (advisory)"
+              echo ""
+              echo "This run is **advisory** for the release note: it is a retry or a dry-run, and the note has to ride the tag, so an already-published version cannot gain one without re-tagging."
+              echo ""
+              jq -r '.problems[] | "- " + .' release-notes-check.json
+              echo ""
+              echo "The \`github-release\` job will skip the Release rather than invent a body."
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
+          if [ "${exit_code:-0}" -ne 0 ]; then
+            {
+              echo "## ❌ Release note missing, unparseable or stale"
+              echo ""
+              echo "\`.github/RELEASE_NOTES.md\` in the MCP source repo is the ONE authored text for this release. Its whole body becomes the GitHub Release; the span between the \`N8N_UPGRADE\` markers becomes the n8n connector README's \"Upgrading from 1.x\" section. It is required on every real publish."
+              echo ""
+              echo "**Problems:**"
+              jq -r '.problems[] | "- " + .' release-notes-check.json
+              echo ""
+              echo "**Fix:** add the file on the bump branch so it rides the \`v$MCP_VERSION\` tag, then re-tag. A patch release with nothing to say writes four lines:"
+              echo ""
+              echo '```md'
+              echo "# v$MCP_VERSION"
+              echo ""
+              echo "One line on what changed, for the people deciding whether to upgrade."
+              echo ""
+              echo "<!-- N8N_UPGRADE -->"
+              echo "Nothing to do in n8n beyond upgrading the community node."
+              echo "<!-- /N8N_UPGRADE -->"
+              echo '```'
+              echo ""
+              echo "See [docs/runbooks/release-checklist.md](docs/runbooks/release-checklist.md) → \"Writing the release note\"."
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+          echo "✓ Release note present and named for v$MCP_VERSION."
 
   # ---------------------------------------------------------------------
   # Pre-flight (Phase 3 of the 2026-05-26 audit, b2 of the post-mortem).
@@ -1170,9 +1318,6 @@ jobs:
     env:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
-      # Optional: refine the adapter's displayName/description copy via
-      # Claude. The refine pass short-circuits when the key is absent.
-      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
     steps:
       - name: Checkout pipeline
         uses: actions/checkout@v4
@@ -1417,6 +1562,123 @@ jobs:
           pipeline_run_id: ${{ needs.setup.outputs.pipeline_run_id }}
           dry_run: ${{ needs.setup.outputs.dry_run }}
           package_dir: ${{ github.workspace }}/_n8n-adapter
+
+  # ---------------------------------------------------------------------
+  # Story 18.7 (AC7b): publish the authored release note as a GitHub Release
+  # on the SOURCE repo.
+  #
+  # Deliberately NOT a publish target. Adding `github-release` to
+  # `TRACK_A_TARGET_IDS` would oblige an actions/publish-github-release/
+  # composite with the canonical four inputs, a src/publishers/ module, a
+  # ledger entry and a /retry-publish step — all enforced by
+  # tests/integration/plug-ability.test.ts, which enumerates actions/publish-*.
+  # A GitHub Release is not a marketplace. It stays out of the target enum,
+  # out of final-report's needs and out of PUBLISHER_RESULTS_JSON.
+  #
+  # The repo it writes to comes from needs.setup.outputs.repo_url, never from
+  # `github.repository`: under this workflow's own workflow_dispatch that is
+  # MCP_Market_Distribution, and only under workflow_call is it the source repo.
+  #
+  # Idempotent by construction (view → edit, else create), so a re-run of a
+  # partially-failed release does not 422.
+  # ---------------------------------------------------------------------
+
+  github-release:
+    name: GitHub Release (source repo)
+    needs: [setup, publish-npm]
+    if: needs.publish-npm.result == 'success' && needs.setup.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      # The write goes through BOT_PAT (cross-repo), not GITHUB_TOKEN.
+      contents: read
+    steps:
+      - name: Checkout pipeline
+        uses: actions/checkout@v4
+        with:
+          repository: g-digital-by-Garrigues/MCP_Market_Distribution
+          ref: main
+      - name: Checkout MCP source at the tag
+        uses: ./actions/checkout-mcp-source
+        with:
+          mcp_name: ${{ needs.setup.outputs.mcp_name }}
+          repo_url: ${{ needs.setup.outputs.repo_url }}
+          repo_ref: ${{ needs.setup.outputs.repo_ref }}
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install pipeline dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Emit the Release body from the authored note
+        # Same CLI that gate-kept this release in `setup`, so the bytes that
+        # reach the Release went through the parser that approved them — no
+        # second, drifting implementation of "strip the markers".
+        #
+        # On an advisory run (a retry of an already-published tag) the note may
+        # legitimately be absent. The CLI then writes NO body and exits 0, and
+        # the next step skips the Release: FR62 forbids inventing the text, and
+        # a body assembled from anything but the authored note would be exactly
+        # that.
+        env:
+          MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
+          MCP_VERSION: ${{ needs.setup.outputs.version }}
+          RELEASE_NOTE_MODE: ${{ needs.setup.outputs.release_note_mode }}
+        run: |
+          set -euo pipefail
+          ADVISORY=""
+          if [ "$RELEASE_NOTE_MODE" = "advisory" ]; then ADVISORY="--advisory"; fi
+          pnpm tsx src/ci/check-release-notes.ts \
+            "pending-to-publish/$MCP_NAME" \
+            "$MCP_VERSION" \
+            $ADVISORY \
+            --emit-body release-body.md
+          if [ -f release-body.md ]; then
+            echo "Release body: $(wc -c < release-body.md) bytes"
+          fi
+      - name: Create or update the Release on the source repo
+        env:
+          GH_TOKEN: ${{ secrets.BOT_PAT }}
+          REPO_URL: ${{ needs.setup.outputs.repo_url }}
+          # The ref the pipeline actually cloned, not a rebuilt "v$MCP_VERSION":
+          # `git_tag_prefix` is per-product in .distribution.yaml ('ead-factory-v'
+          # is legal), and `setup` has already proved this ref agrees with it.
+          # Rebuilding the string here would fail `--verify-tag` AFTER every
+          # store had published.
+          TAG: ${{ needs.setup.outputs.repo_ref }}
+        run: |
+          set -euo pipefail
+          if [ -z "$REPO_URL" ]; then
+            echo "::notice::No repo_url configured for this MCP — there is no source repo to create a Release on."
+            exit 0
+          fi
+          if [ ! -f release-body.md ]; then
+            echo "::warning::No authored release note for $TAG, so there is no Release body to publish. Skipping the GitHub Release rather than inventing one (this is only reachable on an advisory run — a retry of an already-published tag)."
+            exit 0
+          fi
+          if [ -z "$TAG" ] || [ "$TAG" = "main" ]; then
+            echo "::error::Refusing to create a Release: setup resolved repo_ref='$TAG', which is not a release tag."
+            exit 1
+          fi
+          OWNER_REPO="${REPO_URL#https://github.com/}"
+          OWNER_REPO="${OWNER_REPO%/}"
+          OWNER_REPO="${OWNER_REPO%.git}"
+          if gh release view "$TAG" -R "$OWNER_REPO" >/dev/null 2>&1; then
+            gh release edit "$TAG" -R "$OWNER_REPO" --notes-file release-body.md
+            echo "Updated the existing Release $TAG on $OWNER_REPO."
+          else
+            # --verify-tag matters: without it `gh` happily CREATES the tag it
+            # cannot find, which would invent a release off the default branch.
+            gh release create "$TAG" -R "$OWNER_REPO" \
+              --verify-tag \
+              --title "$TAG" \
+              --notes-file release-body.md
+            echo "Created Release $TAG on $OWNER_REPO."
+          fi
 
   # =====================================================================
   # Track C — MCPB bundle generation + validation gates (Story 5.9–5.10).

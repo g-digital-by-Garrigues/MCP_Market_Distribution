@@ -146,6 +146,14 @@ jobs:
               track: result.track ?? 'both',
               bump: result.bump ?? '',
               dry_run: 'false',
+              // Epic 18 review (F4): a retry targets a tag that ALREADY EXISTS.
+              // `.github/RELEASE_NOTES.md` has to ride that tag, so a release
+              // published before Epic 18 can never satisfy the fail-closed
+              // release-note gate without re-tagging a published version —
+              // which docs/runbooks/release-checklist.md forbids. Advisory
+              // keeps the report and the warning and drops the hard failure;
+              // the fresh-publish path stays fail-closed.
+              release_note_check: 'advisory',
             };
 
             await github.rest.actions.createWorkflowDispatch({

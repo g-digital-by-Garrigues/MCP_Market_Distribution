@@ -65,6 +65,13 @@ The extraction regex is:
 
 ### Authentication model
 
+> **Amendment 2026-09-07 (Epic 18) — two statements in this section no longer describe the code.** The decision under test (REST-direct, no bundled MCP subprocess) still holds and is unchanged; what follows below is the 2026-05-28 spike record and is kept as history, not as instructions.
+>
+> 1. **GoCertius + EAD Enterprise Suite no longer have an email/password or OIDC refresh-token flow.** Generation deleted both from the server. There is one upstream credential — a long-lived **User Key** (`MCP_AUTH_USER_KEY`, mandatory), exchanged at `POST /user-keys/session` with the key in the request body for the short-lived session JWT used as the Bearer, re-minted once and replayed on a `401`. The n8n credential class stores `baseUrl` + `userKey` and nothing else; `baseUrl` is required because the emitted `MCP_API_BASE_URL` is. `POST /session`, and the `baseUrl, email, password` credential described below, are gone.
+> 2. **The "`httpRequestWithAuthentication()` is not the right fit / use manual `fetch()`" verdict was reversed for the OAuth2 style by Epic 16.** EAD Factory's credential now extends n8n's `oAuth2Api` (`templates/n8n-adapter/credentials.ts.hbs:14-18`) and the node calls `this.helpers.httpRequestWithAuthentication` (`templates/n8n-adapter/node.ts.hbs:387`, `:467`, `:532`), letting n8n acquire, cache and refresh the client_credentials token. The verdict still stands for the user-key style, whose body-posted key exchange no n8n helper expresses — that half is why the manual `fetch()` path survives.
+>
+> The **live** specification of the credential surface is `docs/n8n-adapter-contract.md` (rule 3). Read that before touching the credential code; this section is dated evidence of how the decision was reached.
+
 **GoCertius + EAD Enterprise Suite** use an email/password or OIDC refresh-token flow that issues a Bearer JWT. The n8n node calls the auth endpoint directly:
 
 ```typescript
