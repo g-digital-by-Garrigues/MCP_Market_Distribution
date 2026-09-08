@@ -27,6 +27,12 @@ None of the OIDC-publishing targets (npm, MCP Official Registry, Smithery) use t
 
 That's it. The token does **not** need:
 - Write access to any of our own repos (those are handled by `GITHUB_TOKEN`)
+  - **This bullet has been tested the hard way.** Story 18.7 routed the `github-release` job through this
+    PAT, and both v2.0.0 Releases failed with `HTTP 404` on `POST /releases` — what GitHub returns for a
+    write a read-only token cannot make, *not* a missing repo. The fix was to use the job's own
+    `GITHUB_TOKEN`, which under `workflow_call` is already scoped to the calling source repo. If a future
+    job 404s writing to one of our repos, that is the answer; widening this PAT would buy rights the
+    native token already has, and spend the blast-radius argument below to do it.
 - Workflow scope (the publishers don't dispatch workflows)
 - Org admin or repo admin scopes
 - Package read/write (no npm interactions go through this token)

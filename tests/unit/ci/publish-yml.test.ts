@@ -507,8 +507,12 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(job!.needs).toEqual(expect.arrayContaining(['setup', 'publish-npm']));
     expect(job!.if).toContain("needs.publish-npm.result == 'success'");
     expect(job!.if).toContain("needs.setup.outputs.dry_run != 'true'");
-    // The write goes through BOT_PAT, not GITHUB_TOKEN.
-    expect(job!.permissions?.contents).toBe('read');
+    // The write goes through this job's own GITHUB_TOKEN, which under
+    // workflow_call is scoped to the CALLING source repo — the very repo the
+    // Release lands on. It used to be routed through BOT_PAT instead, which is
+    // deliberately read-only on our repos, so POST /releases came back 404
+    // after every store had already published (v2.0.0, both products).
+    expect(job!.permissions?.contents).toBe('write');
   });
 
   it('github-release derives owner/repo from setup.outputs.repo_url, never github.repository', () => {
@@ -519,7 +523,24 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(flat).not.toContain('github.repository }}/releases');
     expect(flat).toContain('checkout-mcp-source');
     expect(flat).toContain('--emit-body');
-    expect(flat).toContain('secrets.BOT_PAT');
+    // BOT_PAT must not come back: it cannot write here, and reaching for it
+    // again would mean widening the bot's rights to do what the native token
+    // already does. See docs/runbooks/bot-pat-rotation.md.
+    expect(flat).not.toContain('secrets.BOT_PAT');
+  });
+
+  // The one path where the native token is NOT enough: a direct
+  // workflow_dispatch on the pipeline repo, where GITHUB_TOKEN is scoped to
+  // MCP_Market_Distribution and has no rights on the source repo. That must
+  // say so, not surface as an unexplained 404 the way the BOT_PAT era did.
+  it('github-release refuses a cross-repo write its token cannot make', () => {
+    const job = parsed.jobs['github-release'] as unknown as {
+      steps: Array<{ env?: Record<string, string>; run?: string }>;
+    };
+    const create = job.steps.find((s) => (s.run ?? '').includes('gh release create'))!;
+    expect(create.env?.GH_TOKEN).toBe('${{ github.token }}');
+    expect(create.env?.TOKEN_REPO).toBe('${{ github.repository }}');
+    expect(create.run).toContain('"$OWNER_REPO" != "$TOKEN_REPO"');
   });
 
   // Epic 18 review (F14): the job used to rebuild `TAG="v$MCP_VERSION"` — a
