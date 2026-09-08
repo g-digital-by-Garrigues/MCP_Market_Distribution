@@ -22,10 +22,11 @@ import {
   SUPPORTED_CLIENT_IDS,
 } from '../generators/generate-install-block.js';
 import { generateReadme } from '../generators/generate-readme.js';
+import { readEmittedEnvDefaults } from '../utils/read-emitted-env-defaults.js';
 import { ensureSkillBundle } from '../generators/ensure-skill-bundle.js';
 import { createReleaseTag } from '../state/create-release-tag.js';
 import { safeStableStringify } from '../utils/stable-stringify.js';
-import { runAdapterBuild } from '../adapters/n8n-adapter/run-adapter-build.js';
+import { runAdapterBuild, isRecoverableAdapterFailure } from '../adapters/n8n-adapter/run-adapter-build.js';
 
 export interface PrepMcpOptions {
   mcpName: string;
@@ -220,6 +221,13 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
   });
 
   // Step 6: install blocks (Story 1.8)
+  //
+  // Story 18.5: a required non-secret must ship as a usable value, not a bare "".
+  // The default is DISCOVERED from the emitted source (never authored here — the
+  // pipeline may not carry a per-product API host). `mcpFolder` is the same directory
+  // the n8n adapter build receives as `packageDir` below, so both consumers scrape the
+  // identical tree in the same run.
+  const emittedDefaults = await readEmittedEnvDefaults(mcpFolder);
   const installBlocks = await generateAllInstallBlocks({
     config: {
       reverse_dns_name: distribution.reverse_dns_name,
@@ -227,6 +235,7 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
       credential_help_url: distribution.credential_help_url,
     },
     environmentVariables: envManifest.environmentVariables,
+    emittedDefaults,
   });
 
   // Step 7: README (Story 1.9 + generator README split)
@@ -285,10 +294,28 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
         repoRoot,
       });
     } catch (err) {
-      // Non-fatal: log and continue — the MCP artifacts are still valid.
-      // The n8n-node/ directory will be absent from this bump.
+      // Two different things used to land here and get the same shrug.
+      //
+      // Recoverable (#202's reason for the catch-all, kept): the source MCP could not
+      // be LAUNCHED — unbuilt dist/, missing deps, a dev box. The bump's server.json /
+      // smithery.yaml / README / install blocks are already written and valid, so the
+      // operator keeps them and re-runs once the MCP builds.
+      //
+      // Everything else is the adapter REFUSING a contract it cannot honour: an
+      // unmatched auth style (FR61), an operation that fell back to the wrong resource
+      // (Story 18.4), an unparseable .github/RELEASE_NOTES.md (Story 18.7). Swallowing
+      // those removed the whole connector tree from the bump and still exited 0 —
+      // review finding F19, and the exact fail-open FR59 forbids. They now stop the
+      // bump, here, where the operator can read them.
+      if (!isRecoverableAdapterFailure(err)) {
+        throw new PrepMcpError(
+          'generate-n8n-adapter',
+          `The n8n adapter refused to build '${mcpName}': ${(err as Error).message}`,
+          'Fix the contract the message names (the emitted .env.example, the tool that matched no resource, or .github/RELEASE_NOTES.md) and re-run /prep-mcp. Publishing this bump without n8n-node/ would ship an MCP release whose n8n connector is silently missing.',
+        );
+      }
       process.stderr.write(
-        `[prep-mcp] Warning: n8n adapter generation failed — n8n-node/ will be absent from this bump. Error: ${(err as Error).message}\n`,
+        `[prep-mcp] Warning: could not launch '${mcpName}' to build the n8n adapter — n8n-node/ will be absent from this bump. Error: ${(err as Error).message}\n`,
       );
     } finally {
       await fs.rm(adapterTmp, { recursive: true, force: true }).catch(() => {});

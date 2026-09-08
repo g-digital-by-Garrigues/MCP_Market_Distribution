@@ -9,6 +9,8 @@ import {
   buildN8nNodeSpec,
   BuildN8nNodeSpecError,
 } from '../../../src/adapters/n8n-adapter/build-node-spec.js';
+import { generateN8nNode } from '../../../src/adapters/n8n-adapter/generate-n8n-node.js';
+import { POST_E18_ENV_VARS } from '../../fixtures/env-sets/post-e18-user-key.js';
 
 const REPO_ROOT = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -17,6 +19,9 @@ const REPO_ROOT = path.resolve(
   '..',
 );
 const MULTI_TOOL_STUB = path.join(REPO_ROOT, 'tests', 'fixtures', 'test-mcp', 'server-multi-tool.mjs');
+// Story 18.4: >= 8 REST tools spanning the real resource prefixes, incl. the
+// three emitted id_verification_* names and a deliberate unroutable offender.
+const RESOURCES_STUB = path.join(REPO_ROOT, 'tests', 'fixtures', 'test-mcp', 'server-resources.mjs');
 
 interface SetupOpts {
   mcpName: string;
@@ -30,6 +35,13 @@ interface SetupOpts {
   /** When false, no src/tools/*.ts REST annotations are written, so every tool
    * is a non-REST stub (exercises the omit-stub branch). */
   writeToolAnnotations?: boolean;
+  /**
+   * Story 18.4: the `// n8n-http:` annotations to write, keyed by tool name.
+   * Defaults to the three widget tools of server-multi-tool.mjs. A tool the stub
+   * advertises but this map omits stays a non-REST STUB and never enters
+   * `operations` — which is how a test drops one tool from the fixture.
+   */
+  toolAnnotations?: Record<string, string>;
 }
 
 async function setupFixture(opts: SetupOpts): Promise<{
@@ -64,13 +76,11 @@ async function setupFixture(opts: SetupOpts): Promise<{
   await fs.writeFile(path.join(repoRoot, 'mcp-pipeline.yaml'), yaml.dump(registry));
 
   if (opts.writeServerJson !== false) {
-    // Default: a realistic email-password MCP plus an MCP-server runtime var that
-    // must NOT reach the n8n credential (exercises the allowlist).
-    const envVars = opts.envVars ?? [
-      { name: 'MCP_AUTH_EMAIL', description: 'Account email for the test backend.', isSecret: false, isRequired: true },
-      { name: 'MCP_AUTH_PASSWORD', description: 'Account password for the test backend.', isSecret: true, isRequired: true },
-      { name: 'MCP_HTTP_HOST', description: 'MCP server HTTP bind host.', isSecret: false, isRequired: false },
-    ];
+    // Default: the real post-Epic-18 emitted contract (one User Key credential, a
+    // required non-secret base URL, the inbound-introspection MCP_SVC_* trio and the
+    // transport tail). MCP_HTTP_HOST is the allowlist canary — it is in the real
+    // contract and must never reach the n8n credential.
+    const envVars = opts.envVars ?? POST_E18_ENV_VARS;
     const serverJson = {
       $schema: 'https://example.com/server.schema.json',
       name: distribution.reverse_dns_name,
@@ -96,7 +106,7 @@ async function setupFixture(opts: SetupOpts): Promise<{
   if (opts.writeToolAnnotations !== false) {
     const toolsDir = path.join(packageDir, 'src', 'tools');
     await fs.mkdir(toolsDir, { recursive: true });
-    const annotations: Record<string, string> = {
+    const annotations: Record<string, string> = opts.toolAnnotations ?? {
       get_widget: '// n8n-http: GET /widgets/{widget_id}',
       list_widgets: '// n8n-http: GET /widgets',
       submit_widget: '// n8n-http: POST /widgets',
@@ -277,17 +287,29 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       expect(metadata.type).toBe('json');
       expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
 
-      // Exposing MCP_AUTH_EMAIL makes this a user-facing product → session-login-or-token
-      // (a User Key exchanged for a session JWT, or email/password login).
-      expect(spec.authStyle).toBe('session-login-or-token');
+      // Epic 18: declaring MCP_AUTH_USER_KEY makes this a user-facing product with a
+      // single upstream credential → 'user-key'.
+      expect(spec.authStyle).toBe('user-key');
       // Credentials are the allowlisted auth fields only; the MCP_HTTP_HOST
-      // server-runtime var is dropped.
-      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password']);
-      const pw = spec.credentials.find((c) => c.envName === 'MCP_AUTH_PASSWORD')!;
-      expect(pw.isSecret).toBe(true);
-      expect(pw.displayName).toBe('Auth Password');
-      expect(spec.credentials.find((c) => c.envName === 'MCP_AUTH_EMAIL')!.displayName).toBe('Auth Email');
+      // server-runtime var, the MCP_SVC_* introspection trio and MCP_API_BASE_URL
+      // are all dropped (the base URL has its own template-emitted property).
+      expect(spec.credentials.map((c) => c.propName)).toEqual(['userKey']);
+      const key = spec.credentials.find((c) => c.envName === 'MCP_AUTH_USER_KEY')!;
+      expect(key.displayName).toBe('User Key');
+      expect(key.isSecret).toBe(true);
+      // AC4: requiredness comes from the declared contract, not from secrecy.
+      expect(key.isRequired).toBe(true);
+      // AC3: the description is the authored text PLUS the credential-help suffix
+      // that generate-environment-variables appends to every secret.
+      expect(key.description).toBe(
+        'Long-lived GoCertius user key, exchanged automatically for a short-lived session token. Use it for headless or automated access instead of an account password. (See https://www.gocertius.io for credential acquisition.)',
+      );
+      // AC5: MCP_API_BASE_URL is declared required → the template-emitted baseUrl
+      // property renders required, without becoming a second credential field.
+      expect(spec.baseUrlRequired).toBe(true);
       expect(spec.credentials.some((c) => c.envName === 'MCP_HTTP_HOST')).toBe(false);
+      expect(spec.credentials.some((c) => c.envName === 'MCP_API_BASE_URL')).toBe(false);
+      expect(spec.credentials.some((c) => c.envName.startsWith('MCP_SVC_'))).toBe(false);
     } finally {
       await cleanup();
     }
@@ -335,20 +357,21 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
     }
   }, 30_000);
 
-  it('email + MCP_SVC_* together → session-login-or-token, NOT oauth2 (user-facing wins)', async () => {
-    // GoCertius / EAD Enterprise Suite expose BOTH a user email/password surface AND a
-    // service-account trio (for their own server-side use). An n8n user signs in as
-    // themselves, so the email surface must win. Regression: the old detectAuthStyle
-    // keyed on MCP_SVC_TOKEN_URL first and mis-detected these as oauth2, which broke
-    // every saved credential (Invalid URL — empty mcpSvcTokenUrl).
+  it('user key + MCP_SVC_CLIENT_* (no MCP_SVC_TOKEN_URL) → user-key, NOT oauth2 (user-facing wins)', async () => {
+    // GoCertius / EAD Enterprise Suite declare BOTH a user-key surface AND an
+    // MCP_SVC_CLIENT_ID/SECRET pair — the latter are the server's own resource-server
+    // credentials for INBOUND token introspection, not an n8n sign-in. They are also
+    // members of the oauth2 allowlist, so they stay out of the form only because
+    // MCP_SVC_TOKEN_URL (the sole oauth2 discriminator) is absent. Replaces the
+    // Epic 14 email-vs-MCP_SVC precedence test, whose premise (MCP_AUTH_EMAIL) was
+    // deleted upstream in Epic 18.
     const { repoRoot, packageDir, cleanup } = await setupFixture({
       mcpName: 'multi-tool',
       envVars: [
-        { name: 'MCP_AUTH_EMAIL', description: 'Account email.', isSecret: false, isRequired: true },
-        { name: 'MCP_AUTH_PASSWORD', description: 'Account password.', isSecret: true, isRequired: true },
-        { name: 'MCP_SVC_TOKEN_URL', description: 'Service-account token endpoint (server-side).', isSecret: false, isRequired: false },
-        { name: 'MCP_SVC_CLIENT_ID', description: 'Service-account client id.', isSecret: false, isRequired: false },
-        { name: 'MCP_SVC_CLIENT_SECRET', description: 'Service-account client secret.', isSecret: true, isRequired: false },
+        { name: 'MCP_AUTH_USER_KEY', description: 'Long-lived user key.', isSecret: true, isRequired: true },
+        { name: 'MCP_SVC_CLIENT_ID', description: 'Introspection client id (server-side).', isSecret: false, isRequired: false },
+        { name: 'MCP_SVC_CLIENT_SECRET', description: 'Introspection client secret (server-side).', isSecret: true, isRequired: false },
+        { name: 'MCP_SVC_INTROSPECT_URL', description: 'Inbound bearer introspection (server config).', isSecret: false, isRequired: false },
       ],
     });
     try {
@@ -362,30 +385,22 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
         inspectorTimeoutMs: 10_000,
       });
 
-      expect(spec.authStyle).toBe('session-login-or-token');
-      // Surface = email + password. NO mcpSvc* leaks in.
-      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password']);
+      expect(spec.authStyle).toBe('user-key');
+      // Surface = the User Key alone. NO mcpSvc* leaks in.
+      expect(spec.credentials.map((c) => c.propName)).toEqual(['userKey']);
       expect(spec.credentials.some((c) => c.propName.startsWith('mcpSvc'))).toBe(false);
     } finally {
       await cleanup();
     }
   }, 30_000);
 
-  it('exposes MCP_AUTH_USER_KEY as the secret userKey credential (Epic 14)', async () => {
-    // The real gocertius / ead-enterprise-suite surface after the E14 propagation:
-    // email + password + user key, alongside the server's own service-account trio.
-    // The node must offer both sign-in flows and still drop the MCP_SVC_* and
-    // OpenID server config. MCP_AUTH_USER_KEY carries no `# isSecret:` guarantee
-    // from every generator, so the _KEY$ suffix rule must mark it secret anyway.
+  it('exposes MCP_AUTH_USER_KEY as the secret, required userKey credential (Epic 18)', async () => {
+    // The real gocertius / ead-enterprise-suite surface after the E18 propagation:
+    // one User Key, alongside the server's own inbound-introspection trio and the
+    // transport tail. Everything that is not the User Key must be dropped.
     const { repoRoot, packageDir, cleanup } = await setupFixture({
       mcpName: 'multi-tool',
-      envVars: [
-        { name: 'MCP_AUTH_EMAIL', description: 'Account email.', isSecret: false, isRequired: false },
-        { name: 'MCP_AUTH_PASSWORD', description: 'Account password.', isSecret: true, isRequired: false },
-        { name: 'MCP_AUTH_USER_KEY', description: 'Long-lived user key, exchanged for a session token.', isRequired: false },
-        { name: 'MCP_SVC_TOKEN_URL', description: 'Service-account token endpoint (server-side).', isSecret: false, isRequired: false },
-        { name: 'MCP_OPENID_ISSUER', description: 'OpenID issuer (server config).', isSecret: false, isRequired: false },
-      ],
+      envVars: POST_E18_ENV_VARS,
     });
     try {
       const { spec } = await buildN8nNodeSpec({
@@ -398,12 +413,15 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
         inspectorTimeoutMs: 10_000,
       });
 
-      expect(spec.authStyle).toBe('session-login-or-token');
-      expect(spec.credentials.map((c) => c.propName).sort()).toEqual(['email', 'password', 'userKey']);
+      expect(spec.authStyle).toBe('user-key');
+      expect(spec.credentials.map((c) => c.propName)).toEqual(['userKey']);
       const key = spec.credentials.find((c) => c.envName === 'MCP_AUTH_USER_KEY')!;
       expect(key.propName).toBe('userKey');
       expect(key.displayName).toBe('User Key');
+      // The declared `# isSecret: true` alone is enough here — the _KEY$ suffix rule
+      // is a separate fail-closed backstop and must not be what carries this.
       expect(key.isSecret).toBe(true);
+      expect(key.isRequired).toBe(true);
       // Server config never reaches the credential form (fail-closed allowlist).
       expect(spec.credentials.some((c) => c.envName.startsWith('MCP_OPENID'))).toBe(false);
       expect(spec.credentials.some((c) => c.envName.startsWith('MCP_SVC'))).toBe(false);
@@ -483,5 +501,212 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
     } finally {
       await cleanup();
     }
+  }, 30_000);
+  // ── Epic 18 / FR61 ────────────────────────────────────────────────────────
+  // The emitted contract for GoCertius / EAD Enterprise Suite collapsed to ONE
+  // upstream credential (MCP_AUTH_USER_KEY). These pin the three things that
+  // silently broke: detection keyed on a variable that no longer exists, the
+  // fall-through default that produced a credential with zero auth fields, and
+  // the ever-present temptation to mint a second base-URL property.
+
+  it('throws BuildN8nNodeSpecError when NO auth discriminator is declared (FR61: fail loudly, never fall through)', async () => {
+    // The E18 regression in one test: goc/suite stopped declaring MCP_AUTH_EMAIL,
+    // detection fell through to 'email-password', the allowlist intersected the
+    // declared set to [] and the pipeline shipped a credential form with no
+    // authentication fields at all — 8/8 on the gate.
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      envVars: [
+        { name: 'MCP_HTTP_HOST', description: 'MCP server HTTP bind host.', isSecret: false, isRequired: false },
+        { name: 'PORT', description: 'HTTP port in hosted mode.', isSecret: false, isRequired: false },
+      ],
+    });
+    try {
+      const promise = buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+      await expect(promise).rejects.toBeInstanceOf(BuildN8nNodeSpecError);
+      await expect(promise).rejects.toMatchObject({
+        name: 'BuildN8nNodeSpecError',
+        stage: 'server_json',
+      });
+      const err = await promise.then(
+        () => null,
+        (e: unknown) => e as Error,
+      );
+      expect(err!.message).toContain('MCP_AUTH_USER_KEY');
+      expect(err!.message).toContain('MCP_SVC_TOKEN_URL');
+      expect(err!.message).toContain('OKTA_TOKEN_URL');
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
+  it('Epic 18: the post-propagation contract yields exactly one credential property — userKey', async () => {
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      envVars: POST_E18_ENV_VARS,
+    });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+      expect(spec.credentials.map((c) => c.propName)).toEqual(['userKey']);
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
+  it('MCP_API_BASE_URL never becomes a credential property — the credential has exactly one base URL', async () => {
+    // Permanent guardrail. MCP_API_BASE_URL is declared and REQUIRED in the emitted
+    // contract, but the template already renders a `baseUrl` property; adding the env
+    // var to the allowlist would mint a second, unread `mcpApiBaseUrl` field.
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      envVars: POST_E18_ENV_VARS,
+    });
+    const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-baseurl-'));
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+      expect(spec.credentials.every((c) => c.envName !== 'MCP_API_BASE_URL')).toBe(true);
+      expect(spec.credentials.some((c) => c.propName === 'mcpApiBaseUrl')).toBe(false);
+
+      await generateN8nNode({ spec, outputDir });
+      const credSrc = await fs.readFile(
+        path.join(outputDir, 'credentials', 'MultiToolApi.credentials.ts'),
+        'utf8',
+      );
+      expect(credSrc.match(/name: 'baseUrl'/g)).toHaveLength(1);
+    } finally {
+      await fs.rm(outputDir, { recursive: true, force: true });
+      await cleanup();
+    }
+  }, 30_000);
+});
+
+
+// Story 18.4 (AC3/AC4/AC5): resource routing is a contract, not a guess.
+describe('buildN8nNodeSpec — resource routing and auto-id (Story 18.4)', () => {
+  // Every advertised tool of server-resources.mjs, annotated as a real REST
+  // operation. `widget_frobnicate` is the deliberate offender.
+  const ALL_ANNOTATIONS: Record<string, string> = {
+    case_file_create: '// n8n-http: POST /case-files',
+    evidence_get: '// n8n-http: GET /evidences/{evidenceId}',
+    notification_request_status: '// n8n-http: GET /notifications/{notificationRequestId}/status',
+    id_verification_video_create: '// n8n-http: POST /id-verifications/video',
+    id_verification_list: '// n8n-http: GET /users/{userId}/id-verifications',
+    id_verification_contract_url: '// n8n-http: GET /id-verifications/{verificationId}/contract-url',
+    signature_participant_create: '// n8n-http: POST /signature-requests/{requestId}/participants',
+    signature_request_create: '// n8n-http: POST /signature-requests',
+    widget_frobnicate: '// n8n-http: POST /widgets/{widget_id}/frobnicate',
+  };
+  // The same set minus the offender: an un-annotated tool is a non-REST STUB and
+  // is omitted from `operations` entirely, so this is the clean 8-operation node.
+  const CLEAN_ANNOTATIONS = Object.fromEntries(
+    Object.entries(ALL_ANNOTATIONS).filter(([name]) => name !== 'widget_frobnicate'),
+  );
+
+  async function buildResourcesSpec(annotations: Record<string, string>) {
+    const fixture = await setupFixture({
+      mcpName: 'resources',
+      toolAnnotations: annotations,
+    });
+    try {
+      return await buildN8nNodeSpec({
+        repoRoot: fixture.repoRoot,
+        packageDir: fixture.packageDir,
+        mcpName: 'resources',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [RESOURCES_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+
+  it('AC5: an operation that matches no prefix and is not signature-shaped FAILS the build', async () => {
+    // Was a note pushed onto unsupportedNotes, which nothing in src/ ever reads
+    // (.adapter-build.json#unsupported_notes has no consumer). profile_get sat
+    // under the Signature dropdown for a whole release cycle because of it.
+    // FR59 house rule: a check that cannot be acted on is not a check.
+    await expect(buildResourcesSpec(ALL_ANNOTATIONS)).rejects.toThrow(BuildN8nNodeSpecError);
+    const err = await buildResourcesSpec(ALL_ANNOTATIONS).catch((e: unknown) => e as BuildN8nNodeSpecError);
+    expect(err).toBeInstanceOf(BuildN8nNodeSpecError);
+    expect((err as BuildN8nNodeSpecError).stage).toBe('tools_list');
+    expect((err as BuildN8nNodeSpecError).message).toContain('widget_frobnicate');
+    expect((err as BuildN8nNodeSpecError).message).toContain('detectResource');
+    // Only the offender is named — the eight legitimate operations are not.
+    expect((err as BuildN8nNodeSpecError).message).not.toContain('signature_participant_create');
+  }, 30_000);
+
+  it('AC3: the three id_verification_* tools get their own Identity Verification resource', async () => {
+    const { spec } = await buildResourcesSpec(CLEAN_ANNOTATIONS);
+    expect(spec.operations).toHaveLength(8);
+    const idv = spec.resources?.find((r) => r.value === 'idVerification');
+    expect(idv, 'idVerification resource missing — the tools fell back to Signature').toBeDefined();
+    expect(idv!.displayName).toBe('Identity Verification');
+    expect(idv!.operations.map((o) => o.name).sort()).toEqual([
+      'id_verification_contract_url',
+      'id_verification_list',
+      'id_verification_video_create',
+    ]);
+    // And they are no longer sitting under Signature.
+    const signature = spec.resources?.find((r) => r.value === 'signature');
+    expect(signature!.operations.map((o) => o.name)).toEqual([
+      'signature_participant_create',
+      'signature_request_create',
+    ]);
+    // Story 15.3 (FR60): the dropdown is alphabetical by display name, and
+    // resources[0].value is the node's default Resource.
+    expect(spec.resources!.map((r) => r.displayName)).toEqual(
+      [...spec.resources!.map((r) => r.displayName)].sort((a, b) => a.localeCompare(b, 'en')),
+    );
+    expect(spec.resources![0]!.value).toBe('caseFile');
+  }, 30_000);
+
+  it('AC4: the auto-generated participant id is the participantId, plus a role-specific alias', async () => {
+    const { spec } = await buildResourcesSpec(CLEAN_ANNOTATIONS);
+    const autoIds = Object.fromEntries(
+      (spec.autoIdOutputFields ?? []).map((e) => [e.operation, e.fieldName]),
+    );
+    // The contract: "the id you generated IS the participantId, and it is the
+    // signatoryId if you passed role SIGNATORY or the validatorId if you passed
+    // role VALIDATOR". Naming it signatoryId unconditionally was wrong for two
+    // of the three roles.
+    expect(autoIds['signature_participant_create']).toBe('participantId');
+    // id_verification_video_create returns 201 with no body, so the generated
+    // UUID is the only handle a workflow ever gets; the contract calls it
+    // verificationId (and id_verification_contract_url's path param is that).
+    expect(autoIds['id_verification_video_create']).toBe('verificationId');
+
+    const roleRule = (spec.autoIdRoleFields ?? []).find(
+      (r) => r.operation === 'signature_participant_create',
+    );
+    expect(roleRule).toBeDefined();
+    expect(roleRule!.param).toBe('role');
+    // OBSERVER deliberately maps to nothing: the contract names no field for it.
+    expect(roleRule!.byValue).toEqual({ SIGNATORY: 'signatoryId', VALIDATOR: 'validatorId' });
   }, 30_000);
 });

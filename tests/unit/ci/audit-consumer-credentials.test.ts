@@ -40,6 +40,17 @@ jobs:
         run: ./gate.sh
 `;
 
+const ANTHROPIC_LEAK_WORKFLOW = `name: leaky-3
+on: { workflow_dispatch: {} }
+jobs:
+  generate-n8n-adapter:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          ANTHROPIC_API_KEY: \${{ secrets.ANTHROPIC_API_KEY }}
+        run: ./build-adapter.sh
+`;
+
 describe('auditConsumerCredentials', () => {
   it('produces no findings on a workflow that only references operational secrets', () => {
     const result = auditConsumerCredentials({
@@ -90,6 +101,21 @@ describe('auditConsumerCredentials', () => {
       '.github/workflows/a.yml',
       'actions/foo/action.yml',
     ]);
+  });
+
+  it('flags secrets.ANTHROPIC_API_KEY — Story 18.3 removed it from OPERATIONAL_ALLOWLIST', () => {
+    // FR62: the pipeline never substitutes generation's authored text, so no
+    // model-provider key has any business in CI. The allowlist entry is gone,
+    // which makes the name fall through to the /_KEY$/i suffix rule. This
+    // assertion fails on the ALLOWLIST alone — re-adding the entry turns it
+    // red even if no workflow references the secret.
+    const result = auditConsumerCredentials({
+      files: [{ path: '.github/workflows/leaky-3.yml', content: ANTHROPIC_LEAK_WORKFLOW }],
+    });
+    expect(result.findings).toHaveLength(1);
+    const finding = result.findings[0]!;
+    expect(finding.secretName).toBe('ANTHROPIC_API_KEY');
+    expect(finding.reason).toContain('forbidden suffix');
   });
 
   it('flags the live publish.yml as having no consumer-credential references today', async () => {

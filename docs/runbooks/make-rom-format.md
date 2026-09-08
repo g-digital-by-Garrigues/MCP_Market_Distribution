@@ -57,16 +57,16 @@ The Make.com "connection" — the auth and config the operator's Make scenarios 
   "label": "<Title Case> Connection",
   "fields": [
     {
-      "envName": "MCP_OPENID_CLIENT_ID",
-      "label": "Mcp Openid Client Id",
-      "type": "text",
+      "envName": "MCP_AUTH_USER_KEY",
+      "label": "Mcp Auth User Key",
+      "type": "password",
       "required": true,
       "help": "<from env var description>"
     },
     {
-      "envName": "MCP_AUTH_PASSWORD",
-      "label": "Mcp Auth Password",
-      "type": "password",
+      "envName": "MCP_API_BASE_URL",
+      "label": "Mcp Api Base Url",
+      "type": "text",
       "required": true,
       "help": "..."
     }
@@ -78,7 +78,7 @@ The Make.com "connection" — the auth and config the operator's Make scenarios 
 - `isSecret: true` → Make `password` field type
 - `isSecret: false` (or omitted) → Make `text` field type
 
-**Field `required`** maps directly from the env var's `isRequired` flag.
+**Field `required`** maps directly from the env var's `isRequired` flag, and is independent of `isSecret`. The two fields above are the shape that makes this concrete: `MCP_AUTH_USER_KEY` is `isSecret: true` + `isRequired: true` (masked and mandatory), while `MCP_API_BASE_URL` is `isSecret: false` + `isRequired: true` — a **required non-secret** field, which is a legitimate and supported shape, not a contradiction. Both are read off the emitted `.env.example`; neither is inferred.
 
 ### `actions[]`
 

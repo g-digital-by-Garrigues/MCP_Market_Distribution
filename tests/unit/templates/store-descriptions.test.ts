@@ -3,6 +3,7 @@ import { promises as fs } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Handlebars from 'handlebars';
+import yaml from 'js-yaml';
 
 // Tests for the marketplace submission templates that ship with the pipeline.
 // Origin: the 2026-05-26 audit at
@@ -141,5 +142,89 @@ describe('docker-mcp-catalog/pr-body.hbs — Docker MCP Registry official templa
   it('embeds the pipeline run id as an HTML comment for traceability without polluting reader output', async () => {
     const body = await render('docker-mcp-catalog/pr-body.hbs', SAMPLE_DATA);
     expect(body).toMatch(/<!-- pipeline-run-id: run-1 -->/);
+  });
+});
+
+
+// Story 18.4 (FR62): the two machine-read catalog files. Until this story the
+// only coverage of tools.json.hbs / server.yaml.hbs was a unit-test STUB
+// ('{"tools": []}'), so nothing ever rendered them — and both produced
+// unparseable output for all three products in production. These render the
+// SHIPPING templates through the helpers the publisher registers privately
+// (publish-docker-mcp-catalog.ts), and assert the parse + a byte-identical
+// round-trip of every authored string.
+describe('docker-mcp-catalog/tools.json.hbs + server.yaml.hbs — machine-valid, byte-identical', () => {
+  // Mirrors the private environment in publish-docker-mcp-catalog.ts. Kept a
+  // local instance so registering these helpers cannot leak into the default
+  // Handlebars used by the rest of the suite.
+  const hb = Handlebars.create();
+  hb.registerHelper('json', (value: unknown) => new hb.SafeString(JSON.stringify(value)));
+  hb.registerHelper('yamlScalar', (value: unknown) => new hb.SafeString(JSON.stringify(String(value ?? ''))));
+
+  async function renderCatalog(file: string, data: Record<string, unknown>): Promise<string> {
+    const tpl = await fs.readFile(path.join(TPL_DIR, 'docker-mcp-catalog', file), 'utf8');
+    return hb.compile(tpl, { noEscape: true })(data);
+  }
+
+  // Every character class the real emitted contract carries, in one payload:
+  // a literal double quote, the enum/markdown pipe, a colon-space, an em dash
+  // and a hash (a YAML comment introducer after a space).
+  const HOSTILE_TOOLS = [
+    {
+      name: 'evidence_get',
+      description: 'Get evidence. Status: (COMPLETED|IN_PROCESS|ERROR) — poll until terminal. # not a comment',
+    },
+    {
+      name: 'notification_certificate_list',
+      description: 'List certificates of type "SENT"; anything else: rejected.',
+    },
+  ];
+  const HOSTILE_ENV = [
+    {
+      name: 'MCP_AUTH_USER_KEY',
+      example: 'uk_live_xxx | rotate me',
+      description: 'User Key: long-lived, "secret", exchanged for a session token — see the portal. # keep private',
+    },
+    { name: 'MCP_API_BASE_URL', example: 'https://api.example.com', description: 'Base URL of the REST API.' },
+  ];
+  const HOSTILE_DESCRIPTION =
+    'MCP server for GoCertius: certified evidence, "sealed" dossiers and notices — Digital Trust.';
+  const CATALOG_DATA = {
+    ...SAMPLE_DATA,
+    description: HOSTILE_DESCRIPTION,
+    tools: HOSTILE_TOOLS,
+    environment_variables: HOSTILE_ENV,
+  };
+
+  it('tools.json parses and every tool name + description round-trips byte-identically', async () => {
+    const out = await renderCatalog('tools.json.hbs', CATALOG_DATA);
+    const parsed = JSON.parse(out) as { tools: Array<{ name: string; description: string }> };
+    expect(parsed.tools).toEqual(HOSTILE_TOOLS);
+  });
+
+  it('server.yaml parses and the server + env-var descriptions round-trip byte-identically', async () => {
+    const out = await renderCatalog('server.yaml.hbs', CATALOG_DATA);
+    const doc = yaml.load(out) as {
+      name: string;
+      description: string;
+      config: { env: Array<{ name: string; example: string; description: string }> };
+    };
+    // yaml.load happily accepts a document whose FIRST mapping is fine and
+    // fails later, so assert the values, not merely that the call returned.
+    expect(doc.name).toBe('sample-mcp');
+    expect(doc.description).toBe(HOSTILE_DESCRIPTION);
+    expect(doc.config.env).toEqual(HOSTILE_ENV);
+  });
+
+  it('an unencoded interpolation is what the parse gate exists for (the pre-18.4 shape)', async () => {
+    // Renders the OLD template shape against the same data: proof the fix is
+    // load-bearing and the gate in publish-docker-mcp-catalog.ts is not decorative.
+    const legacy = hb.compile(
+      '{\n  "tools": [\n{{#each tools}}\n    {\n      "name": "{{name}}",\n      "description": "{{description}}"\n    }{{#unless @last}},{{/unless}}\n{{/each}}\n  ]\n}\n',
+      { noEscape: true },
+    )(CATALOG_DATA);
+    expect(() => JSON.parse(legacy)).toThrow();
+    const legacyYaml = hb.compile('description: {{description}}\n', { noEscape: true })(CATALOG_DATA);
+    expect(() => yaml.load(legacyYaml)).toThrow();
   });
 });

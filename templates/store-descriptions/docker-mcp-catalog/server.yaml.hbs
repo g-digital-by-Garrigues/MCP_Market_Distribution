@@ -1,5 +1,5 @@
 name: {{mcp_name}}
-description: {{description}}
+description: {{yamlScalar description}}
 image: {{docker_image_name}}:{{version}}
 icon: {{icon_url}}
 about:
@@ -15,6 +15,6 @@ config:
   env:
 {{#each environment_variables}}
     - name: {{name}}
-      example: {{example}}
-      description: {{description}}
+      example: {{yamlScalar example}}
+      description: {{yamlScalar description}}
 {{/each}}

@@ -73,7 +73,7 @@ export interface JsonSchemaToPropertiesResult {
   /**
    * Diagnostic notes about schema features that were lowered with loss
    * (nested object → json, etc.). Surfaced to callers so they can
-   * include them in the generated node's README / refinement prompt.
+   * include them in the generated node's README.
    */
   unsupportedNotes: string[];
 }

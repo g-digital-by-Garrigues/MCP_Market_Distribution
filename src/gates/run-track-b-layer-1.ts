@@ -271,8 +271,7 @@ async function checkNodeClass(opts: RunTrackBLayer1Options): Promise<TrackBLayer
     issues.push(`description.name must be '${spec.paramName}'`);
   }
   // `testedBy: '<method>'` trails the pair when the auth style needs a programmatic
-  // credential test (session-login-or-token), so match the prefix rather than the
-  // whole literal.
+  // credential test (user-key), so match the prefix rather than the whole literal.
   if (!new RegExp(`credentials: \\[\\{ name: '${spec.credentialParamName}', required: true(,|\\s*\\})`).test(src)) {
     issues.push(`description.credentials must reference '${spec.credentialParamName}'`);
   }
@@ -307,7 +306,7 @@ async function checkNodeClass(opts: RunTrackBLayer1Options): Promise<TrackBLayer
 }
 
 async function checkCredentialsClass(opts: RunTrackBLayer1Options): Promise<TrackBLayer1CheckResult> {
-  const { nodeDir, spec } = opts;
+  const { mcpName, nodeDir, spec } = opts;
   const filePath = path.join(nodeDir, 'credentials', `${spec.credentialClassName}.credentials.ts`);
   let src: string;
   try {
@@ -332,21 +331,121 @@ async function checkCredentialsClass(opts: RunTrackBLayer1Options): Promise<Trac
   if (!src.includes(`name = '${spec.credentialParamName}'`)) {
     issues.push(`credential.name must be '${spec.credentialParamName}'`);
   }
+  // The emitted property set must EQUAL the contract, in both directions. Expected:
+  // `baseUrl` (the REST gateway root — emitted unconditionally by the template, never
+  // an env var, so it is a member for every auth style) plus, for oauth2, the hidden
+  // pair n8n's oAuth2Api base type is configured with; otherwise exactly what the spec
+  // declares. `spec.credentials` IS allowlist ∩ declared (buildCredentials in
+  // build-node-spec.ts), so this compares the artefact against the contract — never
+  // the pipeline against a second copy of its own allowlist.
+  const emitted = new Set(credentialPropNames(src));
+  const expected = new Set<string>(
+    spec.authStyle === 'oauth2-client-credentials'
+      ? ['baseUrl', ...OAUTH2_HIDDEN_CRED_PROPS]
+      : ['baseUrl', ...spec.credentials.map((c) => c.propName)],
+  );
+
+  // FR59/FR61 — fail closed on a credential nobody can authenticate with. Exempt:
+  // `oauth2-client-credentials` legitimately emits no per-property authentication
+  // field, because n8n's oAuth2Api base type supplies Client ID / Client Secret /
+  // Access Token URL / Scope (buildCredentials returns [] for that style by design).
+  // For every other style, a form whose only property is the API base URL is not a
+  // credential — and before Epic 18 it scored 8/8, because the per-field loop below
+  // is vacuous on an empty spec.credentials.
+  if (spec.authStyle !== 'oauth2-client-credentials' && [...emitted].every((p) => p === 'baseUrl')) {
+    issues.push(
+      `the '${mcpName}' credential offers no way to authenticate: authStyle '${spec.authStyle}' ` +
+      `emitted only [${[...emitted].join(', ')}] ('baseUrl' is the API root, not a credential). ` +
+      `The auth-style allowlist intersected the variables the descriptor declares to the EMPTY SET`,
+    );
+  }
+
   for (const cred of spec.credentials) {
     // Check by propName (camelCase n8n field name) — env-var style names (envName)
-    // are intentionally renamed to camelCase per n8n UX guidelines.
-    if (!src.includes(`name: '${cred.propName}'`)) {
+    // are intentionally renamed to camelCase per n8n UX guidelines. Reported one by
+    // one, by env var: a bare "sets differ" would make a partial-regeneration failure
+    // far harder to read than naming the variable the operator can grep for.
+    if (!emitted.has(cred.propName)) {
       issues.push(`credential property is missing for env var '${cred.envName}' (expected propName '${cred.propName}')`);
     }
   }
-  if (issues.length === 0) return { name: 'credentials', passed: true };
+
+  // The other half of the equality: a property the contract no longer declares. The
+  // n8n_ux_compliance backstop is a SUPERSET test and structurally cannot see this —
+  // a stale `oktaTokenUrl` on a user-key credential is globally allowlisted and
+  // locally wrong.
+  const unexpected = [...emitted].filter((p) => !expected.has(p));
+  if (unexpected.length > 0) {
+    issues.push(
+      `credential exposes ${unexpected.length} propert${unexpected.length === 1 ? 'y' : 'ies'} ` +
+      `the contract does not declare: ${unexpected.join(', ')}. Expected exactly ` +
+      `[${[...expected].join(', ')}]`,
+    );
+  }
+
+  // FR61 (Story 18.1) — requiredness is CONTRACT TEXT, not decoration. The emitted
+  // .env.example declares each variable required or optional; the pipeline carries
+  // that across as `N8nCredentialField.isRequired` / `N8nNodeSpec.baseUrlRequired`
+  // and the template renders it as `required: true`. Nothing verified the marker
+  // survived, so dropping `{{#if this.isRequired}}` from credentials.ts.hbs emitted a
+  // form that no longer expresses requiredness and still scored 8/8 (review F13).
+  // Checked in BOTH directions: a marker the contract does not declare makes the form
+  // stricter than the product (EAD Factory declares MCP_API_BASE_URL optional).
+  const emittedRequired = requiredCredentialProps(src);
+  if (emittedRequired === null) {
+    issues.push(
+      "could not locate the `properties: INodeProperties[] = [` array, so no `required: true` " +
+      'marker could be verified against the contract',
+    );
+  } else {
+    // `baseUrl` is not an N8nCredentialField (it is emitted by the template, not by
+    // the env-var allowlist), so its requiredness travels as a scalar — see
+    // N8nNodeSpec.baseUrlRequired.
+    const contractRequired: Array<{ propName: string; label: string; required: boolean }> = [
+      { propName: 'baseUrl', label: 'MCP_API_BASE_URL', required: spec.baseUrlRequired === true },
+      ...spec.credentials.map((c) => ({
+        propName: c.propName,
+        label: c.envName,
+        required: c.isRequired === true,
+      })),
+    ];
+    for (const { propName, label, required } of contractRequired) {
+      // A property that is missing outright is already reported above; do not
+      // report the same regression twice under a second heading.
+      if (!emitted.has(propName)) continue;
+      const marked = emittedRequired.has(propName);
+      if (required && !marked) {
+        issues.push(
+          `credential property '${propName}' is missing 'required: true' although the emitted ` +
+          `contract declares '${label}' required`,
+        );
+      } else if (!required && marked) {
+        issues.push(
+          `credential property '${propName}' is marked 'required: true' although the emitted ` +
+          `contract declares '${label}' optional`,
+        );
+      }
+    }
+  }
+
+  if (issues.length === 0) {
+    return {
+      name: 'credentials',
+      passed: true,
+      // Action A4 (Epic 17 retro): this check scans a population the codegen does not
+      // fix, and "0 properties checked" was indistinguishable from success. Counted
+      // from the EMITTED file — counting spec.credentials.length would reintroduce
+      // exactly the defect Story 18.2 closes.
+      inspected: `${emitted.size} credential propert${emitted.size === 1 ? 'y' : 'ies'}`,
+    };
+  }
   return {
     name: 'credentials',
     passed: false,
     error: gateError('credentials', {
       observation: `Credentials class structural lint failed: ${issues.join('; ')}.`,
-      cause: 'The generated credentials class is missing one or more env-var fields the source MCP requires.',
-      action: 'Diff templates/n8n-adapter/credentials.ts.hbs against spec.credentials; every env var in server.json#packages[0].environmentVariables must produce a property entry.',
+      cause: 'The emitted credentials class does not match the contract it was built from: it is missing an env-var field the source MCP declares, it carries a field the contract no longer declares, or it offers no authentication field at all.',
+      action: 'Compare the emitted property set against spec.credentials in the .spec.json this gate was handed. An EMPTY intersection is a DESCRIPTOR problem, not a template one — check detectAuthStyle in build-node-spec.ts against the MCP .env.example (the detected auth style must match the variables the descriptor declares). A single missing or stale field is a codegen problem — diff templates/n8n-adapter/credentials.ts.hbs against spec.credentials.',
       source_path: path.relative(nodeDir, filePath),
     }),
   };
@@ -735,23 +834,112 @@ async function checkOfficialLinter(
 const BRAND_MISCASED: readonly string[] = ["Ead ", "Gocertius"];
 const TRANSPORT_CRED_PROP_RE = /name:\s*'(mcpHttp\w*|mcpAllow\w*|mcpCors\w*|mcpTransport\w*)'/;
 const STUB_OP_RE = /'([^']+)':\s*\{\s*method:\s*'STUB'[^}]*stub:\s*true/g;
+// Epic 16: `oauth2-client-credentials` extends n8n's oAuth2Api, which supplies
+// Client ID / Client Secret / Access Token URL / Scope from the base type. The
+// emitted credential file adds only these two hidden fields on top (plus baseUrl,
+// the REST gateway root). Mirrors templates/n8n-adapter/credentials.ts.hbs:38-49 —
+// if that hidden pair ever changes, this constant and the allowlist below move with
+// it, and so does the expected set in checkCredentialsClass.
+const OAUTH2_HIDDEN_CRED_PROPS: readonly string[] = ['grantType', 'authentication'];
 // The complete set of credential property names the REST-direct execute() reads
-// across all auth styles (baseUrl + email/password OR okta-* OR mcpSvc-*). Any
+// across all auth styles: baseUrl (the gateway root, emitted by the template and
+// never an env var) + userKey OR okta-* OR mcpSvc-* OR the OAuth2 hidden pair. Any
 // credential prop outside this set is MCP-server config that leaked into the n8n
 // form. Mirrors NODE_READABLE_CREDENTIAL_ENV_VARS in build-node-spec.ts.
+//
+// Epic 18 dropped 'email' and 'password': the products deleted that flow from the
+// server, so MCP_AUTH_EMAIL / MCP_AUTH_PASSWORD are no longer emitted. The
+// 'email-password' union member still exists in build-node-spec.ts and still
+// renders, but detectAuthStyle throws rather than defaulting to it (FR61), so no
+// product can select it — and from here on this gate would reject the credential it
+// produces. That is the intended fail-closed posture, not an oversight: do NOT
+// re-add the two names to turn a hypothetical green.
 const ALLOWED_CREDENTIAL_PROPS: ReadonlySet<string> = new Set([
-  'baseUrl', 'email', 'password',
-  'userKey', // session-login-or-token: long-lived key exchanged for a session JWT
+  'baseUrl',
+  'userKey', // user-key: long-lived key exchanged for a session JWT
   'oktaTokenUrl', 'oktaClientId', 'oktaClientSecret', 'oktaScope',
   'mcpSvcTokenUrl', 'mcpSvcClientId', 'mcpSvcClientSecret', 'mcpSvcScope',
-  // Epic 16: oauth2-client-credentials extends n8n's oAuth2Api. Client ID/Secret/
-  // Access Token URL/Scope come from the base type; the credential file only pins
-  // these two hidden fields (plus baseUrl for the REST gateway root).
-  'grantType', 'authentication',
+  ...OAUTH2_HIDDEN_CRED_PROPS,
 ]);
 // Match the `name: '...'` of each credential property (the credentials class
 // uses single-quoted prop names; the test-request body uses other strings).
 const CRED_PROP_NAME_RE = /name:\s*'([a-zA-Z][a-zA-Z0-9]*)'/g;
+
+/**
+ * Every credential property name the emitted credentials class declares, in file
+ * order. The single reader of CRED_PROP_NAME_RE: `credentials` (does the emitted
+ * file match the contract?) and the `n8n_ux_compliance` allowlist backstop (is this
+ * property node-readable at all?) must provably see the same property set.
+ *
+ * `matchAll`, never `exec` in a loop: CRED_PROP_NAME_RE is a module-scoped /g/
+ * object, and `exec` would carry `lastIndex` from one check into the other.
+ */
+function credentialPropNames(src: string): string[] {
+  return [...src.matchAll(CRED_PROP_NAME_RE)].map((m) => m[1]!);
+}
+
+// The head of the credential form array. Anchoring on it (rather than scanning the
+// whole file) keeps the requiredness parse away from the `test: ICredentialTestRequest`
+// literal below it.
+const CRED_PROPERTIES_ARRAY_RE = /properties:\s*INodeProperties\[\]\s*=\s*\[/;
+const CRED_PROP_REQUIRED_RE = /(^|[\s{,])required:\s*true\s*,/;
+
+/** Index of the closing quote of the string literal opened at `openIdx`. */
+function endOfStringLiteral(src: string, openIdx: number): number {
+  const quote = src[openIdx];
+  for (let i = openIdx + 1; i < src.length; i++) {
+    if (src[i] === '\\') {
+      i++;
+      continue;
+    }
+    if (src[i] === quote) return i;
+  }
+  return src.length;
+}
+
+/**
+ * Which emitted credential properties carry `required: true`.
+ *
+ * Returns `null` when the `properties: INodeProperties[] = [` array cannot be located
+ * at all — the caller turns that into a gate failure rather than into "nothing is
+ * required". FR59: a check that cannot read its evidence must fail, not pass.
+ *
+ * Brace-walks the array so the marker is attributed to the property block it is
+ * inside; a file-wide `includes('required: true')` would be satisfied by ANY single
+ * required field and is exactly the blind spot this closes. String literals are
+ * skipped so a brace inside an authored description cannot desynchronise the walk.
+ */
+function requiredCredentialProps(src: string): Set<string> | null {
+  const header = CRED_PROPERTIES_ARRAY_RE.exec(src);
+  if (!header) return null;
+  const required = new Set<string>();
+  let depth = 0;
+  let blockStart = -1;
+  for (let i = header.index + header[0].length; i < src.length; i++) {
+    const ch = src[i]!;
+    if (ch === "'" || ch === '"' || ch === '`') {
+      i = endOfStringLiteral(src, i);
+      continue;
+    }
+    if (ch === '{') {
+      if (depth === 0) blockStart = i;
+      depth++;
+      continue;
+    }
+    if (ch === '}') {
+      depth--;
+      if (depth === 0 && blockStart >= 0) {
+        const block = src.slice(blockStart, i + 1);
+        const name = /name:\s*'([a-zA-Z][a-zA-Z0-9]*)'/.exec(block);
+        if (name && CRED_PROP_REQUIRED_RE.test(block)) required.add(name[1]!);
+        blockStart = -1;
+      }
+      continue;
+    }
+    if (ch === ']' && depth === 0) break;
+  }
+  return required;
+}
 
 async function checkN8nUxCompliance(opts: RunTrackBLayer1Options): Promise<TrackBLayer1CheckResult> {
   const { nodeDir, spec } = opts;
@@ -817,8 +1005,7 @@ async function checkN8nUxCompliance(opts: RunTrackBLayer1Options): Promise<Track
   // REST-direct execute() actually reads. Catches any leak of MCP server config
   // beyond the known transport prefixes (the recurring [HIGH] from v1.2.19/v1.3.x).
   const leakedProps: string[] = [];
-  for (const m of credSrc.matchAll(CRED_PROP_NAME_RE)) {
-    const prop = m[1]!;
+  for (const prop of credentialPropNames(credSrc)) {
     if (!ALLOWED_CREDENTIAL_PROPS.has(prop)) leakedProps.push(prop);
   }
   if (leakedProps.length > 0) {

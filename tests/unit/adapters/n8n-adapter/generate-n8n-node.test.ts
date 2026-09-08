@@ -6,6 +6,14 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { generateN8nNode } from '../../../../src/adapters/n8n-adapter/generate-n8n-node.js';
 import type { N8nNodeSpec } from '../../../../src/adapters/n8n-adapter/types.js';
 
+/** Split a rendered markdown table row on UNESCAPED pipes, trimming each cell. */
+function splitMarkdownRow(row: string): string[] {
+  return row
+    .split(/(?<!\\)\|/)
+    .slice(1, -1)
+    .map((cell) => cell.trim());
+}
+
 function sampleSpec(): N8nNodeSpec {
   return {
     packageName: '@g-digital/n8n-nodes-multi-tool',
@@ -370,6 +378,47 @@ describe('generateN8nNode', () => {
     expect(readme).toContain('npm install @g-digital/n8n-nodes-multi-tool');
   });
 
+  it('README.md escapes a literal pipe in a table cell so the row keeps exactly two columns (Story 18.4, FR62)', async () => {
+    // The emitted descriptions document enum states inline
+    // ('COMPLETED|IN_PROCESS|ERROR'). Spliced raw into the 2-column
+    // Operations table that becomes a 5-cell row and every markdown
+    // renderer drops the surplus — the published connector README has been
+    // truncating those sentences. mdCell encodes for the cell; the inverse
+    // restores the authored bytes (no truncation, no substitution).
+    const base = sampleSpec();
+    const spec: N8nNodeSpec = {
+      ...base,
+      operations: [
+        { ...base.operations[0]!, description: 'Returns status (A|B).' },
+      ],
+      credentials: [
+        {
+          envName: 'TEST_API_KEY',
+          displayName: 'Test API Key',
+          propName: 'testApiKey',
+          isSecret: true,
+          description: 'Key for env A|B.',
+        },
+      ],
+    };
+    await generateN8nNode({ spec, outputDir });
+    const readme = await fs.readFile(path.join(outputDir, 'README.md'), 'utf8');
+
+    const opRow = readme.split('\n').find((l) => l.startsWith('| `get_widget` |'))!;
+    expect(opRow).toBeDefined();
+    expect(opRow).toContain('Returns status (A\\|B).');
+    // The claim that matters: two cells, not five. A toContain on the
+    // escaped string alone passes on a row broken somewhere else.
+    expect(splitMarkdownRow(opRow)).toEqual(['`get_widget`', 'Returns status (A\\|B).']);
+
+    const credRow = readme.split('\n').find((l) => l.startsWith('| `TEST_API_KEY` |'))!;
+    expect(credRow).toBeDefined();
+    // Four cells since Story 18.1 gave the table a Required? column: name,
+    // description, required, secret. This fixture declares no isRequired, so
+    // the escaped pipe must still land in cell 2 and not shift the flags.
+    expect(splitMarkdownRow(credRow)).toEqual(['`TEST_API_KEY`', 'Key for env A\\|B.', 'no', 'yes']);
+  });
+
   it('index.ts re-exports both classes', async () => {
     await generateN8nNode({ spec: sampleSpec(), outputDir });
     const idx = await fs.readFile(path.join(outputDir, 'index.ts'), 'utf8');
@@ -413,6 +462,11 @@ describe('generateN8nNode — oauth2-client-credentials → native oAuth2Api (Ep
     expect(cred).toContain("default: 'clientCredentials'");
     expect(cred).toMatch(/name: 'authentication'[\s\S]*?default: 'body'/);
     expect(cred).toContain("name: 'baseUrl'");
+    // Epic 18 AC5: EAD Factory declares MCP_API_BASE_URL `# isRequired: false`, so
+    // baseUrlRequired is unset and the baseUrl property renders exactly as before —
+    // no `required:` line, not even a whitespace-only one.
+    expect(cred).not.toContain('required: true');
+    expect(cred).toMatch(/name: 'baseUrl',\n\s*type: 'string',\n\s*default: 'https:\/\/api\.example\.com',/);
     // No leaked service-config props; no hand-rolled token-endpoint test.
     expect(cred).not.toContain('mcpSvc');
     expect(cred).not.toContain('ICredentialTestRequest');
@@ -432,7 +486,7 @@ describe('generateN8nNode — oauth2-client-credentials → native oAuth2Api (Ep
   });
 });
 
-describe('generateN8nNode — session-login-or-token credential imports (n8n review 2026-07)', () => {
+describe('generateN8nNode — user-key credential imports (n8n review 2026-07)', () => {
   let outputDir: string;
   beforeEach(async () => {
     outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-gen-session-'));
@@ -442,15 +496,15 @@ describe('generateN8nNode — session-login-or-token credential imports (n8n rev
   });
 
   function sessionSpec(): N8nNodeSpec {
-    // gocertius / ead-enterprise-suite: the credential uses a PROGRAMMATIC test
-    // (testAuth in the node) — it renders NO declarative `test: ICredentialTestRequest`.
+    // gocertius / ead-enterprise-suite after Epic 18: ONE credential field. The
+    // credential uses a PROGRAMMATIC test (testAuth in the node) — it renders NO
+    // declarative `test: ICredentialTestRequest`.
     return {
       ...sampleSpec(),
-      authStyle: 'session-login-or-token',
+      authStyle: 'user-key',
+      baseUrlRequired: true,
       credentials: [
-        { envName: 'MCP_AUTH_USER_KEY', propName: 'userKey', displayName: 'User Key', isSecret: true },
-        { envName: 'MCP_AUTH_EMAIL', propName: 'email', displayName: 'Auth Email', isSecret: false },
-        { envName: 'MCP_AUTH_PASSWORD', propName: 'password', displayName: 'Auth Password', isSecret: true },
+        { envName: 'MCP_AUTH_USER_KEY', propName: 'userKey', displayName: 'User Key', isSecret: true, isRequired: true },
       ],
     };
   }
@@ -462,8 +516,8 @@ describe('generateN8nNode — session-login-or-token credential imports (n8n rev
       'utf8',
     );
     // The n8n scanner flagged this as an unused IMPORT in v1.5.0/v1.6.0 — assert on
-    // the import statement itself, not comment mentions (the session-login-or-token
-    // comment legitimately names the type when explaining why there is no test).
+    // the import statement itself, not comment mentions (the user-key comment
+    // legitimately names the type when explaining why there is no test).
     const importBlock = cred.match(/import \{([\s\S]*?)\} from 'n8n-workflow';/)?.[1] ?? '';
     expect(importBlock).not.toContain('ICredentialTestRequest');
     // And there is genuinely no declarative test that would need it.
@@ -476,6 +530,68 @@ describe('generateN8nNode — session-login-or-token credential imports (n8n rev
     expect(node).toContain('testAuth');
   });
 
+  it('Epic 18 AC3/AC4: the credential is exactly baseUrl + a required, masked userKey', async () => {
+    await generateN8nNode({ spec: sessionSpec(), outputDir });
+    const cred = await fs.readFile(
+      path.join(outputDir, 'credentials', 'MultiToolApi.credentials.ts'),
+      'utf8',
+    );
+    // Exactly two properties, and only one base URL.
+    expect(cred.match(/name: '[a-zA-Z][a-zA-Z0-9]*'/g)).toEqual(["name: 'baseUrl'", "name: 'userKey'"]);
+    expect(cred).toMatch(/name: 'userKey'[\s\S]*?typeOptions: \{ password: true \},\n\s*required: true,/);
+    // AC5: MCP_API_BASE_URL is declared required for these products, so the
+    // template-emitted baseUrl property renders required too.
+    expect(cred).toMatch(/name: 'baseUrl',\n\s*type: 'string',\n\s*required: true,/);
+    // The retired flow leaves no trace in the form.
+    expect(cred).not.toContain("name: 'email'");
+    expect(cred).not.toContain("name: 'password'");
+    expect(cred).not.toContain('mcpSvc');
+  });
+
+  it('Epic 18 AC4: an optional credential field renders WITHOUT required:', async () => {
+    // Requiredness comes from the emitted contract, never inferred from secrecy.
+    const spec: N8nNodeSpec = {
+      ...sessionSpec(),
+      baseUrlRequired: false,
+      credentials: [
+        { envName: 'MCP_AUTH_USER_KEY', propName: 'userKey', displayName: 'User Key', isSecret: true, isRequired: false },
+      ],
+    };
+    await generateN8nNode({ spec, outputDir });
+    const cred = await fs.readFile(
+      path.join(outputDir, 'credentials', 'MultiToolApi.credentials.ts'),
+      'utf8',
+    );
+    expect(cred).toContain("name: 'userKey'");
+    expect(cred).toContain('typeOptions: { password: true }');
+    expect(cred).not.toContain('required: true');
+  });
+
+  it('Epic 18 AC6: the user-key node has no email/password read and no POST /session fallthrough', async () => {
+    await generateN8nNode({ spec: sessionSpec(), outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).not.toContain('creds.email');
+    expect(node).not.toContain('creds.password');
+    expect(node).not.toContain('Auth Email');
+    expect(node).not.toContain('fetch(`${baseUrl}/session`');
+    // The single-flow guard replaced the two two-flow guards.
+    expect(node).toContain('A User Key is required.');
+    expect(node).not.toContain('Configure exactly one auth flow');
+    // Retained behaviour.
+    expect(node).toContain("testedBy: 'testAuth'");
+    expect(node).toContain('Base URL is empty.');
+    expect(node).toContain('/user-keys/session');
+    expect(node).toContain('User Keys are enabled');
+    expect(node).toContain('The User Key exchange returned no session token.');
+    // 401 re-mint-and-replay.
+    expect(node).toMatch(/apiRes\.status === 401[\s\S]*?bearer = await obtainBearer\(\)/);
+    // obtainBearer is unconditional now (no vacuous `if (userKey)` wrapper left).
+    expect(node).not.toMatch(/const obtainBearer[\s\S]{0,120}if \(userKey\) \{/);
+  });
+
   it('email-password still imports ICredentialTestRequest (it DOES render a declarative test)', async () => {
     // Guards the other direction: the fix must not strip the import where it is used.
     await generateN8nNode({ spec: sampleSpec(), outputDir }); // sampleSpec is email-password
@@ -486,5 +602,127 @@ describe('generateN8nNode — session-login-or-token credential imports (n8n rev
     const importBlock = cred.match(/import \{([\s\S]*?)\} from 'n8n-workflow';/)?.[1] ?? '';
     expect(importBlock).toContain('ICredentialTestRequest');
     expect(cred).toMatch(/test:\s*ICredentialTestRequest/);
+  });
+  it('renders resource-scoped operation copy byte-identically to the spec (FR62, Story 18.3)', async () => {
+    // The resource+operation two-level dropdown is the ONE surface the deleted
+    // LLM refine pass never reached: build-node-spec pushes the SAME operation
+    // objects into `resources` that live in the flat `operations` array, and
+    // applyRefinement rebuilt `operations` as fresh objects while copying
+    // `resources` by spread — so the resource branch kept the authored text by
+    // accident. Now that the pass is gone the correctness is intentional, and
+    // this pins it. Without this test the suite would cover only the flat
+    // branch (the integration fidelity test's fixture has 3 operations, below
+    // the 8-operation threshold at which `resources` is computed at all).
+    const base = sampleSpec();
+    const widgetOps = base.operations;
+    const spec: N8nNodeSpec = {
+      ...base,
+      resources: [
+        {
+          displayName: 'Widget',
+          value: 'widget',
+          operations: widgetOps,
+        },
+        {
+          displayName: 'Dossier',
+          value: 'dossier',
+          operations: [
+            {
+              name: 'dossier_seal',
+              displayName: 'Seal Dossier',
+              // Same re-encode canaries as the integration fixture: em dash,
+              // backticked field reference, literal double quotes.
+              description:
+                'Seal the dossier identified by `ID` — irreversible. Do NOT seal until every "INTERNAL" file has been uploaded.',
+              httpMethod: 'POST',
+              httpUrlTemplate: '/dossiers/{dossier_id}/seal',
+              properties: [],
+            },
+          ],
+        },
+      ],
+    };
+
+    await generateN8nNode({ spec, outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+
+    // The resource branch rendered, not the flat one.
+    expect(node).toContain("displayName: 'Resource'");
+    expect(node).toContain("show: { resource: ['dossier'] }");
+
+    for (const resource of spec.resources!) {
+      expect(node).toContain(`{ name: ${JSON.stringify(resource.displayName)}, value: '${resource.value}' }`);
+      for (const op of resource.operations) {
+        expect(node).toContain(`description: ${JSON.stringify(op.description)}`);
+        expect(node).toContain(`name: ${JSON.stringify(op.displayName)}`);
+        expect(node).toContain(`action: ${JSON.stringify(op.displayName)}`);
+      }
+    }
+    // And the node class description is the spec's, verbatim.
+    expect(node).toContain(`description: ${JSON.stringify(spec.description)}`);
+  });
+
+  it('injects the role-specific alias for an auto-generated participant id (Story 18.4, AC4)', async () => {
+    // The emitted contract: "the id you generated IS the participantId, and it
+    // is the signatoryId if you passed role SIGNATORY or the validatorId if you
+    // passed role VALIDATOR". Calling it signatoryId unconditionally was wrong
+    // for two of the three roles; OBSERVER gets nothing, because the contract
+    // names no field for it.
+    const base = sampleSpec();
+    const spec: N8nNodeSpec = {
+      ...base,
+      autoIdOutputFields: [
+        { operation: 'signature_participant_create', fieldName: 'participantId' },
+        { operation: 'id_verification_video_create', fieldName: 'verificationId' },
+      ],
+      autoIdRoleFields: [
+        {
+          operation: 'signature_participant_create',
+          param: 'role',
+          byValue: { SIGNATORY: 'signatoryId', VALIDATOR: 'validatorId' },
+        },
+      ],
+    };
+    await generateN8nNode({ spec, outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).toContain("'signature_participant_create': 'participantId'");
+    expect(node).toContain("'id_verification_video_create': 'verificationId'");
+    // The role map, and the execute()-time injection that reads it.
+    expect(node).toContain(
+      `'signature_participant_create': { param: 'role', byValue: {"SIGNATORY":"signatoryId","VALIDATOR":"validatorId"} }`,
+    );
+    expect(node).toContain('const roleRule = AUTO_ID_ROLE_FIELD[operation];');
+    // Own-property lookup: `role` is caller-supplied, so an unguarded index into a
+    // plain object literal would resolve 'constructor'/'toString' via Object.prototype.
+    expect(node).toContain("const roleKey = String(body[roleRule.param] ?? '');");
+    expect(node).toContain('Object.prototype.hasOwnProperty.call(roleRule.byValue, roleKey)');
+    // OBSERVER is not a KEY in the map — no invented field. (It is named in the
+    // explanatory comment above the map, which is why this targets the literal.)
+    expect(node).not.toContain('"OBSERVER"');
+    // And the pre-18.4 mis-naming is gone.
+    expect(node).not.toContain("'signature_participant_create': 'signatoryId'");
+  });
+
+  it('emits NO AUTO_ID_ROLE_FIELD at all for a product with no role-aware operation', async () => {
+    // The table and the execute()-time lookup are emitted together or not at all.
+    // An always-empty map plus a dead branch is not free: EAD Factory's oauth2
+    // render must stay byte-identical across Epic 18, and shipping 17 lines of
+    // permanently-inert code into it is exactly the regression this pins.
+    await generateN8nNode({ spec: sampleSpec(), outputDir });
+    const node = await fs.readFile(
+      path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'),
+      'utf8',
+    );
+    expect(node).not.toContain('AUTO_ID_ROLE_FIELD');
+    expect(node).not.toContain('roleRule');
+    // And no blank-line scar where the block used to be: the sibling table runs
+    // straight into the next section.
+    expect(node).toContain('};\n\n// HTTP metadata per operation');
   });
 });

@@ -35,22 +35,26 @@ See the full lifecycle guide at: https://github.com/g-digital-by-Garrigues/MCP_M
 
 | Operation | Description |
 |---|---|
-{{#each operations}}| `{{this.name}}` | {{this.description}} |
+{{#each operations}}| `{{this.name}}` | {{mdCell this.description}} |
 {{/each}}
 
 ## Credentials
 
 This node requires a "{{displayName}} API" credential with the following fields:
 
-| Field | Description | Secret? |
-|---|---|---|
-| `API Base URL` | Base URL of the {{displayName}} REST API.{{#if defaultApiBaseUrl}} Production default: `{{defaultApiBaseUrl}}`{{/if}} Leave blank only if you know your environment uses a different endpoint. | no |
-{{#each credentials}}| `{{this.envName}}` | {{#if this.description}}{{this.description}}{{else}}—{{/if}} | {{#if this.isSecret}}yes{{else}}no{{/if}} |
+| Field | Description | Required? | Secret? |
+|---|---|---|---|
+| `API Base URL` | {{#if baseUrlDescription}}{{mdCell baseUrlDescription}}{{else}}—{{/if}} | {{#if baseUrlRequired}}yes{{else}}no{{/if}} | no |
+{{#each credentials}}| `{{this.envName}}` | {{#if this.description}}{{mdCell this.description}}{{else}}—{{/if}} | {{#if this.isRequired}}yes{{else}}no{{/if}} | {{#if this.isSecret}}yes{{else}}no{{/if}} |
 {{/each}}
 {{#if credentialAcquisitionUrl}}> **Need credentials?** Sign up or log in at [{{credentialAcquisitionUrl}}]({{credentialAcquisitionUrl}}).
 {{/if}}
 
-## Use as an AI Agent tool
+{{#if upgradeNotes}}## Upgrading from 1.x
+
+{{{upgradeNotes}}}
+
+{{/if}}## Use as an AI Agent tool
 
 This node is flagged `usableAsTool: true`, so any n8n AI Agent (n8n ≥ 1.79.0) can consume it dynamically: drag it into the workflow and wire its main output to an AI Agent's "Tool" input.
 

@@ -42,6 +42,6 @@ You are the **g-digital MCP Distribution Pipeline Prep Agent**. Your job is to t
 - **`load-config` step fails with "no entry for '<name>'"** → add an `mcps['<name>']` entry to `mcp-pipeline.yaml`.
 - **`validate-source` step fails** → the report lists each missing element + remediation; fix them in the source folder.
 - **`commit` step fails** → check `git status` for conflicts; resolve before re-running.
-- **`tag` step fails with "already exists"** → bump `pending-to-publish/<mcp-name>/package.json#version` to a new semver and re-run.
+- **`tag` step fails with "already exists"** → check `git tag -l 'v<version>'` **in the source clone** first. The commonest cause is prep's own tag from an earlier run: since #241 the tag is created inside the source clone, so an unflagged re-run collides with itself. Delete it locally (`git tag -d v<version>`) and re-run with `--skip-tag`. Bumping the version is only the right answer once the tag has been **pushed** — see "Recovery: fixing a tag that points at a stale commit" in `docs/runbooks/release-checklist.md`.
 
 Hand-off the CI publish workflow happens after this skill: the engineer pushes the v<semver> tag with `git push origin v<version>`.

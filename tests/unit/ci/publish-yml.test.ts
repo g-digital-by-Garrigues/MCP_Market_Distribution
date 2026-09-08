@@ -34,11 +34,16 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(parsed.on.workflow_dispatch).toBeDefined();
   });
 
-  it('exposes mcp_name, version, step, track, bump, dry_run inputs', () => {
+  it('exposes mcp_name, version, step, track, bump, dry_run, release_note_check inputs', () => {
     const inputs = parsed.on.workflow_dispatch.inputs;
     expect(Object.keys(inputs).sort()).toEqual(
-      ['bump', 'dry_run', 'mcp_name', 'step', 'track', 'version'],
+      ['bump', 'dry_run', 'mcp_name', 'release_note_check', 'step', 'track', 'version'],
     );
+    // Epic 18 review (F4): 'advisory' exists ONLY for retries of an
+    // already-published tag; a fresh publish must default to fail-closed.
+    const noteCheck = inputs.release_note_check as { default: string; options: string[] };
+    expect(noteCheck.default).toBe('enforce');
+    expect(noteCheck.options).toEqual(['enforce', 'advisory']);
     const mcpName = inputs.mcp_name as { required: boolean; type: string };
     const version = inputs.version as { required: boolean; type: string };
     expect(mcpName.required).toBe(true);
@@ -75,7 +80,16 @@ describe('.github/workflows/publish.yml scaffold', () => {
     // downstream jobs use them to clone the MCP's own source repo into
     // pending-to-publish/<id>/ via the checkout-mcp-source composite action.
     expect(Object.keys(setup!.outputs).sort()).toEqual(
-      ['dry_run', 'mcp_name', 'pipeline_run_id', 'repo_ref', 'repo_url', 'source', 'version'],
+      [
+        'dry_run',
+        'mcp_name',
+        'pipeline_run_id',
+        'release_note_mode',
+        'repo_ref',
+        'repo_url',
+        'source',
+        'version',
+      ],
     );
   });
 
@@ -409,5 +423,150 @@ describe('.github/workflows/publish.yml scaffold', () => {
     const stepFlat = JSON.stringify(job!.steps);
     expect(stepFlat).toContain('actions/download-artifact');
     expect(stepFlat).toContain('./actions/publish-n8n');
+  });
+
+  // ─────────────────────────────────────────────────────────────────────
+  // Story 18.7 (AC7): the release note is checked BEFORE anything publishes,
+  // and the GitHub Release is created AFTER npm succeeds.
+  // ─────────────────────────────────────────────────────────────────────
+
+  it('setup checks the release note after the coherence check', () => {
+    const setup = parsed.jobs.setup as unknown as {
+      steps: Array<{ name?: string; if?: string; run?: string }>;
+    };
+    const idx = setup.steps.findIndex((s) => (s.run ?? '').includes('src/ci/check-release-notes.ts'));
+    expect(idx, 'setup must run src/ci/check-release-notes.ts').toBeGreaterThan(-1);
+
+    const coherenceIdx = setup.steps.findIndex((s) =>
+      (s.run ?? '').includes('src/validators/validate-version-coherence.ts'),
+    );
+    const checkoutIdx = setup.steps.findIndex(
+      (s) => (s as { uses?: string }).uses === './actions/checkout-mcp-source',
+    );
+    // After the clone (it needs the tree) and after the Story 8.2 check.
+    expect(checkoutIdx).toBeGreaterThan(-1);
+    expect(idx).toBeGreaterThan(checkoutIdx);
+    expect(idx).toBeGreaterThan(coherenceIdx);
+
+    const step = setup.steps[idx]!;
+    expect(step.run).toContain('pending-to-publish/$MCP_NAME');
+    // The failure has to be actionable in the run summary, like the 8.2 one.
+    expect(step.run).toContain('GITHUB_STEP_SUMMARY');
+  });
+
+  // Epic 18 review (F11): the check was skipped entirely on dry-runs, and none
+  // of the three source repos carries `.github/RELEASE_NOTES.md` at origin/main.
+  // regression-e2e (all dry-runs) therefore stayed green while the next REAL
+  // publish of ANY product was guaranteed to fail in `setup` for a file nobody
+  // had been told to write. Dry-runs now run the check in advisory mode: the
+  // gap is visible on every dry-run instead of on the first release.
+  it('runs the release-note check on dry-runs too, in advisory mode', () => {
+    const setup = parsed.jobs.setup as unknown as {
+      steps: Array<{ if?: string; run?: string; env?: Record<string, string> }>;
+    };
+    const step = setup.steps.find((s) => (s.run ?? '').includes('src/ci/check-release-notes.ts'))!;
+    // No `if:` gate at all — severity is decided by the mode, not by skipping.
+    expect(step.if).toBeUndefined();
+    expect(step.env?.RELEASE_NOTE_MODE).toContain('release_note_mode');
+    expect(step.run).toContain('--advisory');
+    expect(step.run).toContain('::warning::');
+
+    // `setup` resolves the mode once: advisory on a dry-run or when the caller
+    // (i.e. /retry-publish) asks for it, enforce otherwise, and a hard error on
+    // an unrecognised value so a typo cannot silently disable the gate.
+    const resolve = setup.steps.find((s) => (s.run ?? '').includes('release_note_mode='))!;
+    expect(resolve.run).toContain('INPUT_RELEASE_NOTE_CHECK');
+    expect(resolve.run).toContain('if [ "$dry_run" = "true" ]; then release_note_mode=advisory; fi');
+    expect(resolve.run).toContain("release_note_check must be 'enforce' or 'advisory'");
+  });
+
+  // Epic 18 review (F14): `git_tag_prefix` is per-product in the
+  // generator-owned .distribution.yaml, but the ref has to be resolved before
+  // the clone can read it. Prove the assumption in setup rather than at
+  // `gh release create --verify-tag`, after every store has published.
+  it('setup verifies the resolved ref against the declared git_tag_prefix', () => {
+    const setup = parsed.jobs.setup as unknown as {
+      steps: Array<{ if?: string; run?: string; env?: Record<string, string> }>;
+    };
+    const step = setup.steps.find((s) =>
+      (s.run ?? '').includes('src/ci/verify-release-tag-ref.ts'),
+    );
+    expect(step, 'setup must verify the tag ref against .distribution.yaml').toBeDefined();
+    expect(step!.if).toContain("dry_run != 'true'");
+    expect(step!.env?.REPO_REF).toContain('repo_ref');
+  });
+
+  it('declares a github-release job gated on publish-npm success and non-dry-run', () => {
+    const job = parsed.jobs['github-release'] as unknown as {
+      needs?: string[];
+      if?: string;
+      permissions?: Record<string, string>;
+      steps: Array<Record<string, unknown>>;
+    } | undefined;
+    expect(job).toBeDefined();
+    expect(job!.needs).toEqual(expect.arrayContaining(['setup', 'publish-npm']));
+    expect(job!.if).toContain("needs.publish-npm.result == 'success'");
+    expect(job!.if).toContain("needs.setup.outputs.dry_run != 'true'");
+    // The write goes through BOT_PAT, not GITHUB_TOKEN.
+    expect(job!.permissions?.contents).toBe('read');
+  });
+
+  it('github-release derives owner/repo from setup.outputs.repo_url, never github.repository', () => {
+    const job = parsed.jobs['github-release'] as unknown as { steps: Array<Record<string, unknown>> };
+    const flat = JSON.stringify(job.steps);
+    expect(flat).toContain('needs.setup.outputs.repo_url');
+    // github.repository is the PIPELINE repo on a direct workflow_dispatch.
+    expect(flat).not.toContain('github.repository }}/releases');
+    expect(flat).toContain('checkout-mcp-source');
+    expect(flat).toContain('--emit-body');
+    expect(flat).toContain('secrets.BOT_PAT');
+  });
+
+  // Epic 18 review (F14): the job used to rebuild `TAG="v$MCP_VERSION"` — a
+  // third independent hardcode of the `v` prefix — while already declaring the
+  // ref it cloned. With `--verify-tag`, a product whose declared prefix is not
+  // `v` would fail here, after everything had already been published.
+  it('github-release reuses the ref setup resolved instead of rebuilding v<version>', () => {
+    const job = parsed.jobs['github-release'] as unknown as {
+      steps: Array<{ name?: string; env?: Record<string, string>; run?: string }>;
+    };
+    const step = job.steps.find((s) => (s.run ?? '').includes('gh release create'))!;
+    expect(step.env?.TAG).toBe('${{ needs.setup.outputs.repo_ref }}');
+    expect(step.run).not.toContain('TAG="v$MCP_VERSION"');
+    // A ref that is not a release tag ('main' on a dry-run) must never reach gh.
+    expect(step.run).toContain('"$TAG" = "main"');
+  });
+
+  // Epic 18 review (F4): on an advisory run (a retry of an already-published
+  // tag) the note may legitimately be absent. FR62 forbids inventing the body,
+  // so the Release is skipped with a warning rather than failed or faked.
+  it('github-release skips the Release when there is no authored body, never invents one', () => {
+    const job = parsed.jobs['github-release'] as unknown as {
+      steps: Array<{ env?: Record<string, string>; run?: string }>;
+    };
+    const emit = job.steps.find((s) => (s.run ?? '').includes('--emit-body'))!;
+    expect(emit.env?.RELEASE_NOTE_MODE).toContain('release_note_mode');
+    expect(emit.run).toContain('--advisory');
+    const create = job.steps.find((s) => (s.run ?? '').includes('gh release create'))!;
+    expect(create.run).toContain('if [ ! -f release-body.md ]');
+  });
+
+  it('github-release creates with --verify-tag and edits when the release already exists', () => {
+    const job = parsed.jobs['github-release'] as unknown as { steps: Array<Record<string, unknown>> };
+    const flat = JSON.stringify(job.steps);
+    expect(flat).toContain('gh release create');
+    expect(flat).toContain('--verify-tag');
+    expect(flat).toContain('gh release edit');
+    expect(flat).toContain('gh release view');
+    expect(flat).toContain('--notes-file');
+  });
+
+  it('keeps github-release out of the release report and the ledger (it is not a TargetId)', () => {
+    const finalReport = parsed.jobs['final-report'] as unknown as {
+      needs: string[];
+      steps: Array<Record<string, unknown>>;
+    };
+    expect(finalReport.needs).not.toContain('github-release');
+    expect(JSON.stringify(finalReport.steps)).not.toContain('github-release');
   });
 });

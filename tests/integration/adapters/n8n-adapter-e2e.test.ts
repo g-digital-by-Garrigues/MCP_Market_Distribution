@@ -7,11 +7,11 @@ import yaml from 'js-yaml';
 
 import { buildN8nNodeSpec } from '../../../src/adapters/n8n-adapter/build-node-spec.js';
 import { generateN8nNode } from '../../../src/adapters/n8n-adapter/generate-n8n-node.js';
-import { refineWithLlm } from '../../../src/adapters/n8n-adapter/refine-with-llm.js';
+import { POST_E18_ENV_VARS } from '../../fixtures/env-sets/post-e18-user-key.js';
 
 // End-to-end proof: spawn the multi-tool stub MCP, build the spec
-// against its live tools/list, (skip refine without API key), and
-// render the n8n node tree. Asserts the rendered tree is a coherent
+// against its live tools/list, and render the n8n node tree.
+// Asserts the rendered tree is a coherent
 // n8n community-node package (right files, right metadata, right
 // generated TS shape). When the Track B Layer 2 gate (Story 5.3)
 // lands it will also `tsc --noEmit` the output; this test just
@@ -70,27 +70,10 @@ async function seedFixture(): Promise<{
         registryType: 'npm',
         transport: { type: 'stdio' },
         version: '1.0.0',
-        environmentVariables: [
-          {
-            name: 'MCP_AUTH_EMAIL',
-            description: 'Account email for the test backend.',
-            isSecret: false,
-            isRequired: true,
-          },
-          {
-            name: 'MCP_AUTH_PASSWORD',
-            description: 'Account password for the test backend.',
-            isSecret: true,
-            isRequired: true,
-          },
-          {
-            // MCP-server runtime var that must NOT reach the n8n credential (allowlist).
-            name: 'MCP_HTTP_HOST',
-            description: 'MCP server HTTP bind host.',
-            isSecret: false,
-            isRequired: false,
-          },
-        ],
+        // The real post-Epic-18 emitted contract: one User Key credential, a required
+        // non-secret base URL, the inbound-introspection MCP_SVC_* trio and the
+        // transport tail (MCP_HTTP_HOST among them — the allowlist canary).
+        environmentVariables: POST_E18_ENV_VARS,
       },
     ],
   };
@@ -116,13 +99,13 @@ async function seedFixture(): Promise<{
   };
 }
 
-describe('n8n adapter end-to-end (build → refine-skipped → generate)', () => {
+describe('n8n adapter end-to-end (build → generate)', () => {
   it('produces a coherent n8n community-node package from the multi-tool stub', async () => {
     const { repoRoot, packageDir, cleanup } = await seedFixture();
     const outputDir = await fs.mkdtemp(path.join(os.tmpdir(), 'n8n-adapter-out-'));
     try {
       // 1. Build the spec from tools/list.
-      const { spec: rawSpec, unsupportedNotes } = await buildN8nNodeSpec({
+      const { spec, unsupportedNotes } = await buildN8nNodeSpec({
         repoRoot,
         packageDir,
         mcpName: 'multi-tool',
@@ -132,18 +115,10 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
         inspectorTimeoutMs: 10_000,
       });
 
-      // 2. Refine pass — without ANTHROPIC_API_KEY, returns the spec
-      //    unchanged. The point of including this step is to prove the
-      //    full chain works without an API key in CI.
-      const refined = await refineWithLlm({
-        spec: rawSpec,
-        env: { ANTHROPIC_API_KEY: '' },
-      });
-      expect(refined.applied).toBe(false);
-      expect(refined.spec).toBe(rawSpec);
-
-      // 3. Generate the n8n node tree.
-      const { filesWritten } = await generateN8nNode({ spec: refined.spec, outputDir });
+      // 2. Generate the n8n node tree. Story 18.3 deleted the LLM refine
+      //    pass that used to sit between these two steps, so the spec that
+      //    buildN8nNodeSpec returned is the spec that renders (FR62).
+      const { filesWritten } = await generateN8nNode({ spec, outputDir });
 
       // ─ Coherent package metadata ─
       expect(filesWritten).toContain('package.json');
@@ -226,18 +201,27 @@ describe('n8n adapter end-to-end (build → refine-skipped → generate)', () =>
       );
       expect(credsSrc).toContain('export class MultiToolApi implements ICredentialType');
       expect(credsSrc).toContain("name = 'multiToolApi'");
-      expect(credsSrc).toMatch(/name: 'password'[\s\S]+typeOptions: { password: true }/);
-      expect(credsSrc).toContain("name: 'email'");
+      expect(credsSrc).toMatch(/name: 'userKey'[\s\S]+typeOptions: { password: true }/);
+      expect(credsSrc).not.toContain("name: 'email'");
+      expect(credsSrc).not.toContain("name: 'password'");
+      // Epic 18: the whole credential surface is baseUrl + userKey, both required.
+      expect(credsSrc.match(/name: '[a-zA-Z][a-zA-Z0-9]*'/g)).toEqual([
+        "name: 'baseUrl'",
+        "name: 'userKey'",
+      ]);
+      expect(credsSrc.match(/required: true,/g)).toHaveLength(2);
       // The MCP_HTTP_HOST server-runtime var must NOT reach the credential (allowlist).
       expect(credsSrc).not.toContain('mcpHttpHost');
+      expect(credsSrc).not.toContain('mcpSvc');
 
       // ─ README has the operations + credentials tables ─
       const readme = await fs.readFile(path.join(outputDir, 'README.md'), 'utf8');
       expect(readme).toContain('| `get_widget` |');
       expect(readme).toContain('| `list_widgets` |');
       expect(readme).toContain('| `submit_widget` |');
-      expect(readme).toContain('| `MCP_AUTH_EMAIL` |');
+      expect(readme).toContain('| `MCP_AUTH_USER_KEY` |');
       expect(readme).not.toContain('MCP_HTTP_HOST');
+      expect(readme).not.toContain('MCP_SVC_');
 
       // ─ unsupportedNotes surfaces the 'metadata' nested-object lowering ─
       expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
