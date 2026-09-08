@@ -1578,6 +1578,9 @@ jobs:
   # The repo it writes to comes from needs.setup.outputs.repo_url, never from
   # `github.repository`: under this workflow's own workflow_dispatch that is
   # MCP_Market_Distribution, and only under workflow_call is it the source repo.
+  # `github.repository` is read for one thing only — to name the repo this
+  # run's token can write to, so a direct dispatch says why it cannot proceed
+  # instead of failing on an unexplained 404.
   #
   # Idempotent by construction (view → edit, else create), so a re-run of a
   # partially-failed release does not 422.
@@ -1589,8 +1592,18 @@ jobs:
     if: needs.publish-npm.result == 'success' && needs.setup.outputs.dry_run != 'true'
     runs-on: ubuntu-latest
     permissions:
-      # The write goes through BOT_PAT (cross-repo), not GITHUB_TOKEN.
-      contents: read
+      # The Release is written with this job's own GITHUB_TOKEN. Under
+      # workflow_call — the canonical trigger — that token is scoped to the
+      # CALLING source repo, which is exactly the repo we write to, and the
+      # thin wrappers already grant contents:write at workflow level.
+      #
+      # BOT_PAT cannot do this job and was never meant to: it is deliberately
+      # "Public repositories (read-only)" (docs/runbooks/bot-pat-rotation.md,
+      # which states in as many words that it does not need write access to
+      # our own repos because those go through GITHUB_TOKEN). Asking it to
+      # POST /releases returned HTTP 404 — how GitHub reports a write a
+      # read-only token cannot make — after every store had published.
+      contents: write
     steps:
       - name: Checkout pipeline
         uses: actions/checkout@v4
@@ -1642,8 +1655,14 @@ jobs:
           fi
       - name: Create or update the Release on the source repo
         env:
-          GH_TOKEN: ${{ secrets.BOT_PAT }}
+          GH_TOKEN: ${{ github.token }}
           REPO_URL: ${{ needs.setup.outputs.repo_url }}
+          # The repo THIS run's GITHUB_TOKEN is scoped to. Under workflow_call
+          # that is the source repo (the one we write to); under this
+          # workflow's own workflow_dispatch it is MCP_Market_Distribution,
+          # where the token has no rights on the source repo. Compared below
+          # so that path fails with a reason instead of a bare 404.
+          TOKEN_REPO: ${{ github.repository }}
           # The ref the pipeline actually cloned, not a rebuilt "v$MCP_VERSION":
           # `git_tag_prefix` is per-product in .distribution.yaml ('ead-factory-v'
           # is legal), and `setup` has already proved this ref agrees with it.
@@ -1667,6 +1686,10 @@ jobs:
           OWNER_REPO="${REPO_URL#https://github.com/}"
           OWNER_REPO="${OWNER_REPO%/}"
           OWNER_REPO="${OWNER_REPO%.git}"
+          if [ "$OWNER_REPO" != "$TOKEN_REPO" ]; then
+            echo "::error::Refusing to create a Release on $OWNER_REPO: this run's GITHUB_TOKEN is scoped to $TOKEN_REPO, so it cannot write there. Trigger the publish from the source repo (push the tag, or dispatch that repo's own Publish workflow) rather than dispatching this pipeline directly. Everything before this step has already published; the Release can also be created by hand from the authored note."
+            exit 1
+          fi
           if gh release view "$TAG" -R "$OWNER_REPO" >/dev/null 2>&1; then
             gh release edit "$TAG" -R "$OWNER_REPO" --notes-file release-body.md
             echo "Updated the existing Release $TAG on $OWNER_REPO."
