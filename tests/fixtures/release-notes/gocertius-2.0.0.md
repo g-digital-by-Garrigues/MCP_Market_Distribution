@@ -29,16 +29,23 @@ unknown to it — while every tool that needs authentication answers:
 ## Upgrading the n8n connector
 
 <!-- N8N_UPGRADE -->
-**Re-create the credential — editing the existing one is not enough.** The credential
-form changed shape. It now has exactly two required fields:
+**If you already sign in with a User Key, there is nothing to do.** The credential type
+itself has not changed — it keeps its name, and the **API Base URL** and **User Key**
+fields keep theirs along with the values you already stored. Saved workflows keep
+running, and nothing has to be re-selected.
+
+**If you sign in with an e-mail and password, that pair is gone.** Password sign-in now
+requires 2FA / biometric verification, which cannot complete in an unattended workflow,
+so no version of this connector can keep it working. Open the **GoCertius API**
+credential, fill in **User Key**, and save. Editing the credential in place is enough:
+you do not need to delete it, and you do not need to touch the nodes that use it.
+
+Both remaining fields are now required:
 
 | Field | Value |
 |---|---|
 | **API Base URL** (`MCP_API_BASE_URL`) | The GoCertius API root you connect to. No longer optional. |
 | **User Key** (`MCP_AUTH_USER_KEY`) | Your long-lived user key. Replaces the e-mail/password pair. |
-
-Delete the old GoCertius API credential, create a new one, and re-select it on every
-node that used it. Saved workflows keep working once the new credential is selected.
 
 **58 operations, up from 39.** Every operation that existed before keeps its name and
 its inputs; the new ones are additions.

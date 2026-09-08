@@ -85,7 +85,15 @@ describe('README.md.hbs — the authored 2.0.0 notes render verbatim (AC8)', () 
     for (const readme of [gocertius, suite]) {
       expect(readme).toContain('MCP_AUTH_USER_KEY');
       expect(readme).toContain('MCP_API_BASE_URL');
-      expect(readme.toLowerCase()).toContain('re-create');
+      expect(readme).toContain('e-mail and password');
+      // Inverted after the n8n portal review (2026-09-08). The note used to open
+      // with "Re-create the credential — editing the existing one is not enough",
+      // which was simply untrue: the credential TYPE name is unchanged across the
+      // 1.x→2.0.0 boundary, and so are the `baseUrl` and `userKey` field names. A
+      // user already on a User Key has nothing to do, and nobody has to re-select
+      // the credential on their nodes. Telling every reader otherwise overstated
+      // our own break in the one document the reviewer reads.
+      expect(readme.toLowerCase()).not.toContain('re-create');
     }
   });
 
@@ -128,7 +136,12 @@ describe('README.md.hbs — the authored 2.0.0 notes render verbatim (AC8)', () 
     const span = await n8nSpanOf('ead-enterprise-suite-2.0.0.md');
     // Both breaks are top-level bold lead-ins in the span: neither is indented
     // under the other, and neither is a sub-bullet of the other.
-    const credential = span.split('\n').findIndex((l) => l.startsWith('**Re-create the credential'));
+    // Re-anchored 2026-09-08: the credential break no longer opens with
+    // "Re-create the credential" (it was overstated — see above). Its lead-in is
+    // now the e-mail/password sentence, which is the half that actually breaks.
+    const credential = span
+      .split('\n')
+      .findIndex((l) => l.startsWith('**If you sign in with an e-mail and password'));
     const signature = span.split('\n').findIndex((l) => l.startsWith('**Two operations changed target'));
     expect(credential).toBeGreaterThanOrEqual(0);
     expect(signature).toBeGreaterThanOrEqual(0);
