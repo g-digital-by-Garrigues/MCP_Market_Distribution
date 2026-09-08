@@ -52,20 +52,27 @@ workflow *some* identifier, renames the one it injects — see
 ## Upgrading the n8n connector
 
 <!-- N8N_UPGRADE -->
-**Re-create the credential — editing the existing one is not enough.** The credential
-form changed shape. It now has exactly two required fields:
+**If you already sign in with a User Key, there is nothing to do.** The credential type
+itself has not changed — it keeps its name, and the **API Base URL** and **User Key**
+fields keep theirs along with the values you already stored. Saved workflows keep
+running, and nothing has to be re-selected.
+
+**If you sign in with an e-mail and password, that pair is gone.** Password sign-in now
+requires 2FA / biometric verification, which cannot complete in an unattended workflow,
+so no version of this connector can keep it working. Open the **EAD Enterprise Suite
+API** credential, fill in **User Key**, and save. Editing the credential in place is
+enough: you do not need to delete it, and you do not need to touch the nodes that use
+it.
+
+Both remaining fields are now required:
 
 | Field | Value |
 |---|---|
 | **API Base URL** (`MCP_API_BASE_URL`) | The EAD Enterprise Suite API root you connect to. No longer optional. |
 | **User Key** (`MCP_AUTH_USER_KEY`) | Your long-lived user key. Replaces the e-mail/password pair. |
 
-Delete the old EAD Enterprise Suite API credential, create a new one, and re-select it
-on every node that used it. Saved workflows keep working once the new credential is
-selected.
-
 **Two operations changed target, and both lost their Document Id input.** This one is
-not fixed by re-selecting a credential — any saved workflow using either operation has
+not fixed by updating the credential — any saved workflow using either operation has
 to be re-pointed by hand:
 
 | Operation | Now lists | Use instead, for the old behaviour |
