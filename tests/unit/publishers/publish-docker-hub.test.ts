@@ -1,6 +1,7 @@
 import { promises as fs } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { publishDockerHub } from '../../../src/publishers/publish-docker-hub.js';
@@ -34,7 +35,34 @@ function fakeProbe(responses: Array<{ stdout: string; stderr: string; exitCode: 
   };
 }
 
+const pipelineRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+
 const silentLogger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+
+/**
+ * What the rendered overview is built from: the server's own contract in the
+ * package dir, plus the real template, copied into the temp repo root because
+ * the publisher resolves templates from `repo_root` (as every other publisher
+ * does). Using the real template means a change to it is exercised here.
+ */
+async function writeOverviewSources(repoRoot: string, packageDir: string): Promise<void> {
+  await fs.writeFile(
+    path.join(packageDir, '.env.example'),
+    '# description: Long-lived user key.\n# isSecret: true\n# isRequired: true\nMCP_AUTH_USER_KEY=\n',
+  );
+  await fs.writeFile(
+    path.join(packageDir, 'server.json'),
+    JSON.stringify({ description: 'Test MCP server.' }),
+  );
+  await fs.mkdir(path.join(packageDir, 'assets'), { recursive: true });
+  await fs.writeFile(path.join(packageDir, 'assets', 'logo-400x400.png'), 'not-really-a-png');
+  const templates = path.join(repoRoot, 'templates', 'store-descriptions');
+  await fs.mkdir(templates, { recursive: true });
+  await fs.copyFile(
+    path.join(pipelineRoot, 'templates', 'store-descriptions', 'docker-hub-overview.hbs'),
+    path.join(templates, 'docker-hub-overview.hbs'),
+  );
+}
 
 async function withRepoRoot(
   body: (args: { repoRoot: string; packageDir: string }) => Promise<void>,
@@ -176,6 +204,117 @@ describe('publishDockerHub', () => {
 
       expect(output.status).toBe('skipped');
       expect(calls).toEqual([]);
+    });
+  });
+
+  // ── Docker Hub repository metadata ────────────────────────────────────────
+  //
+  // Added 2026-09-08, after both product pages were found serving v1.5.0
+  // documentation. The publisher posted the whole README as `full_description`;
+  // Docker Hub caps that at 25,000 characters and answered 400; the publisher
+  // logged a warning and reported `succeeded`. Nothing here was under test, so
+  // nothing failed. Every case below is one of the links in that chain.
+
+  function stubDockerHubFetch(descriptionStatus: number): { urls: string[]; bodies: string[] } {
+    const urls: string[] = [];
+    const bodies: string[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: { method?: string; body?: unknown }) => {
+      urls.push(String(url));
+      if (String(url).includes('/users/login/')) {
+        return { ok: true, status: 200, json: async () => ({ token: 'jwt' }) };
+      }
+      if (init?.method === 'PATCH' && String(url).endsWith('/') && !String(url).includes('/icon/')) {
+        if (typeof init.body === 'string') bodies.push(init.body);
+        return { ok: descriptionStatus < 400, status: descriptionStatus };
+      }
+      // Categories (405) and the icon (404) are broken upstream today; they must
+      // stay advisory or every publish would go red on presentation metadata.
+      return { ok: false, status: String(url).includes('categories') ? 405 : 404 };
+    });
+    return { urls, bodies };
+  }
+
+  it('refreshes the repository page even when the image tag is already published', async () => {
+    await withRepoRoot(async ({ repoRoot, packageDir }) => {
+      await writeOverviewSources(repoRoot, packageDir);
+      const { bodies } = stubDockerHubFetch(200);
+      const body = JSON.stringify({ results: [{ name: '1.0.0' }] });
+      const probeExec = fakeProbe([{ stdout: `${body}\n200`, stderr: '', exitCode: 0 }]);
+      const { exec, calls } = fakeExec([]);
+
+      const output = await publishDockerHub(
+        { mcp_name: 'ead-factory', version: '1.0.0', pipeline_run_id: 'run-8', dry_run: false, package_dir: packageDir, repo_root: repoRoot },
+        { exec, probeExec, logger: silentLogger, env: { DOCKERHUB_USERNAME: 'x', DOCKERHUB_TOKEN: 'y' } },
+      );
+
+      // Still skipped — the image is genuinely already there, and we must not
+      // rebuild it — but the page was refreshed on the way past. Without this,
+      // a stale page can only be repaired by inventing a new version.
+      expect(output.status).toBe('skipped');
+      expect(calls).toEqual([]);
+      expect((output.metadata as { metadata_refresh?: { description?: string } }).metadata_refresh?.description).toBe('updated');
+      expect(bodies).toHaveLength(1);
+      const sent = JSON.parse(bodies[0]!) as { full_description: string };
+      expect(sent.full_description).toContain('MCP_AUTH_USER_KEY');
+      expect(sent.full_description.length).toBeLessThan(25_000);
+    });
+  });
+
+  it('a rejected description fails the target instead of reporting success', async () => {
+    await withRepoRoot(async ({ repoRoot, packageDir }) => {
+      await writeOverviewSources(repoRoot, packageDir);
+      stubDockerHubFetch(400);
+      const body = JSON.stringify({ results: [{ name: '1.0.0' }] });
+      const probeExec = fakeProbe([{ stdout: `${body}\n200`, stderr: '', exitCode: 0 }]);
+      const { exec } = fakeExec([]);
+
+      const output = await publishDockerHub(
+        { mcp_name: 'ead-factory', version: '1.0.0', pipeline_run_id: 'run-9', dry_run: false, package_dir: packageDir, repo_root: repoRoot },
+        { exec, probeExec, logger: silentLogger, env: { DOCKERHUB_USERNAME: 'x', DOCKERHUB_TOKEN: 'y' } },
+      );
+
+      // The exact combination that hid the outage: HTTP 400 on the description,
+      // everything else fine. It is now a failed target with the reason in it.
+      expect(output.status).toBe('failed');
+      expect(output.error?.message).toContain('400');
+      expect(output.error?.action).toContain('/retry-publish?step=docker-hub');
+    });
+  });
+
+  it('categories and icon failures stay advisory and are reported, not fatal', async () => {
+    await withRepoRoot(async ({ repoRoot, packageDir }) => {
+      await writeOverviewSources(repoRoot, packageDir);
+      stubDockerHubFetch(200);
+      const body = JSON.stringify({ results: [{ name: '1.0.0' }] });
+      const probeExec = fakeProbe([{ stdout: `${body}\n200`, stderr: '', exitCode: 0 }]);
+      const { exec } = fakeExec([]);
+
+      const output = await publishDockerHub(
+        { mcp_name: 'ead-factory', version: '1.0.0', pipeline_run_id: 'run-10', dry_run: false, package_dir: packageDir, repo_root: repoRoot },
+        { exec, probeExec, logger: silentLogger, env: { DOCKERHUB_USERNAME: 'x', DOCKERHUB_TOKEN: 'y' } },
+      );
+
+      expect(output.status).toBe('skipped');
+      const refresh = (output.metadata as { metadata_refresh: { categories: string; logo: string } }).metadata_refresh;
+      expect(refresh.categories).toBe('failed');
+      expect(refresh.logo).toBe('failed');
+    });
+  });
+
+  it('does not touch Docker Hub metadata on a dry run', async () => {
+    await withRepoRoot(async ({ repoRoot, packageDir }) => {
+      await writeOverviewSources(repoRoot, packageDir);
+      const { urls } = stubDockerHubFetch(200);
+      const body = JSON.stringify({ results: [{ name: '1.0.0' }] });
+      const probeExec = fakeProbe([{ stdout: `${body}\n200`, stderr: '', exitCode: 0 }]);
+      const { exec } = fakeExec([]);
+
+      await publishDockerHub(
+        { mcp_name: 'ead-factory', version: '1.0.0', pipeline_run_id: 'run-11', dry_run: true, package_dir: packageDir, repo_root: repoRoot },
+        { exec, probeExec, logger: silentLogger, env: { DOCKERHUB_USERNAME: 'x', DOCKERHUB_TOKEN: 'y' } },
+      );
+
+      expect(urls).toEqual([]);
     });
   });
 

@@ -20,6 +20,12 @@ import {
   type CheckOptions,
   type ExecFn as ProbeExecFn,
 } from './check-target-version.js';
+import {
+  DOCKER_HUB_FULL_DESCRIPTION_MAX,
+  readSourceRepoUrl,
+  renderDockerHubOverview,
+  type DockerHubDescriptions,
+} from './render-docker-hub-overview.js';
 
 // Story 3.3: Docker Hub publisher.
 //
@@ -174,6 +180,28 @@ export async function publishDockerHub(
     ...(deps.probeOptions ?? {}),
   });
   if (probe.status === 'present' && probe.version === input.version) {
+    // The image is already pushed, but the repository PAGE is not the image:
+    // it can be stale while the tag is correct, which is exactly the state both
+    // products were left in. So a retry still refreshes the metadata — that is
+    // the only way to repair a page without inventing a new version.
+    const skipMeta: Record<string, unknown> = { image_name: imageName, tags: [input.version, 'latest'] };
+    if (!isDryRun) {
+      const result = await updateDockerHubMetadata(
+        imageName,
+        input.package_dir,
+        log,
+        await buildOverview(input, distribution, log),
+        env,
+      );
+      skipMeta.metadata_refresh = result;
+      if (result.description === 'failed') {
+        log.error('target.publish_failed', { ...baseEvent, reason: 'description_update_failed' });
+        return descriptionFailure(
+          input, imageName, isDryRun, now() - started, probe.attempts, skipMeta,
+          result.descriptionError ?? 'the update was rejected',
+        );
+      }
+    }
     const duration = now() - started;
     log.info('target.publish_skipped', { ...baseEvent, reason: 'already_published' });
     return validate({
@@ -184,6 +212,7 @@ export async function publishDockerHub(
       duration_ms: duration,
       attempts: probe.attempts,
       dry_run: isDryRun,
+      metadata: skipMeta,
     });
   }
   if (probe.status === 'error') {
@@ -336,13 +365,28 @@ export async function publishDockerHub(
     digest,
   });
 
-  // Update Docker Hub metadata (description, categories, logo) — non-fatal
-  if (!isDryRun) {
-    await updateDockerHubMetadata(imageName, input.package_dir, log);
-  }
-
   const metadata: Record<string, unknown> = { image_name: imageName, tags: [input.version, 'latest'] };
   if (digest) metadata.digest = digest;
+
+  // Update Docker Hub metadata. The description half is fatal; see
+  // descriptionFailure() for why.
+  if (!isDryRun) {
+    const result = await updateDockerHubMetadata(
+      imageName,
+      input.package_dir,
+      log,
+      await buildOverview(input, distribution, log),
+      env,
+    );
+    metadata.metadata_refresh = result;
+    if (result.description === 'failed') {
+      log.error('target.publish_failed', { ...baseEvent, reason: 'description_update_failed' });
+      return descriptionFailure(
+        input, imageName, isDryRun, now() - started, probe.attempts + 1, metadata,
+        result.descriptionError ?? 'the update was rejected',
+      );
+    }
+  }
 
   return validate({
     target: 'docker-hub',
@@ -363,6 +407,68 @@ function validate(output: PublisherOutput): PublisherOutput {
   return output;
 }
 
+async function buildOverview(
+  input: PublishDockerHubInput,
+  distribution: DistributionConfig,
+  log: Pick<typeof defaultLogger, 'warn'>,
+): Promise<DockerHubDescriptions | null> {
+  try {
+    return await renderDockerHubOverview({
+      mcpName: input.mcp_name,
+      packageDir: input.package_dir,
+      repoRoot: input.repo_root,
+      version: input.version,
+      dockerImageName: distribution.docker_image_name,
+      npmPackageName: distribution.npm_package_name,
+      repoUrl: await readSourceRepoUrl(input.repo_root, input.mcp_name),
+      license: distribution.license,
+      releaseTag: `${distribution.git_tag_prefix ?? 'v'}${input.version}`,
+    });
+  } catch (err) {
+    log.warn('docker_hub_metadata.render_failed', { reason: (err as Error).message });
+    return null;
+  }
+}
+
+/**
+ * Failure of the repository description, expressed as a PublisherOutput.
+ *
+ * A Docker Hub page is documentation: if it cannot be refreshed, the page keeps
+ * describing an older release. That went unnoticed for two releases precisely
+ * because it was a log warning on a green publish, so it fails the target now.
+ * Categories and logo stay advisory — they are presentation, and their
+ * endpoints are independently broken (405 / 404) in a way that would otherwise
+ * red-flag every publish.
+ */
+function descriptionFailure(
+  input: PublishDockerHubInput,
+  imageName: string,
+  isDryRun: boolean,
+  durationMs: number,
+  attempts: number,
+  metadata: Record<string, unknown>,
+  reason: string,
+): PublisherOutput {
+  return validate({
+    target: 'docker-hub',
+    status: 'failed',
+    target_url: targetUrl(imageName),
+    version_published: input.version,
+    duration_ms: durationMs,
+    attempts,
+    dry_run: isDryRun,
+    metadata,
+    error: {
+      message: `Docker Hub repository description was not updated: ${reason}.`,
+      cause:
+        'The image is on Docker Hub, but its overview page still describes an earlier ' +
+        'release. That page is how people configure the server, so stale content there ' +
+        'hands out wrong setup instructions.',
+      action: `Fix the cause above, then /retry-publish?step=docker-hub. The retry refreshes the page even though ${input.version} is already pushed.`,
+    },
+  });
+}
+
 // Docker Hub categories for all g-digital MCP servers.
 const DOCKER_HUB_CATEGORIES = ['machine-learning-and-ai', 'security', 'api-management'];
 
@@ -381,53 +487,105 @@ async function getDockerHubJwt(username: string, password: string): Promise<stri
   }
 }
 
+export interface DockerHubMetadataResult {
+  /** The overview/short-description PATCH — the user-facing documentation. */
+  description: 'updated' | 'failed' | 'skipped';
+  categories: 'updated' | 'failed' | 'skipped';
+  logo: 'updated' | 'failed' | 'skipped';
+  /** Set when description !== 'updated'; carries the reason for the caller. */
+  descriptionError?: string;
+}
+
 /**
- * Updates Docker Hub repository metadata after a successful push:
+ * Updates Docker Hub repository metadata:
  * - short description (from server.json#description)
- * - full description / overview (from README.md)
+ * - full description / overview (RENDERED — see render-docker-hub-overview.ts)
  * - categories: machine-learning-and-ai, security, api-management
  * - repository icon (from assets/logo-400x400.png)
- * Non-fatal: logs warnings on failure so publish still succeeds.
+ *
+ * The overview used to be the whole README, which stopped fitting Docker Hub's
+ * 25,000-character cap at gocertius v1.5.1. Every publish since then got a 400
+ * here, logged a warning, and reported success — so both product pages sat on
+ * v1.5.0 documentation telling users to set `MCP_AUTH_PASSWORD`, a variable
+ * retired two majors earlier. Rendering a purpose-built overview fixes the size
+ * AND the staleness: it is built from the server's own `.env.example`, so it
+ * cannot describe variables the image does not read.
+ *
+ * The result is returned rather than swallowed. The caller fails the publish on
+ * a description failure — a repository page giving wrong setup instructions is
+ * not a cosmetic defect — while categories and logo stay advisory and surface
+ * in the publisher output.
  */
 async function updateDockerHubMetadata(
   imageName: string,
   packageDir: string,
   log: Pick<typeof defaultLogger, 'info' | 'warn'>,
-): Promise<void> {
+  overview: { full: string; short: string } | null,
+  // Taken from deps rather than process.env: reading the global directly made
+  // this whole function unreachable from a test, which is a large part of why
+  // it could fail on every publish for two releases without anyone noticing.
+  env: NodeJS.ProcessEnv,
+): Promise<DockerHubMetadataResult> {
+  const skipped = (reason: string): DockerHubMetadataResult => ({
+    description: 'skipped',
+    categories: 'skipped',
+    logo: 'skipped',
+    descriptionError: reason,
+  });
+
   const parts = imageName.split('/');
   const namespace = parts[0];
   const repoName = parts[1];
-  if (!namespace || !repoName) return;
+  if (!namespace || !repoName) return skipped(`image name '${imageName}' is not <namespace>/<repo>`);
 
-  const username = process.env.DOCKERHUB_USERNAME?.trim();
-  const tokenSecret = process.env.DOCKERHUB_TOKEN?.trim();
+  const username = env.DOCKERHUB_USERNAME?.trim();
+  const tokenSecret = env.DOCKERHUB_TOKEN?.trim();
   if (!username || !tokenSecret) {
     log.warn('docker_hub_metadata.skip', { reason: 'no DOCKERHUB_USERNAME or DOCKERHUB_TOKEN' });
-    return;
+    return skipped('DOCKERHUB_USERNAME or DOCKERHUB_TOKEN is not set on this run');
   }
   const jwt = await getDockerHubJwt(username, tokenSecret);
   if (!jwt) {
     log.warn('docker_hub_metadata.skip', { reason: 'login failed' });
-    return;
+    return skipped('Docker Hub rejected DOCKERHUB_USERNAME / DOCKERHUB_TOKEN at login');
   }
 
   const baseUrl = `https://hub.docker.com/v2/repositories/${namespace}/${repoName}`;
   const authHeaders = { Authorization: `Bearer ${jwt}`, 'Content-Type': 'application/json' };
 
   // Short + full description
-  let shortDesc = '';
-  let fullDesc = '';
-  try { shortDesc = (JSON.parse(await fs.readFile(path.join(packageDir, 'server.json'), 'utf8')) as { description?: string }).description ?? ''; } catch { /* ok */ }
-  try { fullDesc = await fs.readFile(path.join(packageDir, 'README.md'), 'utf8'); } catch { /* ok */ }
-
-  if (shortDesc || fullDesc) {
+  let description: DockerHubMetadataResult['description'] = 'skipped';
+  let descriptionError: string | undefined;
+  if (!overview) {
+    descriptionError = 'the overview could not be rendered';
+  } else if (overview.full.length > DOCKER_HUB_FULL_DESCRIPTION_MAX) {
+    // Checked here rather than learned from a 400: Docker Hub's rejection body
+    // says nothing, and this is the failure that hid for two releases.
+    description = 'failed';
+    descriptionError =
+      `the rendered overview is ${overview.full.length} characters, over Docker Hub's ` +
+      `${DOCKER_HUB_FULL_DESCRIPTION_MAX}-character limit for full_description`;
+    log.warn('docker_hub_metadata.description_too_long', {
+      length: overview.full.length,
+      max: DOCKER_HUB_FULL_DESCRIPTION_MAX,
+    });
+  } else {
     const r = await fetch(`${baseUrl}/`, {
       method: 'PATCH',
       headers: authHeaders,
-      body: JSON.stringify({ description: shortDesc, full_description: fullDesc }),
+      body: JSON.stringify({ description: overview.short, full_description: overview.full }),
     }).catch(() => null);
-    if (r?.ok) log.info('docker_hub_metadata.description_updated', { repo: imageName });
-    else log.warn('docker_hub_metadata.description_failed', { status: r?.status });
+    if (r?.ok) {
+      description = 'updated';
+      log.info('docker_hub_metadata.description_updated', {
+        repo: imageName,
+        length: overview.full.length,
+      });
+    } else {
+      description = 'failed';
+      descriptionError = `Docker Hub answered HTTP ${r?.status ?? 'no response'} to the description update`;
+      log.warn('docker_hub_metadata.description_failed', { status: r?.status });
+    }
   }
 
   // Categories
@@ -436,10 +594,12 @@ async function updateDockerHubMetadata(
     headers: authHeaders,
     body: JSON.stringify({ categories: DOCKER_HUB_CATEGORIES.map(slug => ({ slug })) }),
   }).catch(() => null);
+  const categories: DockerHubMetadataResult['categories'] = catRes?.ok ? 'updated' : 'failed';
   if (catRes?.ok) log.info('docker_hub_metadata.categories_updated', { categories: DOCKER_HUB_CATEGORIES });
   else log.warn('docker_hub_metadata.categories_failed', { status: catRes?.status });
 
   // Logo upload (multipart)
+  let logo: DockerHubMetadataResult['logo'] = 'skipped';
   try {
     const logoBytes = await fs.readFile(path.join(packageDir, 'assets', 'logo-400x400.png'));
     const form = new FormData();
@@ -449,7 +609,10 @@ async function updateDockerHubMetadata(
       headers: { Authorization: `Bearer ${jwt}` },
       body: form,
     }).catch(() => null);
+    logo = logoRes?.ok ? 'updated' : 'failed';
     if (logoRes?.ok) log.info('docker_hub_metadata.logo_updated', { repo: imageName });
     else log.warn('docker_hub_metadata.logo_failed', { status: logoRes?.status });
-  } catch { /* logo missing or upload failed — non-fatal */ }
+  } catch { /* logo missing — advisory */ }
+
+  return { description, categories, logo, ...(descriptionError ? { descriptionError } : {}) };
 }
