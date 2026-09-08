@@ -1,0 +1,53 @@
+{{description}}
+
+**Image** `{{docker_image_name}}` · **Version** `{{version}}` · **npm** `{{npm_package_name}}` · **License** {{license}}
+
+## Run it
+
+```bash
+docker run --rm -i --env-file .env {{docker_image_name}}:{{version}}
+```
+
+Wire it into an MCP client (Claude Desktop, Claude Code, n8n, …):
+
+```json
+{
+  "mcpServers": {
+    "{{mcp_name}}": {
+      "command": "docker",
+      "args": ["run", "--rm", "-i", "--env-file", ".env", "{{docker_image_name}}:{{version}}"]
+    }
+  }
+}
+```
+
+The container speaks MCP over stdio, so keep `-i`. Set `PORT` and run it as a service instead if you want the HTTP transport.
+
+## Configuration
+
+Required — the server will not start without these:
+
+| Variable | Secret | What it is |
+|---|---|---|
+{{#each required_env}}| `{{this.name}}` | {{#if this.isSecret}}yes{{else}}no{{/if}} | {{this.description}} |
+{{/each}}
+
+<details>
+<summary>Optional variables ({{optional_env.length}})</summary>
+
+| Variable | Secret | What it is |
+|---|---|---|
+{{#each optional_env}}| `{{this.name}}` | {{#if this.isSecret}}yes{{else}}no{{/if}} | {{this.description}} |
+{{/each}}
+
+</details>
+
+## Documentation
+
+- **[Full README]({{repo_url}}#readme)** — every tool, its inputs, and worked examples.
+- **[Release notes for {{release_tag}}]({{repo_url}}/releases/tag/{{release_tag}})** — what changed in this version, including anything that breaks on upgrade.
+- **[npm package](https://www.npmjs.com/package/{{npm_package_name}})** — same server, installable with `npx`.
+
+---
+
+Published by **g-digital by Garrigues**. This page is generated at release time from the server's own configuration, so the variables above are the ones this exact image reads.
