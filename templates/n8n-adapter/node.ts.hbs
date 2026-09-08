@@ -145,7 +145,18 @@ export class {{className}} implements INodeType {
         // n8n's `required: true` is a form hint, not an enforced non-empty value —
         // without this guard an empty key is POSTed and the user gets a bare 401.
         if (!userKey) {
-          return { status: 'Error', message: 'A User Key is required.' };
+          // Named the change, not just the missing field: the people who hit this
+          // are upgrading from a credential that had an e-mail and a password, and
+          // 'A User Key is required.' left them to work out on their own why the
+          // two fields they had filled in are gone.
+          return {
+            status: 'Error',
+            message:
+              'This credential needs a User Key. It no longer accepts an e-mail and password: ' +
+              'password sign-in now requires an interactive second factor (2FA / biometric), ' +
+              'which cannot complete in an unattended workflow. Paste your User Key above and ' +
+              'save — see "Upgrading from 1.x" in the node README.',
+          };
         }
         try {
           const keyRes = await fetch(`${baseUrl}/user-keys/session`, {
@@ -216,7 +227,18 @@ export class {{className}} implements INodeType {
     // n8n's `required: true` is a form hint, not an enforced non-empty value —
     // without this guard an empty key is POSTed and the user gets a bare 401.
     if (!userKey) {
-      throw new NodeOperationError(this.getNode(), 'A User Key is required.');
+      throw new NodeOperationError(
+        this.getNode(),
+        'The {{displayName}} API credential has no User Key.',
+        {
+          description:
+            'It no longer accepts an e-mail and password: password sign-in now requires an ' +
+            'interactive second factor (2FA / biometric), which cannot complete in an ' +
+            'unattended workflow. Open the {{displayName}} API credential, paste your User Key, ' +
+            'and save. Editing it in place is enough — you do not need to re-select it on this ' +
+            'node. See "Upgrading from 1.x" in the node README.',
+        },
+      );
     }
     const obtainBearer = async (): Promise<string> => {
       const keyRes = await fetch(`${baseUrl}/user-keys/session`, {

@@ -509,6 +509,39 @@ describe('generateN8nNode — user-key credential imports (n8n review 2026-07)',
     };
   }
 
+  // The n8n portal rejected the 2.0.0 update because an upgrading user gets no
+  // explanation. The credential test and the run-time guard are the two moments
+  // that user meets the change, and both used to say only "A User Key is
+  // required." — which describes the empty field, not why the two fields they
+  // had filled in are gone. Committed to n8n in the reply to that review.
+  it('explains the withdrawn e-mail/password flow at both places a user meets it', async () => {
+    await generateN8nNode({ spec: sessionSpec(), outputDir });
+    const node = await fs.readFile(path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'), 'utf8');
+
+    // Comments stripped: the template deliberately quotes the old string when
+    // explaining why it changed, and that mention is not a regression.
+    const code = node.replace(/^\s*\/\/.*$/gm, '');
+    expect(code).not.toContain('A User Key is required.');
+    // Both the credential-test path and the execute path.
+    expect(node.match(/no longer accepts an e-mail and password/g)).toHaveLength(2);
+    // The reason has to travel with it: without it this reads as an arbitrary
+    // removal, which is what the reviewer pushed back on.
+    expect(node.match(/2FA \/ biometric/g)).toHaveLength(2);
+    expect(node.match(/unattended workflow/g)).toHaveLength(2);
+    expect(node.match(/Upgrading from 1\.x/g)).toHaveLength(2);
+    // And the fix must not overstate the work: editing in place is enough.
+    expect(node).toContain('you do not need to re-select it on this');
+  });
+
+  it('names the credential the user has to open, not a generic one', async () => {
+    await generateN8nNode({ spec: sessionSpec(), outputDir });
+    const node = await fs.readFile(path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'), 'utf8');
+    // sampleSpec()'s displayName. A message that says "open the credential"
+    // without naming it is useless in a workflow holding several.
+    expect(node).toContain('The Multi Tool API credential has no User Key.');
+    expect(node).toContain('Open the Multi Tool API credential');
+  });
+
   it('does NOT import ICredentialTestRequest (no declarative test is rendered — testAuth is programmatic)', async () => {
     await generateN8nNode({ spec: sessionSpec(), outputDir });
     const cred = await fs.readFile(
