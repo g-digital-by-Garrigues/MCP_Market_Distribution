@@ -127,18 +127,18 @@ jobs:
       repo_ref: ${{ steps.resolve-mcp-repo.outputs.repo_ref }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -551,7 +551,7 @@ jobs:
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -568,11 +568,11 @@ jobs:
           repo_url: ${{ needs.setup.outputs.repo_url }}
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -588,16 +588,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -621,7 +621,7 @@ jobs:
       INPUT_VERSION: ${{ needs.setup.outputs.version }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -634,12 +634,12 @@ jobs:
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -655,7 +655,7 @@ jobs:
 
       - name: Upload gate report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: track-a-layer-1-report
           path: gate-layer-1.json
@@ -670,7 +670,7 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -683,12 +683,12 @@ jobs:
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -715,7 +715,7 @@ jobs:
 
       - name: Upload gate report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: track-a-layer-2-report
           path: gate-layer-2.json
@@ -731,7 +731,7 @@ jobs:
       DOCKER_BUILDKIT: '1'
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -744,7 +744,7 @@ jobs:
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
 
       - name: Set up Docker Buildx (for BuildKit + layer caching)
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       # Docker Hub anonymous pulls share a single rate-limit pool per public IP.
       # GitHub Actions runners share IPs across many jobs, so anonymous `docker
@@ -755,18 +755,18 @@ jobs:
       # the build. Earlier ead-factory v1.0.x runs succeeded because the rate
       # limit hadn't bitten yet — same pipeline code, harder constraint now.
       - name: Log in to Docker Hub (authenticated pull avoids anon rate-limit)
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -782,7 +782,7 @@ jobs:
 
       - name: Upload gate report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: track-a-layer-3-report
           path: gate-layer-3.json
@@ -805,18 +805,18 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -826,7 +826,7 @@ jobs:
 
       - name: Download Layer 1 report
         if: needs.track-a-layer-1.result != 'skipped'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: track-a-layer-1-report
           path: reports/layer-1
@@ -834,7 +834,7 @@ jobs:
 
       - name: Download Layer 2 report
         if: needs.track-a-layer-2.result != 'skipped'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: track-a-layer-2-report
           path: reports/layer-2
@@ -842,7 +842,7 @@ jobs:
 
       - name: Download Layer 3 report
         if: needs.track-a-layer-3.result != 'skipped'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: track-a-layer-3-report
           path: reports/layer-3
@@ -870,14 +870,14 @@ jobs:
           pnpm tsx src/ci/render-error-report-markdown.ts error-report.json --workflow-run-url "$WORKFLOW_RUN_URL" > error-report.md
 
       - name: Upload aggregated error report
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: error-report-${{ env.PIPELINE_RUN_ID }}
           path: error-report-${{ env.PIPELINE_RUN_ID }}.json
           if-no-files-found: error
 
       - name: Post or update PR comment
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           PIPELINE_RUN_ID: ${{ env.PIPELINE_RUN_ID }}
         with:
@@ -950,7 +950,7 @@ jobs:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -985,7 +985,7 @@ jobs:
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1037,7 +1037,7 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1080,7 +1080,7 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1122,7 +1122,7 @@ jobs:
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1165,7 +1165,7 @@ jobs:
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1208,7 +1208,7 @@ jobs:
       BOT_PAT: ${{ secrets.BOT_PAT }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1247,7 +1247,7 @@ jobs:
       PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1266,12 +1266,12 @@ jobs:
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1289,7 +1289,7 @@ jobs:
 
       - name: Upload verification report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: npx-verification-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
           path: npx-verification.json
@@ -1320,7 +1320,7 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1331,11 +1331,11 @@ jobs:
           repo_url: ${{ needs.setup.outputs.repo_url }}
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1367,7 +1367,7 @@ jobs:
             "_n8n-adapter" \
             "$DRY_RUN"
       - name: Upload adapter artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: n8n-adapter-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
           path: _n8n-adapter
@@ -1389,21 +1389,21 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
       - name: Download adapter artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.generate-n8n-adapter.outputs.artifact_name }}
           path: _n8n-adapter
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1429,21 +1429,21 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
       - name: Download adapter artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.generate-n8n-adapter.outputs.artifact_name }}
           path: _n8n-adapter
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1468,7 +1468,7 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1482,16 +1482,16 @@ jobs:
           repo_url: ${{ needs.setup.outputs.repo_url }}
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Download adapter artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.generate-n8n-adapter.outputs.artifact_name }}
           path: _n8n-adapter
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1544,12 +1544,12 @@ jobs:
       NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
       - name: Download adapter artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.generate-n8n-adapter.outputs.artifact_name }}
           path: _n8n-adapter
@@ -1606,7 +1606,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1617,11 +1617,11 @@ jobs:
           repo_url: ${{ needs.setup.outputs.repo_url }}
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1723,7 +1723,7 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1734,11 +1734,11 @@ jobs:
           repo_url: ${{ needs.setup.outputs.repo_url }}
           repo_ref: ${{ needs.setup.outputs.repo_ref }}
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1772,7 +1772,7 @@ jobs:
             "_mcpb-bundle" \
             "$DRY_RUN"
       - name: Upload bundle artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: mcpb-bundle-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
           path: _mcpb-bundle
@@ -1792,21 +1792,21 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
       - name: Download bundle artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.generate-mcpb-bundle.outputs.artifact_name }}
           path: _mcpb-bundle
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1832,21 +1832,21 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
       - name: Download bundle artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.generate-mcpb-bundle.outputs.artifact_name }}
           path: _mcpb-bundle
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1872,21 +1872,21 @@ jobs:
       DRY_RUN: ${{ needs.setup.outputs.dry_run }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
       - name: Download bundle artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: ${{ needs.generate-mcpb-bundle.outputs.artifact_name }}
           path: _mcpb-bundle
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1936,7 +1936,7 @@ jobs:
       WORKFLOW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
     steps:
       - name: Checkout pipeline
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           repository: g-digital-by-Garrigues/MCP_Market_Distribution
           ref: main
@@ -1945,12 +1945,12 @@ jobs:
           token: ${{ secrets.BOT_PAT }}
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           version: 9.15.0
 
       - name: Set up Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: pnpm
@@ -1984,7 +1984,7 @@ jobs:
           pnpm tsx src/ci/render-release-report.ts > /dev/null
 
       - name: Upload release-report artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: release-report-${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}
           path: _bmad-output/release-reports/${{ needs.setup.outputs.mcp_name }}-v${{ needs.setup.outputs.version }}.md
@@ -2080,7 +2080,7 @@ jobs:
 
       - name: Upsert PR comment with release report
         if: needs.setup.outputs.dry_run != 'true'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           MCP_NAME: ${{ needs.setup.outputs.mcp_name }}
           VERSION: ${{ needs.setup.outputs.version }}
