@@ -19,7 +19,7 @@
     "init-state-branch": "tsx src/setup/init-state-branch.ts"
   },
   "devDependencies": {
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@modelcontextprotocol/sdk": "^1.30.1",
     "@n8n/scan-community-package": "latest",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^22.10.0",
@@ -28,10 +28,10 @@
     "eslint": "^9.18.0",
     "handlebars": "^4.7.8",
     "js-yaml": "^4.3.2",
-    "prettier": "^3.4.2",
-    "tsx": "^4.23.13",
+    "prettier": "^3.9.9",
+    "tsx": "^4.23.15",
     "typescript": "^5.7.3",
-    "typescript-eslint": "^8.21.0",
+    "typescript-eslint": "^8.70.1",
     "vitest": "^3.2.7",
     "zod": "^3.24.1"
   },
