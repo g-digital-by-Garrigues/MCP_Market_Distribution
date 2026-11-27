@@ -250,11 +250,10 @@ export interface N8nNodeSpec {
    */
   iconFile?: string;
   /**
-   * Default (production) API base URL, extracted from the source MCP's
-   * session_login.ts fallback value. Used as the default in the credential
+   * Default (production) API base URL, as declared by generation in
+   * `.distribution.yaml#api_base_url`. Used as the default in the credential
    * form so n8n users connecting to production don't need to fill it in.
-   * Empty string when the source MCP has no extractable default (e.g.
-   * Okta-only adapters where the base URL is environment-specific).
+   * Empty string when the contract declares none (`null` or absent).
    */
   defaultApiBaseUrl: string;
   /**
@@ -277,10 +276,13 @@ export interface N8nNodeSpec {
    * like `baseUrlRequired` its description travels as a scalar. Absent when the
    * contract declares none — the README then renders the same em dash it renders
    * for any other credential row without a description, rather than prose of ours.
+   *
+   * Exception (2026-11-27): user-key products get a short n8n-specific text — see
+   * `userKeyBaseUrlDescription` in build-node-spec.ts for why and how narrow it is.
    */
   baseUrlDescription?: string;
   /**
-   * Story 18.7 (AC6): the "Upgrading from 1.x" section of the connector README,
+   * Story 18.7 (AC6): the "Upgrading" section of the connector README,
    * taken VERBATIM from the span between `<!-- N8N_UPGRADE -->` and
    * `<!-- /N8N_UPGRADE -->` in the source repo's `.github/RELEASE_NOTES.md`.
    *

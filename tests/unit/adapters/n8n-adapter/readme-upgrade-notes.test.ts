@@ -39,7 +39,7 @@ describe('README.md.hbs — no release note (EAD Factory) adds nothing', () => {
   // The golden pins EAD Factory's whole connector README. Epic 18 changes exactly
   // one row of it: the `API Base URL` cell now carries the AUTHORED description
   // from the emitted `.env.example` instead of pipeline-invented copy. Everything
-  // else — the absent "Upgrading from 1.x" section included — is the pre-change
+  // else — the absent "Upgrading" section included — is the pre-change
   // byte stream, which is what this golden exists to hold still.
   it('renders the golden byte-for-byte when upgradeNotes is absent', async () => {
     const golden = await fs.readFile(path.join(fixturesDir, 'no-notes-readme.golden.md'), 'utf8');
@@ -47,9 +47,9 @@ describe('README.md.hbs — no release note (EAD Factory) adds nothing', () => {
     expect(rendered).toBe(golden);
   });
 
-  it('emits no "Upgrading from 1.x" section and no stray blank line at the insertion point', async () => {
+  it('emits no "Upgrading" section and no stray blank line at the insertion point', async () => {
     const rendered = await renderReadme(oauth2NodeSpec());
-    expect(rendered).not.toContain('Upgrading from 1.x');
+    expect(rendered).not.toContain('Upgrading');
     // The Credentials block runs straight into the next heading, exactly as before.
     expect(rendered).toContain(
       '](https://example.com/onboarding).\n\n## Use as an AI Agent tool',
@@ -73,9 +73,9 @@ describe('README.md.hbs — the authored 2.0.0 notes render verbatim (AC8)', () 
 
   it('places the section under its own heading, after Credentials and before the AI Agent block', () => {
     for (const readme of [gocertius, suite]) {
-      expect(readme).toContain('## Upgrading from 1.x');
-      expect(readme.indexOf('## Credentials')).toBeLessThan(readme.indexOf('## Upgrading from 1.x'));
-      expect(readme.indexOf('## Upgrading from 1.x')).toBeLessThan(
+      expect(readme).toContain('## Upgrading');
+      expect(readme.indexOf('## Credentials')).toBeLessThan(readme.indexOf('## Upgrading'));
+      expect(readme.indexOf('## Upgrading')).toBeLessThan(
         readme.indexOf('## Use as an AI Agent tool'),
       );
     }

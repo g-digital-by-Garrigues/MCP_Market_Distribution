@@ -58,7 +58,7 @@ export interface ReleaseNotesCheckReport {
  *
  * `firstLine.includes('v2.0.0')` is true of `# v2.0.0-rc.1` and of `# v2.0.0.1`,
  * so a left-behind release-candidate note would have shipped as the GA release
- * body AND as the connector README's "Upgrading from 1.x" section — the exact
+ * body AND as the connector README's "Upgrading" section — the exact
  * stale-note failure this check exists to catch.
  *
  * The trailing class blocks the two ways a longer version extends this one:
@@ -146,7 +146,7 @@ export async function checkReleaseNotes(
   // FR59 (Epic 15's rule, re-learned here): a signal a gate computes and then
   // discards is a gate that cannot verify. `hasN8nUpgrade` used to be reported
   // and ignored, so a note with no span passed and the connector README shipped
-  // with an EMPTY "Upgrading from 1.x" section on a breaking release — the
+  // with an EMPTY "Upgrading" section on a breaking release — the
   // fail-open Epic 18 exists to close, on the very surface it was built for.
   //
   // The span is required on EVERY real publish, not only on a major bump: the
@@ -163,7 +163,7 @@ export async function checkReleaseNotes(
   if (!hasN8nUpgrade) {
     problems.push(
       `The note carries no ${N8N_UPGRADE_START} … ${N8N_UPGRADE_END} span, so the n8n connector ` +
-        `README's "Upgrading from 1.x" section would ship EMPTY. Every real publish needs the span; ` +
+        `README's "Upgrading" section would ship EMPTY. Every real publish needs the span; ` +
         `when there is nothing to do, say so in one line.`,
     );
   }
@@ -220,7 +220,7 @@ export async function runCli(args: readonly string[]): Promise<number> {
             `Write ${RELEASE_NOTES_REL_PATH} in the MCP source repo, on the bump branch, so it ` +
             `rides the v${expectedVersion} tag. Its whole text becomes the GitHub Release body; ` +
             `the span between ${N8N_UPGRADE_START} and ${N8N_UPGRADE_END} becomes the n8n ` +
-            `connector README's "Upgrading from 1.x" section. See ` +
+            `connector README's "Upgrading" section. See ` +
             `docs/runbooks/release-checklist.md#writing-the-release-note. Minimal file:\n` +
             minimalNote(expectedVersion),
         },

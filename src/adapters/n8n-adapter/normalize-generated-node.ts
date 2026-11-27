@@ -99,9 +99,16 @@ export async function normalizeGeneratedNode(nodeDir: string): Promise<Normalize
  * word character, so there is no boundary and it is left alone. Standalone prose
  * ("reuse that id") and backticked field references (`` `id` ``) do match — and the
  * latter is correct, because the n8n form labels that field "ID".
+ *
+ * The plural too: n8n's rule is `/\b(i|I)d(s?)\b/`, so "ids"/"Ids" fail it exactly as
+ * "id" does, and its autofixer rewrites only the FIRST match per pass. Leaving plurals
+ * to --fix is how GoCertius 2.1.0's `dossier_evidence_link` ("Every id in `ids` …;
+ * already-linked ids are skipped") hit "Circular fixes detected" and left one "ids"
+ * behind, failing the official_linter gate. "IDs" matches the field label n8n renders
+ * for `ids` (DISPLAY_ABBREVS in json-schema-to-properties.ts).
  */
 export function normalizeIdCasing(text: string): string {
-  return text.replace(/\b[Ii]d\b/g, 'ID');
+  return text.replace(/\b[Ii]d(s?)\b/g, (_match, plural: string) => `ID${plural}`);
 }
 
 /**

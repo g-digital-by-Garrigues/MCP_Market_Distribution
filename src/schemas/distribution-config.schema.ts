@@ -92,6 +92,18 @@ export const distributionConfigSchema = z
     // Accepting a field we do not use is the same contract stance as logo_svg_path in
     // Story 17.1: `.distribution.yaml` is generation's to emit, the pipeline's to read.
     logo_svg_dark_path: z.string().min(1).optional(),
+    // The product's canonical API host, DECLARED by generation (agreed on #255,
+    // 2026-09-15; first propagated with generator @3a1ff12, 2026-11-27). A string
+    // when the product has one fixed host, YAML `null` when it has none. It is the
+    // value `MCP_API_BASE_URL` pre-fills in install blocks and in the n8n
+    // credential's `baseUrl` default (see src/utils/read-emitted-env-defaults.ts),
+    // replacing the regex we used to run over the generator-owned
+    // `src/tools/session_login.ts`. For a multi-manager product (EAD Factory) it is
+    // the gateway ROOT; per-manager prefixes still come from manager_api_base_paths.
+    // Optional so a tag cut before the field existed still parses; a product that
+    // declares MCP_API_BASE_URL required and omits this fails loudly at the install
+    // block, not here. Same `.strict()` lesson as logo_svg_dark_path above.
+    api_base_url: z.string().url().nullable().optional(),
     bundled_skills: z.array(z.string().min(1)).optional(),
     // Story 13.3 (FR53): per-manager API base-path prefixes for MULTI-MANAGER
     // products (e.g. EAD Factory: { evidence: '/digital-trust', signature:

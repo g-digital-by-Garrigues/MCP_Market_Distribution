@@ -36,6 +36,26 @@ describe('distributionConfigSchema — logo fields (generation-owned, pipeline r
     expect(result.success).toBe(true);
   });
 
+  // Same failure class, second instance: generation's 2026-11-27 propagation (generator
+  // @3a1ff12) is the first to emit api_base_url, agreed on #255. Undeclared, every read of
+  // all three products' .distribution.yaml fails again.
+  it.each([
+    ['a fixed host', 'https://api.example.test'],
+    ['no fixed host (null)', null],
+  ])('accepts api_base_url declaring %s', (_label, value) => {
+    const result = distributionConfigSchema.safeParse({ ...validConfig, api_base_url: value });
+    expect(result.success).toBe(true);
+  });
+
+  it('accepts a config cut before api_base_url existed', () => {
+    expect(distributionConfigSchema.safeParse(validConfig).success).toBe(true);
+  });
+
+  it('rejects an api_base_url that is not a URL', () => {
+    const result = distributionConfigSchema.safeParse({ ...validConfig, api_base_url: 'api.example.test' });
+    expect(result.success).toBe(false);
+  });
+
   it('still rejects an unknown key — the fix declares one field, it does not loosen .strict()', () => {
     const result = distributionConfigSchema.safeParse({
       ...validConfig,

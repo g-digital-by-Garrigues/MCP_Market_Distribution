@@ -70,7 +70,7 @@ describe('checkReleaseNotes', () => {
 
   // Epic 18 review (F8/F10): `hasN8nUpgrade` used to be computed, reported and
   // then thrown away — `ok` was decided by the version check alone. A note with
-  // no span passed, and the connector README shipped its "Upgrading from 1.x"
+  // no span passed, and the connector README shipped its "Upgrading"
   // section EMPTY on a breaking release. FR59: a gate that cannot verify fails.
   it('fails a markerless note — the connector section would ship empty', async () => {
     await write('# v2.0.0\n\nServer-only change.\n');
