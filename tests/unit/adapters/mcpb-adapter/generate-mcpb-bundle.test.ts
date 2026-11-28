@@ -41,6 +41,14 @@ function sampleSpec(): McpbBundleSpec {
         sensitive: false,
         required: true,
       },
+      {
+        envName: 'TEST_TRANSPORT',
+        configKey: 'test_transport',
+        title: 'Test Transport',
+        description: 'Optional transport selector.',
+        sensitive: false,
+        required: false,
+      },
     ],
     entryPoint: 'server/index.js',
     iconPath: 'assets/icon.png',
@@ -116,7 +124,7 @@ describe('generateMcpbBundle', () => {
       description: string;
       author: { name: string };
       server: { type: string; entry_point: string; mcp_config: { command: string; args: string[]; env: Record<string, string> } };
-      user_config: Record<string, { type: string; title: string; sensitive: boolean; required: boolean }>;
+      user_config: Record<string, { type: string; title: string; sensitive: boolean; required: boolean; default?: string }>;
     };
     expect(parsed.manifest_version).toBe('0.3');
     expect(parsed.name).toBe('multi-tool');
@@ -137,6 +145,15 @@ describe('generateMcpbBundle', () => {
     expect(apiKey!.sensitive).toBe(true);
     expect(apiKey!.required).toBe(true);
     expect(baseUrl!.sensitive).toBe(false);
+    // A required field has no default: the host must ask for it.
+    expect(apiKey).not.toHaveProperty('default');
+    // An optional field defaults to "" so a host substitutes an empty value when
+    // the user leaves it blank, instead of whatever it does with an unresolved
+    // `${user_config.*}` (MCPB does not specify it). An empty MCP_TRANSPORT starts
+    // stdio; a literal placeholder makes the server refuse to start.
+    const transport = parsed.user_config['test_transport'];
+    expect(transport!.required).toBe(false);
+    expect(transport!.default).toBe('');
   });
 
   it('renames dist/server.js → server/index.js to match the MCPB conventional entry point', async () => {

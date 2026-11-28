@@ -72,6 +72,28 @@ describe('Track C — Layer 3 (runtime roundtrip)', () => {
     expect(callArgs?.env).toEqual({ TEST_API_KEY: 'placeholder-test_api_key' });
   });
 
+  it('gives an OPTIONAL field its manifest default (""), never a placeholder — what a real install sends', async () => {
+    // GoCertius/Suite 2.1.0 (2026-11-28): the optional MCP_TRANSPORT only accepts
+    // "stdio"/"http", so `placeholder-mcp_transport` made the server refuse to start
+    // and failed this gate on a bundle that boots fine for any real user.
+    const spec = sampleSpec();
+    spec.userConfig.push({
+      envName: 'MCP_TRANSPORT',
+      configKey: 'mcp_transport',
+      title: 'Mcp Transport',
+      description: 'stdio or http',
+      sensitive: false,
+      required: false,
+    });
+    const runInspector = vi.fn<RunInspector>(async () => fakeInspectorResult());
+    const result = await runTrackCLayer3({ mcpName: 'multi-tool', spec, bundleDir }, { runInspector });
+    expect(result.passed).toBe(true);
+    expect(runInspector.mock.calls[0]?.[0]?.env).toEqual({
+      TEST_API_KEY: 'placeholder-test_api_key',
+      MCP_TRANSPORT: '',
+    });
+  });
+
   it('fails launch check if the bundled entry file is missing (CLI shim never staged dist/)', async () => {
     await fs.rm(path.join(bundleDir, 'server', 'index.js'));
     const runInspector = vi.fn(async () => fakeInspectorResult());

@@ -35,7 +35,8 @@
       "title": {{json this.title}},
       "description": {{json this.description}},
       "sensitive": {{this.sensitive}},
-      "required": {{this.required}}
+      "required": {{this.required}}{{#unless this.required}},
+      "default": ""{{/unless}}
     }{{#unless @last}},{{/unless}}
 {{/each}}  }
 }
