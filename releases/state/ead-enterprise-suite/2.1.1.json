@@ -28,9 +28,17 @@
           "pipeline_run_id": "46135715672-1",
           "status": "succeeded",
           "target_url": "https://hub.docker.com/r/gdigital/ead-enterprise-suite"
+        },
+        {
+          "at": "2026-11-28T11:41:35.924Z",
+          "attempt": 2,
+          "duration_ms": 1074,
+          "pipeline_run_id": "46140825383-1",
+          "status": "skipped",
+          "target_url": "https://hub.docker.com/r/gdigital/ead-enterprise-suite"
         }
       ],
-      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "last_attempt_at": "2026-11-28T11:41:35.924Z",
       "status": "succeeded",
       "target_url": "https://hub.docker.com/r/gdigital/ead-enterprise-suite",
       "version_published": "2.1.1"
@@ -151,6 +159,6 @@
       "version_published": null
     }
   },
-  "updated_at": "2026-11-28T10:44:09.222Z",
+  "updated_at": "2026-11-28T11:41:35.924Z",
   "version": "2.1.1"
 }
