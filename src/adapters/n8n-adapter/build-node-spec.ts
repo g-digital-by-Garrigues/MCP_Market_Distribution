@@ -1329,14 +1329,14 @@ export async function buildN8nNodeSpec(
     credentialClassName,
     credentialParamName,
     sourceRepoUrl: resolveRepoUrl(distribution, server),
-    credentialAcquisitionUrl: (() => {
-      const urlRe = /https?:\/\/[^\s)]+/;
-      for (const v of server.packages?.[0]?.environmentVariables ?? []) {
-        const m = urlRe.exec(v.description ?? '');
-        if (m) return m[0];
-      }
-      return '';
-    })(),
+    // Where a user gets credentials: the credential's documentationUrl and the README's
+    // "Need credentials?" line. DECLARED by generation as `.distribution.yaml`
+    // #credential_help_url (required by the schema). It used to be the first URL found in
+    // any env-var description — right for GoCertius/Suite only by accident (their secret's
+    // description ends with the same help URL), and wrong for EAD Factory, whose first
+    // match was the example INT API host inside MCP_API_BASE_URL's description, so its
+    // node told users to "sign up or log in" at an API endpoint.
+    credentialAcquisitionUrl: distribution.credential_help_url,
     author: { name: 'g-digital by Garrigues', email: 'g-digital@garrigues.com' },
     defaultApiBaseUrl,
     baseUrlRequired,

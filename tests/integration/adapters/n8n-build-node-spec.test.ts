@@ -366,7 +366,7 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
         { name: 'MCP_SVC_SCOPE', description: 'OAuth2 scope.', isSecret: false, isRequired: false },
         { name: 'MCP_SVC_INTROSPECT_URL', description: 'Inbound bearer introspection (server config).', isSecret: false, isRequired: false },
         { name: 'MCP_HTTP_HOST', description: 'MCP server HTTP bind host.', isSecret: false, isRequired: false },
-        { name: 'MCP_API_BASE_URL', description: 'Gateway ROOT URL (authored).', isSecret: false, isRequired: false },
+        { name: 'MCP_API_BASE_URL', description: 'Gateway ROOT URL (e.g. https://api.int.example.test).', isSecret: false, isRequired: false },
       ],
       distributionOverrides: { api_base_url: 'https://api.example.test' },
     });
@@ -392,8 +392,12 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       // The n8n-only short text is for user-key products: the OAuth2 style (EAD
       // Factory) keeps its AUTHORED base-URL description, while its default now comes
       // from the declared api_base_url (gateway root) like every other product.
-      expect(spec.baseUrlDescription).toBe('Gateway ROOT URL (authored).');
+      expect(spec.baseUrlDescription).toBe('Gateway ROOT URL (e.g. https://api.int.example.test).');
       expect(spec.defaultApiBaseUrl).toBe('https://api.example.test');
+      // "Need credentials?" points at the DECLARED credential_help_url, never at the
+      // first URL some env-var description happens to contain (EAD Factory 1.4.0 sent
+      // users to "sign up or log in" at its INT API host).
+      expect(spec.credentialAcquisitionUrl).toBe('https://example.com');
     } finally {
       await cleanup();
     }
