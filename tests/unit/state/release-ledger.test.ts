@@ -8,6 +8,7 @@ import {
   serializeLedger,
   targetsToRun,
   resolveLedgerRepository,
+  resolveRunTargets,
 } from '../../../src/state/release-ledger.js';
 import type { PublisherOutput } from '../../../src/schemas/publisher-output.schema.js';
 
@@ -191,5 +192,38 @@ describe('resolveLedgerRepository', () => {
 
   it('returns empty when neither is set (the scripts then refuse to run)', () => {
     expect(resolveLedgerRepository({})).toBe('');
+  });
+});
+
+describe('resolveRunTargets', () => {
+  // GoCertius 2.1.1 as the ledger recorded it on 2026-11-28 (first real writes).
+  function published(): ReturnType<typeof emptyLedger> {
+    let l = emptyLedger('gocertius', '2.1.1', NOW);
+    for (const id of ['npm', 'docker-hub', 'n8n', 'cline', 'mcpso', 'docker-mcp-catalog']) {
+      l = mergePublisherOutput(l, out(id, 'succeeded'), 'run-1', NOW);
+    }
+    l = mergePublisherOutput(l, out('mcp-publisher', 'failed'), 'run-1', NOW);
+    l = mergePublisherOutput(l, out('smithery', 'failed'), 'run-1', NOW);
+    return l;
+  }
+
+  it('a broad re-run (step=all) skips what already shipped and retries only the failures', () => {
+    // make-rom never records an entry (no product publishes it yet), so it stays in
+    // scope here; the workflow's own gating keeps it from running. What matters is
+    // that nothing already published comes back.
+    const expected = ['make-rom', 'mcp-publisher', 'smithery'];
+    expect([...resolveRunTargets(published(), 'all', 'both')].sort()).toEqual(expected);
+    expect([...resolveRunTargets(published())].sort()).toEqual(expected);
+  });
+
+  it('an explicit single-target retry runs that target even if it already succeeded', () => {
+    // publish-docker-hub refreshes the repository page on an already-pushed version;
+    // with a working ledger this documented recovery would otherwise be a silent no-op.
+    expect(resolveRunTargets(published(), 'docker-hub', 'both')).toEqual(['docker-hub']);
+  });
+
+  it('step=gate fires no publisher; a track narrows the broad re-run', () => {
+    expect(resolveRunTargets(published(), 'gate', 'both')).toEqual([]);
+    expect(resolveRunTargets(published(), 'all', 'b')).toEqual(['make-rom']);
   });
 });

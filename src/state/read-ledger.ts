@@ -8,7 +8,7 @@ import {
   emptyLedger,
   parseLedger,
   resolveLedgerRepository,
-  targetsToRun,
+  resolveRunTargets,
 } from './release-ledger.js';
 import {
   TRACK_A_TARGET_IDS,
@@ -113,21 +113,9 @@ async function main(): Promise<number> {
   // expression) sidesteps the GH Actions footgun where `a && '' || b`
   // evaluates to `b` because '' is falsy (caught in run 25853475366,
   // where every target ended up skipped because filter=['all']).
-  const PHASE_KEYWORDS = new Set(['gate', 'publish', 'all']);
-  let filter: readonly string[] | undefined;
-  if (retryStep === 'gate') {
-    // gate-only run → no publishers should fire
-    filter = [];
-  } else if (retryStep && !PHASE_KEYWORDS.has(retryStep)) {
-    // retryStep is an explicit target id (npm / cline / ...)
-    filter = [retryStep];
-  } else if (retryTrack === 'a') {
-    filter = TRACK_A_TARGET_IDS;
-  } else if (retryTrack === 'b') {
-    filter = TRACK_B_TARGET_IDS;
-  }
-
-  const runSet = new Set(targetsToRun(ledger, filter));
+  // An explicit single target runs even if the ledger recorded it as done —
+  // see resolveRunTargets.
+  const runSet = new Set(resolveRunTargets(ledger, retryStep, retryTrack));
 
   // Read the per-MCP skip_targets list from the MCP repo's
   // .distribution.yaml (cloned by checkout-mcp-source) and remove

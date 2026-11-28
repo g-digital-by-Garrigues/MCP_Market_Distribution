@@ -109,6 +109,26 @@ describe('renderDockerHubOverview', () => {
     expect(full.length).toBeLessThan(DOCKER_HUB_FULL_DESCRIPTION_MAX / 2);
   });
 
+  // 2026-11-28: the page said "The container speaks MCP over stdio, so keep -i", but
+  // every product's Dockerfile sets MCP_TRANSPORT=http. Run as documented, the container
+  // ignored stdin and the MCP client hung. Verified live against gocertius 2.1.1: with
+  // `-e MCP_TRANSPORT=stdio` it answers over stdio and signs in with its own .env; as an
+  // HTTP service every /mcp request needs a Bearer token (401 without one).
+  it("tells stdio clients to override the image's HTTP default, in both snippets", async () => {
+    const { full } = await render(ENV_EXAMPLE);
+    expect(full).not.toContain('speaks MCP over stdio');
+    expect(full).toContain('docker run --rm -i --env-file .env -e MCP_TRANSPORT=stdio');
+    expect(full).toContain('"-e", "MCP_TRANSPORT=stdio"');
+    expect(full).toContain('The image starts the **HTTP** transport by default');
+  });
+
+  it('documents the HTTP service mode as it behaves: a Bearer token on every request', async () => {
+    const { full } = await render(ENV_EXAMPLE);
+    expect(full).toContain('docker run -d -p 8080:8080 --env-file .env');
+    expect(full).toContain('Authorization: Bearer <token>');
+    expect(full).toContain('`401`');
+  });
+
   it('describes the variables the image actually reads, and cannot invent others', async () => {
     const { full } = await render(ENV_EXAMPLE);
     expect(full).toContain('MCP_AUTH_USER_KEY');
