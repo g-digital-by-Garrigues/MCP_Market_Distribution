@@ -1,0 +1,139 @@
+{
+  "mcp_name": "ead-enterprise-suite",
+  "started_at": "2026-11-28T10:38:12.309Z",
+  "status": "partial",
+  "targets": {
+    "cline": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:12.309Z",
+          "attempt": 1,
+          "duration_ms": 2171,
+          "pipeline_run_id": "46135715672-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/cline/mcp-marketplace/issues/1642"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/cline/mcp-marketplace/issues/1642",
+      "version_published": "2.1.1"
+    },
+    "docker-hub": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:12.309Z",
+          "attempt": 1,
+          "duration_ms": 122268,
+          "pipeline_run_id": "46135715672-1",
+          "status": "succeeded",
+          "target_url": "https://hub.docker.com/r/gdigital/ead-enterprise-suite"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/ead-enterprise-suite",
+      "version_published": "2.1.1"
+    },
+    "docker-mcp-catalog": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:12.309Z",
+          "attempt": 1,
+          "duration_ms": 8330,
+          "pipeline_run_id": "46135715672-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/docker/mcp-registry/pull/7854"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/7854",
+      "version_published": "2.1.1"
+    },
+    "mcp-publisher": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:12.309Z",
+          "attempt": 1,
+          "duration_ms": 1287,
+          "error_message": "mcp-publisher publish --dry-run exited 1: Error: publish failed: server returned status 400: {\"title\":\"Bad Request\",\"status\":400,\"detail\":\"Failed to publish server\",\"errors\":[{\"message\":\"registry validation failed for package 0 (@g-digital/mcp-ead-enterprise-suite): NPM package '@g-digital/mcp-ead-enterprise-suite' exists, but version '2.1.1' was not found (status: 404). A newly published release can take a moment to appear on the registr",
+          "pipeline_run_id": "46135715672-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fead-enterprise-suite/2.1.1"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fead-enterprise-suite/2.1.1",
+      "version_published": null
+    },
+    "mcpso": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:12.309Z",
+          "attempt": 1,
+          "duration_ms": 2273,
+          "pipeline_run_id": "46135715672-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/chatmcp/mcpso/issues/8291"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/chatmcp/mcpso/issues/8291",
+      "version_published": "2.1.1"
+    },
+    "n8n": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:12.309Z",
+          "attempt": 1,
+          "duration_ms": 10946,
+          "pipeline_run_id": "46135715672-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-enterprise-suite/v/2.1.1"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-ead-enterprise-suite/v/2.1.1",
+      "version_published": "2.1.1"
+    },
+    "npm": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:12.309Z",
+          "attempt": 1,
+          "duration_ms": 7652,
+          "pipeline_run_id": "46135715672-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-enterprise-suite/v/2.1.1"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-ead-enterprise-suite/v/2.1.1",
+      "version_published": "2.1.1"
+    },
+    "smithery": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:12.309Z",
+          "attempt": 1,
+          "duration_ms": 3338,
+          "error_message": "Smithery CLI auth failed (exit 1): \u001b[31mPermission denied: 403 {\"error\":\"Updating servers has been removed. Contact support@smithery.ai.\"}\nMint a scoped token with \"smithery auth token --policy '<constraints>'\" or use an API key.\u001b[39m",
+          "pipeline_run_id": "46135715672-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-enterprise-suite/2.1.1"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-enterprise-suite/2.1.1",
+      "version_published": null
+    }
+  },
+  "updated_at": "2026-11-28T10:38:12.309Z",
+  "version": "2.1.1"
+}
