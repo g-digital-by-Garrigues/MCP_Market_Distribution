@@ -338,7 +338,12 @@ export interface N8nNodeSpec {
    * n8n's JSON editor stores the typed text as a string. Absent when no operation
    * has one.
    */
-  jsonProperties?: Array<{ operation: string; names: string[] }>;
+  jsonProperties?: Array<{
+    operation: string;
+    names: string[];
+    /** Subset of `names` whose schema also accepts a plain string: typed text is sent as-is. */
+    textNames: string[];
+  }>;
   /**
    * Story 13.3 (FR53): per-operation API base-path prefix for MULTI-MANAGER products.
    * When set, execute() builds `${baseUrl}${prefix}${urlTemplate}` so one credential

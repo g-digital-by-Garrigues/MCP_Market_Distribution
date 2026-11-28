@@ -965,6 +965,17 @@ export function userKeyBaseUrlDescription(displayName: string, defaultApiBaseUrl
     : `The ${displayName} API root.`;
 }
 
+/** Whether a JSON-schema node accepts a plain string, directly or through anyOf/oneOf. */
+export function schemaAcceptsString(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object') return false;
+  const s = schema as { type?: unknown; anyOf?: unknown; oneOf?: unknown };
+  if (s.type === 'string' || (Array.isArray(s.type) && s.type.includes('string'))) return true;
+  for (const branch of [s.anyOf, s.oneOf]) {
+    if (Array.isArray(branch) && branch.some((b) => schemaAcceptsString(b))) return true;
+  }
+  return false;
+}
+
 export async function buildN8nNodeSpec(
   input: BuildN8nNodeSpecInput,
 ): Promise<BuildN8nNodeSpecResult> {
@@ -1223,13 +1234,23 @@ export async function buildN8nNodeSpec(
   // GoCertius 2.1.0 signature_coordinate_set, 2026-11-28). An expression that evaluates
   // to an array/object already arrives parsed, which is why every test that used one
   // passed. Covers both top-level properties and the Additional Fields collection.
+  // Some json fields are json only because their schema is a UNION that includes a
+  // plain string — `anyOf: [string, null]` for an id, a date or an enum (EAD Factory has
+  // 15: notification_request_status.requestId, create_signature_request.
+  // notificationProvider, signature_request_list.dateFrom…). Typed text there IS the value:
+  // parsing `a7b7…` as JSON would fail and refuse what the API accepts. Those are listed in
+  // `textNames`, and execute() sends their text as-is unless it opens with `{`, `[` or `"`.
+  const schemaByTool = new Map(probe.tools_list.map((t) => [t.name, t.inputSchema as ToolInputSchema | null]));
   const jsonProperties = operations
-    .map((op) => ({
-      operation: op.name,
-      names: [...op.properties, ...(op.additionalFields ?? [])]
-        .filter((p) => p.type === 'json')
-        .map((p) => p.name),
-    }))
+    .map((op) => {
+      const props = [...op.properties, ...(op.additionalFields ?? [])].filter((p) => p.type === 'json');
+      const schemaProps = (schemaByTool.get(op.name)?.properties ?? {}) as Record<string, unknown>;
+      return {
+        operation: op.name,
+        names: props.map((p) => p.name),
+        textNames: props.filter((p) => schemaAcceptsString(schemaProps[p.name])).map((p) => p.name),
+      };
+    })
     .filter((o) => o.names.length > 0);
 
   // Story 13.3 (FR53): per-operation API base-path prefix for MULTI-MANAGER products.

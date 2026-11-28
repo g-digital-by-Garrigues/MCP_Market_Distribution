@@ -656,6 +656,12 @@ const JSON_PROPERTY_NAMES: Record<string, readonly string[]> = {
 {{#each jsonProperties}}  '{{this.operation}}': [{{#each this.names}}'{{this}}'{{#unless @last}}, {{/unless}}{{/each}}],
 {{/each}} };
 
+// The subset of the above whose schema also accepts a plain string (an id, a date, an
+// enum): typed text that does not open like JSON is that string and is sent as-is.
+const JSON_TEXT_PROPERTY_NAMES: Record<string, readonly string[]> = {
+{{#each jsonProperties}}{{#if this.textNames.length}}  '{{this.operation}}': [{{#each this.textNames}}'{{this}}'{{#unless @last}}, {{/unless}}{{/each}}],
+{{/if}}{{/each}} };
+
 function parseJsonProperty(
   ctx: IExecuteFunctions,
   operation: string,
@@ -666,9 +672,12 @@ function parseJsonProperty(
   if (typeof val !== 'string' || !(JSON_PROPERTY_NAMES[operation] ?? []).includes(propName)) return val;
   const text = val.trim();
   if (text === '') return '';
+  const acceptsText = (JSON_TEXT_PROPERTY_NAMES[operation] ?? []).includes(propName);
+  if (acceptsText && !/^[[{"]/.test(text)) return text;
   try {
     return JSON.parse(text) as unknown;
   } catch (err) {
+    if (acceptsText) return text;
     throw new NodeOperationError(ctx.getNode(), `The "${propName}" field must be valid JSON.`, {
       itemIndex,
       description: `It could not be parsed (${(err as Error).message}). Write a JSON array or object, for example [1, 2] or {"key": "value"}.`,
