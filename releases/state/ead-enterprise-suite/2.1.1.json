@@ -61,12 +61,20 @@
           "pipeline_run_id": "46135715672-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fead-enterprise-suite/2.1.1"
+        },
+        {
+          "at": "2026-11-28T10:44:09.222Z",
+          "attempt": 2,
+          "duration_ms": 1255,
+          "pipeline_run_id": "46136217801-1",
+          "status": "skipped",
+          "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-enterprise-suite"
         }
       ],
-      "last_attempt_at": "2026-11-28T10:38:12.309Z",
-      "status": "failed",
-      "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fead-enterprise-suite/2.1.1",
-      "version_published": null
+      "last_attempt_at": "2026-11-28T10:44:09.222Z",
+      "status": "skipped",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/ead-enterprise-suite",
+      "version_published": "2.1.1"
     },
     "mcpso": {
       "attempts": [
@@ -126,14 +134,23 @@
           "pipeline_run_id": "46135715672-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-enterprise-suite/2.1.1"
+        },
+        {
+          "at": "2026-11-28T10:44:09.222Z",
+          "attempt": 2,
+          "duration_ms": 4239,
+          "error_message": "Smithery CLI auth failed (exit 1): \u001b[31mPermission denied: 403 {\"error\":\"Updating servers has been removed. Contact support@smithery.ai.\"}\nMint a scoped token with \"smithery auth token --policy '<constraints>'\" or use an API key.\u001b[39m",
+          "pipeline_run_id": "46136217801-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-enterprise-suite/2.1.1"
         }
       ],
-      "last_attempt_at": "2026-11-28T10:38:12.309Z",
+      "last_attempt_at": "2026-11-28T10:44:09.222Z",
       "status": "failed",
       "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fead-enterprise-suite/2.1.1",
       "version_published": null
     }
   },
-  "updated_at": "2026-11-28T10:38:12.309Z",
+  "updated_at": "2026-11-28T10:44:09.222Z",
   "version": "2.1.1"
 }
