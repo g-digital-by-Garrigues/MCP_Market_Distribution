@@ -122,7 +122,7 @@ describe('generateN8nNode', () => {
         required: true,
         showForOperation: 'get_widget',
       });
-      spec.jsonProperties = [{ operation: 'get_widget', names: ['coordinates'] }];
+      spec.jsonProperties = [{ operation: 'get_widget', names: ['coordinates'], textNames: [] }];
       return spec;
     }
 
@@ -140,6 +140,26 @@ describe('generateN8nNode', () => {
       expect(node).toContain('const val = parseJsonProperty(this, operation, propName, rawVal, i);');
       // A malformed value names the field instead of reaching the API.
       expect(node).toContain('must be valid JSON.');
+    });
+
+    // EAD Factory has json fields whose schema is anyOf [string, null] (ids, dates,
+    // enums). Typed text there IS the value, so it must not be forced through JSON.parse.
+    it('lists the json fields that also accept plain text, and sends such text as-is', async () => {
+      const spec = specWithJsonField();
+      spec.operations[0]!.properties.push({
+        name: 'requestId',
+        displayName: 'Request ID',
+        type: 'json',
+        default: {},
+        showForOperation: 'get_widget',
+      });
+      spec.jsonProperties = [{ operation: 'get_widget', names: ['coordinates', 'requestId'], textNames: ['requestId'] }];
+      await generateN8nNode({ spec, outputDir });
+      const node = await fs.readFile(path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'), 'utf8');
+      expect(node).toContain("'get_widget': ['coordinates', 'requestId'],");
+      expect(node).toMatch(/JSON_TEXT_PROPERTY_NAMES[^]*'get_widget': \['requestId'\],/);
+      expect(node).toContain('if (acceptsText && !/^[[{"]/.test(text)) return text;');
+      expect(node).toContain('if (acceptsText) return text;');
     });
 
     it('emits nothing for a product with no json field (keeps such nodes byte-identical)', async () => {

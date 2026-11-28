@@ -314,7 +314,7 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       expect(metadata.type).toBe('json');
       expect(unsupportedNotes.some((n) => n.includes("'metadata'"))).toBe(true);
       // ...and listed for execute() to parse: n8n's JSON editor hands it over as a string.
-      expect(spec.jsonProperties).toEqual([{ operation: 'submit_widget', names: ['metadata'] }]);
+      expect(spec.jsonProperties).toEqual([{ operation: 'submit_widget', names: ['metadata'], textNames: [] }]);
 
       // Epic 18: declaring MCP_AUTH_USER_KEY makes this a user-facing product with a
       // single upstream credential → 'user-key'.
