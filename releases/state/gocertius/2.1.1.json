@@ -1,0 +1,139 @@
+{
+  "mcp_name": "gocertius",
+  "started_at": "2026-11-28T10:38:21.910Z",
+  "status": "partial",
+  "targets": {
+    "cline": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:21.910Z",
+          "attempt": 1,
+          "duration_ms": 3830,
+          "pipeline_run_id": "46135713435-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/cline/mcp-marketplace/issues/1633"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/cline/mcp-marketplace/issues/1633",
+      "version_published": "2.1.1"
+    },
+    "docker-hub": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:21.910Z",
+          "attempt": 1,
+          "duration_ms": 102519,
+          "pipeline_run_id": "46135713435-1",
+          "status": "succeeded",
+          "target_url": "https://hub.docker.com/r/gdigital/gocertius"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "status": "succeeded",
+      "target_url": "https://hub.docker.com/r/gdigital/gocertius",
+      "version_published": "2.1.1"
+    },
+    "docker-mcp-catalog": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:21.910Z",
+          "attempt": 1,
+          "duration_ms": 6918,
+          "pipeline_run_id": "46135713435-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/docker/mcp-registry/pull/7855"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/docker/mcp-registry/pull/7855",
+      "version_published": "2.1.1"
+    },
+    "mcp-publisher": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:21.910Z",
+          "attempt": 1,
+          "duration_ms": 1107,
+          "error_message": "mcp-publisher publish --dry-run exited 1: Error: publish failed: server returned status 400: {\"title\":\"Bad Request\",\"status\":400,\"detail\":\"Failed to publish server\",\"errors\":[{\"message\":\"registry validation failed for package 0 (@g-digital/mcp-gocertius): NPM package '@g-digital/mcp-gocertius' exists, but version '2.1.1' was not found (status: 404). A newly published release can take a moment to appear on the registry. Wait and retry, or ",
+          "pipeline_run_id": "46135713435-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fgocertius/2.1.1"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fgocertius/2.1.1",
+      "version_published": null
+    },
+    "mcpso": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:21.910Z",
+          "attempt": 1,
+          "duration_ms": 2823,
+          "pipeline_run_id": "46135713435-1",
+          "status": "succeeded",
+          "target_url": "https://github.com/chatmcp/mcpso/issues/8293"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "status": "succeeded",
+      "target_url": "https://github.com/chatmcp/mcpso/issues/8293",
+      "version_published": "2.1.1"
+    },
+    "n8n": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:21.910Z",
+          "attempt": 1,
+          "duration_ms": 11858,
+          "pipeline_run_id": "46135713435-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-gocertius/v/2.1.1"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/n8n-nodes-gocertius/v/2.1.1",
+      "version_published": "2.1.1"
+    },
+    "npm": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:21.910Z",
+          "attempt": 1,
+          "duration_ms": 7930,
+          "pipeline_run_id": "46135713435-1",
+          "status": "succeeded",
+          "target_url": "https://www.npmjs.com/package/@g-digital/mcp-gocertius/v/2.1.1"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "status": "succeeded",
+      "target_url": "https://www.npmjs.com/package/@g-digital/mcp-gocertius/v/2.1.1",
+      "version_published": "2.1.1"
+    },
+    "smithery": {
+      "attempts": [
+        {
+          "at": "2026-11-28T10:38:21.910Z",
+          "attempt": 1,
+          "duration_ms": 5851,
+          "error_message": "Smithery CLI auth failed (exit 1): \u001b[31mPermission denied: 403 {\"error\":\"Updating servers has been removed. Contact support@smithery.ai.\"}\nMint a scoped token with \"smithery auth token --policy '<constraints>'\" or use an API key.\u001b[39m",
+          "pipeline_run_id": "46135713435-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fgocertius/2.1.1"
+        }
+      ],
+      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "status": "failed",
+      "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fgocertius/2.1.1",
+      "version_published": null
+    }
+  },
+  "updated_at": "2026-11-28T10:38:21.910Z",
+  "version": "2.1.1"
+}
