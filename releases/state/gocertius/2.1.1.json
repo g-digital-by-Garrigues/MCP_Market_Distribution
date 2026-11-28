@@ -61,12 +61,20 @@
           "pipeline_run_id": "46135713435-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fgocertius/2.1.1"
+        },
+        {
+          "at": "2026-11-28T10:44:00.958Z",
+          "attempt": 2,
+          "duration_ms": 1608,
+          "pipeline_run_id": "46136215506-1",
+          "status": "skipped",
+          "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/gocertius"
         }
       ],
-      "last_attempt_at": "2026-11-28T10:38:21.910Z",
-      "status": "failed",
-      "target_url": "https://example.invalid/dry-run/mcp-publisher/io.github.g-digital-by-Garrigues%2Fgocertius/2.1.1",
-      "version_published": null
+      "last_attempt_at": "2026-11-28T10:44:00.958Z",
+      "status": "skipped",
+      "target_url": "https://registry.modelcontextprotocol.io/v0/servers/io.github.g-digital-by-Garrigues/gocertius",
+      "version_published": "2.1.1"
     },
     "mcpso": {
       "attempts": [
@@ -126,14 +134,23 @@
           "pipeline_run_id": "46135713435-1",
           "status": "failed",
           "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fgocertius/2.1.1"
+        },
+        {
+          "at": "2026-11-28T10:44:00.958Z",
+          "attempt": 2,
+          "duration_ms": 3737,
+          "error_message": "Smithery CLI auth failed (exit 1): \u001b[31mPermission denied: 403 {\"error\":\"Updating servers has been removed. Contact support@smithery.ai.\"}\nMint a scoped token with \"smithery auth token --policy '<constraints>'\" or use an API key.\u001b[39m",
+          "pipeline_run_id": "46136215506-1",
+          "status": "failed",
+          "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fgocertius/2.1.1"
         }
       ],
-      "last_attempt_at": "2026-11-28T10:38:21.910Z",
+      "last_attempt_at": "2026-11-28T10:44:00.958Z",
       "status": "failed",
       "target_url": "https://example.invalid/dry-run/smithery/g-digital%2Fgocertius/2.1.1",
       "version_published": null
     }
   },
-  "updated_at": "2026-11-28T10:38:21.910Z",
+  "updated_at": "2026-11-28T10:44:00.958Z",
   "version": "2.1.1"
 }
