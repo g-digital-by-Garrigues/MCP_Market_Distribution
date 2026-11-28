@@ -590,4 +590,18 @@ describe('.github/workflows/publish.yml scaffold', () => {
     expect(finalReport.needs).not.toContain('github-release');
     expect(JSON.stringify(finalReport.steps)).not.toContain('github-release');
   });
+
+  // 2026-11-28: the ledger was read from / written to GITHUB_REPOSITORY, which inside
+  // this reusable workflow is the PRODUCT repo (no releases/state). Both ends must
+  // point at the pipeline repo explicitly, or re-runs republish everything again.
+  it('reads and writes the release-state ledger in the pipeline repo, not the caller', async () => {
+    const raw = await fs.readFile(PUBLISH_YML, 'utf8');
+    const wf = yaml.load(raw) as {
+      jobs: Record<string, { env?: Record<string, string>; steps: Array<{ name?: string; env?: Record<string, string> }> }>;
+    };
+    const PIPELINE = 'g-digital-by-Garrigues/MCP_Market_Distribution';
+    expect(wf.jobs['ledger-read']!.env?.LEDGER_REPOSITORY).toBe(PIPELINE);
+    const writeStep = wf.jobs['final-report']!.steps.find((st) => st.name?.startsWith('Write release-state ledger'));
+    expect(writeStep?.env?.LEDGER_REPOSITORY).toBe(PIPELINE);
+  });
 });

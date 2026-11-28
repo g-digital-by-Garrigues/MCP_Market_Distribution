@@ -7,6 +7,7 @@ import {
   recomputeOverallStatus,
   serializeLedger,
   targetsToRun,
+  resolveLedgerRepository,
 } from '../../../src/state/release-ledger.js';
 import type { PublisherOutput } from '../../../src/schemas/publisher-output.schema.js';
 
@@ -167,5 +168,28 @@ describe('parse + serialize round-trip', () => {
     // Determinism: same input → same bytes.
     const again = serializeLedger(reparsed);
     expect(again).toBe(serialized);
+  });
+});
+
+describe('resolveLedgerRepository', () => {
+  // Inside a reusable workflow GITHUB_REPOSITORY is the CALLER (a product repo with
+  // no releases/state). From 2026-05-22 to 2026-11-28 that made every ledger read
+  // empty and every write fail, so no re-run ever skipped a published target.
+  it('prefers LEDGER_REPOSITORY over the caller repo', () => {
+    expect(
+      resolveLedgerRepository({
+        LEDGER_REPOSITORY: 'g-digital-by-Garrigues/MCP_Market_Distribution',
+        GITHUB_REPOSITORY: 'g-digital-by-Garrigues/GoCertius_MCP',
+      }),
+    ).toBe('g-digital-by-Garrigues/MCP_Market_Distribution');
+  });
+
+  it('falls back to GITHUB_REPOSITORY for runs that start in the pipeline repo', () => {
+    expect(resolveLedgerRepository({ GITHUB_REPOSITORY: 'o/r' })).toBe('o/r');
+    expect(resolveLedgerRepository({ LEDGER_REPOSITORY: '  ', GITHUB_REPOSITORY: 'o/r' })).toBe('o/r');
+  });
+
+  it('returns empty when neither is set (the scripts then refuse to run)', () => {
+    expect(resolveLedgerRepository({})).toBe('');
   });
 });

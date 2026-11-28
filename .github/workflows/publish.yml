@@ -549,6 +549,10 @@ jobs:
       RETRY_STEP: ${{ inputs.step }}
       RETRY_TRACK: ${{ inputs.track }}
       BOT_PAT: ${{ secrets.BOT_PAT }}
+      # The ledger lives HERE, not in the caller: inside this reusable workflow
+      # GITHUB_REPOSITORY is the product repo, which has no releases/state — so the
+      # ledger read empty from 2026-05-22 to 2026-11-28 (see resolveLedgerRepository).
+      LEDGER_REPOSITORY: g-digital-by-Garrigues/MCP_Market_Distribution
     steps:
       - name: Checkout pipeline
         uses: actions/checkout@v4
@@ -2002,6 +2006,8 @@ jobs:
           VERSION: ${{ needs.setup.outputs.version }}
           PIPELINE_RUN_ID: ${{ needs.setup.outputs.pipeline_run_id }}
           BOT_PAT: ${{ secrets.BOT_PAT }}
+          # Same repo the ledger-read job reads from — see that job's comment.
+          LEDGER_REPOSITORY: g-digital-by-Garrigues/MCP_Market_Distribution
           PUBLISHER_RESULTS_JSON: |
             ${{ needs.publish-npm.outputs.result_json || '' }}
             ${{ needs.publish-docker-hub.outputs.result_json || '' }}

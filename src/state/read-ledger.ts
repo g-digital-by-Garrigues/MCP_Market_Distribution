@@ -7,6 +7,7 @@ import process from 'node:process';
 import {
   emptyLedger,
   parseLedger,
+  resolveLedgerRepository,
   targetsToRun,
 } from './release-ledger.js';
 import {
@@ -31,7 +32,9 @@ import { loadDistributionConfig } from '../distribution/load-distribution-config
 //                                          dispatched with track=<a|b>
 //   BOT_PAT                             — git push credential for the
 //                                          orphan branch
-//   GITHUB_REPOSITORY                   — owner/repo (set by GH Actions)
+//   LEDGER_REPOSITORY                   — owner/repo holding releases/state
+//                                          (the pipeline repo; see resolveLedgerRepository)
+//   GITHUB_REPOSITORY                   — fallback (set by GH Actions)
 //   GITHUB_OUTPUT                       — output file path
 //
 // Outputs (per-target should-run booleans + the full ledger JSON):
@@ -59,11 +62,11 @@ async function main(): Promise<number> {
   const retryStep = process.env.RETRY_STEP?.trim() || undefined;
   const retryTrack = process.env.RETRY_TRACK?.trim() || undefined;
   const botPat = process.env.BOT_PAT ?? '';
-  const repo = process.env.GITHUB_REPOSITORY ?? '';
+  const repo = resolveLedgerRepository(process.env);
   const githubOutput = process.env.GITHUB_OUTPUT;
 
   if (!mcpName || !version || !pipelineRunId || !repo) {
-    process.stderr.write('read-ledger: MCP_NAME, VERSION, PIPELINE_RUN_ID, GITHUB_REPOSITORY env vars are required\n');
+    process.stderr.write('read-ledger: MCP_NAME, VERSION, PIPELINE_RUN_ID and LEDGER_REPOSITORY (or GITHUB_REPOSITORY) env vars are required\n');
     return 2;
   }
 
