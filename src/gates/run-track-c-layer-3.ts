@@ -23,13 +23,23 @@ import type { McpbBundleSpec } from '../adapters/mcpb-adapter/types.js';
 // declared tools," which is the same regardless of whether we unzip
 // here or use the staging dir.
 //
-// Synthetic env strategy: for each spec.userConfig field we set its
-// envName to `placeholder-<configKey>`. The bundled MCP MIGHT fail
-// later when it tries to use the value (e.g. Okta client_credentials
-// will get 401), but tools/list only requires the server to start;
-// it does not need a successful auth. If a particular MCP refuses to
-// start without real credentials, that's a bug in the source MCP's
-// startup ordering — Layer 3 surfaces it here before publish.
+// Synthetic env strategy: emulate an MCPB host whose user filled in only
+// what the manifest REQUIRES. Each required user_config field gets
+// `placeholder-<configKey>`; each optional one gets its manifest default
+// (`""` — see templates/mcpb-adapter/manifest.json.hbs). The bundled MCP
+// MIGHT fail later when it uses a placeholder (e.g. a user key will get
+// 401), but tools/list only requires the server to start; it does not
+// need a successful auth. If a particular MCP refuses to start without
+// real credentials, that's a bug in the source MCP's startup ordering —
+// Layer 3 surfaces it here before publish.
+//
+// Optional fields used to get a placeholder too. That stopped being a
+// realistic install on 2026-11-28, when generation's .env.example started
+// declaring the optional MCP_TRANSPORT: its only valid values are
+// "stdio"/"http", so `placeholder-mcp_transport` made the server refuse to
+// start (UnknownTransportError) and failed GoCertius/Suite 2.1.0 here — a
+// configuration no user can produce without typing junk into an optional
+// field they never needed.
 
 const DEFAULT_TIMEOUT_MS = 60 * 1000;
 
@@ -74,7 +84,7 @@ export interface RunTrackCLayer3Deps {
 function syntheticEnv(spec: McpbBundleSpec): Record<string, string> {
   const env: Record<string, string> = {};
   for (const cfg of spec.userConfig) {
-    env[cfg.envName] = `placeholder-${cfg.configKey}`;
+    env[cfg.envName] = cfg.required ? `placeholder-${cfg.configKey}` : '';
   }
   return env;
 }
