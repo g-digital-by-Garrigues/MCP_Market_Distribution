@@ -106,6 +106,50 @@ describe('generateN8nNode', () => {
     await fs.rm(outputDir, { recursive: true, force: true });
   });
 
+  // 2026-11-28: n8n's JSON editor stores what the user typed as a STRING, and the node
+  // sent it unparsed — GoCertius 2.1.0 signature_coordinate_set answered 422
+  // ("coordinates": nestedValidation) for coordinates typed in the UI, while the same
+  // value given as an expression worked. 32 GoCertius / 30 Suite operations carry a
+  // json field (list filter/order/page, ids, coordinates, bulk receivers/participants).
+  describe('json-typed fields are parsed before they are sent', () => {
+    function specWithJsonField(): N8nNodeSpec {
+      const spec = sampleSpec();
+      spec.operations[0]!.properties.push({
+        name: 'coordinates',
+        displayName: 'Coordinates',
+        type: 'json',
+        default: {},
+        required: true,
+        showForOperation: 'get_widget',
+      });
+      spec.jsonProperties = [{ operation: 'get_widget', names: ['coordinates'] }];
+      return spec;
+    }
+
+    it('emits the per-operation map and parses before the value reaches the body', async () => {
+      await generateN8nNode({ spec: specWithJsonField(), outputDir });
+      const node = await fs.readFile(path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'), 'utf8');
+      expect(node).toContain("'get_widget': ['coordinates'],");
+      expect(node).toContain('function parseJsonProperty(');
+      expect(node).toContain('JSON.parse(text)');
+      // In the main loop: parsed BEFORE the empty-object skip and the body assignment.
+      const parseAt = node.indexOf('val = parseJsonProperty(this, operation, propName, val, i) as typeof val;');
+      expect(parseAt).toBeGreaterThan(-1);
+      expect(parseAt).toBeLessThan(node.indexOf('body[propName] = val;'));
+      // And in the Additional Fields loop.
+      expect(node).toContain('const val = parseJsonProperty(this, operation, propName, rawVal, i);');
+      // A malformed value names the field instead of reaching the API.
+      expect(node).toContain('must be valid JSON.');
+    });
+
+    it('emits nothing for a product with no json field (keeps such nodes byte-identical)', async () => {
+      await generateN8nNode({ spec: sampleSpec(), outputDir });
+      const node = await fs.readFile(path.join(outputDir, 'nodes', 'MultiTool', 'MultiTool.node.ts'), 'utf8');
+      expect(node).not.toContain('parseJsonProperty');
+      expect(node).not.toContain('JSON_PROPERTY_NAMES');
+    });
+  });
+
   it('writes the canonical n8n community-node file tree', async () => {
     const result = await generateN8nNode({ spec: sampleSpec(), outputDir });
     // The list is locale-sorted so uppercase 'README.md' lands between

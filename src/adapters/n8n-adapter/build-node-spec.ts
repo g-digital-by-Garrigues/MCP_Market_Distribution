@@ -1216,6 +1216,22 @@ export async function buildN8nNodeSpec(
     }))
     .filter((o) => o.defaults.length > 0);
 
+  // Properties of n8n type 'json' (arrays and objects: coordinates, ids, filter, page…).
+  // n8n's JSON editor stores what the user typed as a STRING and getNodeParameter hands
+  // that string back, so execute() must parse it before it goes on the wire — otherwise
+  // the API receives `"coordinates": "[{…}]"` and refuses it (422 nestedValidation,
+  // GoCertius 2.1.0 signature_coordinate_set, 2026-11-28). An expression that evaluates
+  // to an array/object already arrives parsed, which is why every test that used one
+  // passed. Covers both top-level properties and the Additional Fields collection.
+  const jsonProperties = operations
+    .map((op) => ({
+      operation: op.name,
+      names: [...op.properties, ...(op.additionalFields ?? [])]
+        .filter((p) => p.type === 'json')
+        .map((p) => p.name),
+    }))
+    .filter((o) => o.names.length > 0);
+
   // Story 13.3 (FR53): per-operation API base-path prefix for MULTI-MANAGER products.
   // When .distribution.yaml declares manager_api_base_paths, each operation's manager
   // (its n8n resource slug, e.g. 'evidence'/'signature'/'notification') maps to a base
@@ -1342,6 +1358,7 @@ export async function buildN8nNodeSpec(
     ...(autoIdOutputFields.length > 0 ? { autoIdOutputFields } : {}),
     ...(autoIdRoleFields.length > 0 ? { autoIdRoleFields } : {}),
     ...(optionalDefaults.length > 0 ? { optionalDefaults } : {}),
+    ...(jsonProperties.length > 0 ? { jsonProperties } : {}),
     ...(operationBasePrefix.length > 0 ? { operationBasePrefix } : {}),
     ...(preflightGuards.length > 0 ? { preflightGuards } : {}),
     ...(distribution.query_param_style ? { queryParamStyle: distribution.query_param_style } : {}),

@@ -314,6 +314,10 @@ export class {{className}} implements INodeType {
             generatedId = val as string;
           }
           if (val === '' || val === null || val === undefined) continue;
+{{#if jsonProperties}}
+          val = parseJsonProperty(this, operation, propName, val, i) as typeof val;
+          if (val === '') continue;
+{{/if}}
           if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
           const placeholder = `{${propName}}`;
           const isPathParam = url.includes(placeholder);
@@ -346,11 +350,21 @@ export class {{className}} implements INodeType {
         // simply absent: no default-comparison (Story 13.1) is needed here. Path
         // params never live in the collection, so these only ever reach body/query.
         const additionalFields = this.getNodeParameter('additionalFields', i, {}) as IDataObject;
+{{#if jsonProperties}}
+        for (const [propName, rawVal] of Object.entries(additionalFields)) {
+          if (rawVal === '' || rawVal === null || rawVal === undefined) continue;
+          const val = parseJsonProperty(this, operation, propName, rawVal, i);
+          if (val === '') continue;
+          if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
+          body[propName] = val as IDataObject[string];
+        }
+{{else}}
         for (const [propName, val] of Object.entries(additionalFields)) {
           if (val === '' || val === null || val === undefined) continue;
           if (typeof val === 'object' && !Array.isArray(val) && Object.keys(val as object).length === 0) continue;
           body[propName] = val;
         }
+{{/if}}
         // Substitute any remaining {placeholder} patterns from credential values,
         // matched by credential key name (e.g. a {baseUrl} or {userKey} in a path).
         for (const [credKey, credVal] of Object.entries(creds)) {
@@ -634,7 +648,35 @@ const OPERATION_PROPERTY_NAMES: Record<string, readonly string[]> = {
 {{#each operations}}  '{{this.name}}': [{{#each this.properties}}'{{this.name}}'{{#unless @last}}, {{/unless}}{{/each}}],
 {{/each}} };
 
-// Per-operation default values for OPTIONAL body parameters (Story 13.1 / FR51).
+{{#if jsonProperties}}
+// Per-operation properties of n8n type 'json'. n8n's JSON editor stores what the
+// user typed as a string; it has to be parsed before it is sent, or the API receives
+// a string where it expects an array/object. An expression already yields a value.
+const JSON_PROPERTY_NAMES: Record<string, readonly string[]> = {
+{{#each jsonProperties}}  '{{this.operation}}': [{{#each this.names}}'{{this}}'{{#unless @last}}, {{/unless}}{{/each}}],
+{{/each}} };
+
+function parseJsonProperty(
+  ctx: IExecuteFunctions,
+  operation: string,
+  propName: string,
+  val: unknown,
+  itemIndex: number,
+): unknown {
+  if (typeof val !== 'string' || !(JSON_PROPERTY_NAMES[operation] ?? []).includes(propName)) return val;
+  const text = val.trim();
+  if (text === '') return '';
+  try {
+    return JSON.parse(text) as unknown;
+  } catch (err) {
+    throw new NodeOperationError(ctx.getNode(), `The "${propName}" field must be valid JSON.`, {
+      itemIndex,
+      description: `It could not be parsed (${(err as Error).message}). Write a JSON array or object, for example [1, 2] or {"key": "value"}.`,
+    });
+  }
+}
+
+{{/if}}// Per-operation default values for OPTIONAL body parameters (Story 13.1 / FR51).
 // A value equal to its default is treated as "unset" and omitted from the request.
 // Required params and path params are never listed here, so a genuinely missing
 // required field still surfaces as an API error.
