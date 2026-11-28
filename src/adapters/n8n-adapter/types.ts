@@ -333,6 +333,13 @@ export interface N8nNodeSpec {
     defaults: Array<{ prop: string; valueJson: string }>;
   }>;
   /**
+   * Per-operation names of properties whose n8n type is 'json' (top-level and
+   * Additional Fields). execute() parses a string value of these before sending it:
+   * n8n's JSON editor stores the typed text as a string. Absent when no operation
+   * has one.
+   */
+  jsonProperties?: Array<{ operation: string; names: string[] }>;
+  /**
    * Story 13.3 (FR53): per-operation API base-path prefix for MULTI-MANAGER products.
    * When set, execute() builds `${baseUrl}${prefix}${urlTemplate}` so one credential
    * (gateway root) serves every manager. Empty/absent for single-API products.
