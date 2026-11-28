@@ -9,6 +9,7 @@ import {
   mergePublisherOutput,
   parseLedger,
   recomputeOverallStatus,
+  resolveLedgerRepository,
   serializeLedger,
 } from './release-ledger.js';
 import {
@@ -26,7 +27,8 @@ import {
 //   PIPELINE_RUN_ID                     — correlation
 //   PUBLISHER_RESULTS_JSON              — newline-separated PublisherOutputs
 //   BOT_PAT                             — git push credential
-//   GITHUB_REPOSITORY                   — owner/repo
+//   LEDGER_REPOSITORY                   — owner/repo holding releases/state
+//   GITHUB_REPOSITORY                   — fallback
 //
 // In dry-run mode the caller is expected to NOT invoke this CLI at all
 // (publish.yml gates the write-ledger step on dry_run != 'true').
@@ -56,10 +58,10 @@ async function main(): Promise<number> {
   const pipelineRunId = process.env.PIPELINE_RUN_ID ?? '';
   const rawResults = process.env.PUBLISHER_RESULTS_JSON ?? '';
   const botPat = process.env.BOT_PAT ?? '';
-  const repo = process.env.GITHUB_REPOSITORY ?? '';
+  const repo = resolveLedgerRepository(process.env);
 
   if (!mcpName || !version || !pipelineRunId || !repo) {
-    process.stderr.write('write-ledger: MCP_NAME, VERSION, PIPELINE_RUN_ID, GITHUB_REPOSITORY env vars are required\n');
+    process.stderr.write('write-ledger: MCP_NAME, VERSION, PIPELINE_RUN_ID and LEDGER_REPOSITORY (or GITHUB_REPOSITORY) env vars are required\n');
     return 2;
   }
   if (!botPat) {

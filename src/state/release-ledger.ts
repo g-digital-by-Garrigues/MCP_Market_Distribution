@@ -111,3 +111,23 @@ export function targetsToRun(
 }
 
 export { emptyLedger };
+
+/**
+ * Where the `releases/state` ledger lives: the PIPELINE repo, always.
+ *
+ * Both scripts used to clone `GITHUB_REPOSITORY`. That was right while publish.yml
+ * ran in this repo; since the v1.1 per-repo model each product's own workflow calls
+ * publish.yml as a reusable workflow, and inside a reusable workflow
+ * `GITHUB_REPOSITORY` is the CALLER — the product repo, which has no ledger. So from
+ * 2026-05-22 on, every read found nothing ("proceeding with empty ledger") and every
+ * write failed silently (`continue-on-error`): no re-run ever skipped an
+ * already-published target. Found on 2026-11-28, when a full re-dispatch of
+ * GoCertius 2.1.0 tried `npm publish` again ("cannot publish over 2.1.0").
+ *
+ * publish.yml sets LEDGER_REPOSITORY explicitly, next to the other hardcoded
+ * `repository: g-digital-by-Garrigues/MCP_Market_Distribution` checkouts.
+ * GITHUB_REPOSITORY stays as the fallback for runs that start in this repo.
+ */
+export function resolveLedgerRepository(env: NodeJS.ProcessEnv): string {
+  return env.LEDGER_REPOSITORY?.trim() || env.GITHUB_REPOSITORY?.trim() || '';
+}
