@@ -110,6 +110,34 @@ export function targetsToRun(
   });
 }
 
+/**
+ * Which publishers a run should fire, from the ledger and the dispatch inputs.
+ *
+ * - `step=gate` → none (gate-only run).
+ * - `step=<target id>` → exactly that target, EVEN IF the ledger says it succeeded.
+ *   An explicit single-target retry is a deliberate operator request, and some
+ *   publishers do useful work on an already-published version: publish-docker-hub
+ *   refreshes the repository page ("/retry-publish?step=docker-hub refreshes the page
+ *   even though <version> is already pushed"). While the ledger was always empty
+ *   (2026-05-22 → 2026-11-28, see resolveLedgerRepository) every retry ran anyway;
+ *   once it started recording successes, that documented recovery path would have
+ *   silently become a no-op. `skip_targets` still wins — the caller applies it after.
+ * - `step=all|publish|''`, optionally narrowed by `track=a|b` → every target in scope
+ *   that the ledger has not recorded as succeeded/skipped.
+ */
+export function resolveRunTargets(
+  ledger: ReleaseLedger,
+  retryStep?: string,
+  retryTrack?: string,
+): readonly string[] {
+  const PHASE_KEYWORDS = new Set(['gate', 'publish', 'all']);
+  if (retryStep === 'gate') return [];
+  if (retryStep && !PHASE_KEYWORDS.has(retryStep)) return [retryStep];
+  if (retryTrack === 'a') return targetsToRun(ledger, TRACK_A_TARGET_IDS);
+  if (retryTrack === 'b') return targetsToRun(ledger, TRACK_B_TARGET_IDS);
+  return targetsToRun(ledger);
+}
+
 export { emptyLedger };
 
 /**

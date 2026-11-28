@@ -4,24 +4,34 @@
 
 ## Run it
 
-```bash
-docker run --rm -i --env-file .env {{docker_image_name}}:{{version}}
-```
+The image starts the **HTTP** transport by default. Pick the mode that matches how you connect.
 
-Wire it into an MCP client (Claude Desktop, Claude Code, n8n, …):
+**From an MCP client over stdio** (Claude Desktop, Claude Code, Cursor, …) — override the transport with `-e MCP_TRANSPORT=stdio` and keep `-i`. In this mode the server signs in by itself with the credentials in `.env`:
+
+```bash
+docker run --rm -i --env-file .env -e MCP_TRANSPORT=stdio {{docker_image_name}}:{{version}}
+```
 
 ```json
 {
   "mcpServers": {
     "{{mcp_name}}": {
       "command": "docker",
-      "args": ["run", "--rm", "-i", "--env-file", ".env", "{{docker_image_name}}:{{version}}"]
+      "args": ["run", "--rm", "-i", "--env-file", ".env", "-e", "MCP_TRANSPORT=stdio", "{{docker_image_name}}:{{version}}"]
     }
   }
 }
 ```
 
-The container speaks MCP over stdio, so keep `-i`. Set `PORT` and run it as a service instead if you want the HTTP transport.
+Without `-e MCP_TRANSPORT=stdio` the container ignores stdin and waits for HTTP requests, so the client hangs.
+
+**As an HTTP service** — publish the port and point your client at `/mcp`:
+
+```bash
+docker run -d -p 8080:8080 --env-file .env {{docker_image_name}}:{{version}}
+```
+
+Every request to `http://<host>:8080/mcp` must carry `Authorization: Bearer <token>` — a valid, unexpired token for the upstream API; a request without one is answered `401`. In this mode the server acts with the caller's token, never with the credentials in its own `.env`, so reaching the port is not enough to act with your account. Keep `MCP_TRANSPORT` out of `.env` and set it on the command line as above.
 
 ## Configuration
 
