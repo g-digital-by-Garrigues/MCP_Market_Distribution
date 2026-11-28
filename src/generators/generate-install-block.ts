@@ -116,17 +116,17 @@ function buildEnvBlock(
       // and MCP_SVC_CLIENT_ID required with no value that could ever be baked in.
       // MCP_API_BASE_URL is the one variable where a placeholder is KNOWN to be wrong
       // when the contract marks it required: the server refuses to start without it,
-      // so a snippet carrying <SET_...> cannot boot. Discovery is a regex over the
-      // generator-owned `src/tools/session_login.ts`, which is an implementation
-      // detail we do not control; when it stops matching, this fails the build
-      // instead of silently degrading eight install blocks per product.
-      // Raised with generation on MCP_Market_Distribution#255 — the durable fix is
-      // for the contract to declare which variables have a canonical value.
+      // so a snippet carrying <SET_...> cannot boot. The value is DECLARED by
+      // generation as `.distribution.yaml#api_base_url` (agreed on
+      // MCP_Market_Distribution#255; it replaced a regex over `session_login.ts`).
+      // A required variable whose declaration is missing fails the build instead of
+      // silently degrading eight install blocks per product.
       throw new InstallBlockError(
         `${entry.name} is declared isRequired: true but no value could be discovered from the emitted source. ` +
           'This variable has a per-product canonical value and the server refuses to start without it, so an install ' +
-          'block placeholder would ship a snippet that cannot boot. Discovery reads `src/tools/session_login.ts`; if the ' +
-          'emitted source moved or restructured that default, update readEmittedEnvDefaults rather than shipping a placeholder.',
+          'block placeholder would ship a snippet that cannot boot. The value is read from `api_base_url` in the ' +
+          "product's `.distribution.yaml`, which generation emits; if it is missing or null there, ask generation to declare it " +
+          'rather than shipping a placeholder.',
       );
     }
     env[entry.name] = discovered ? discovered : `<SET_${entry.name}_HERE>`;

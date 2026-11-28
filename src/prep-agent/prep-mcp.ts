@@ -223,11 +223,10 @@ export async function prepMcp(opts: PrepMcpOptions): Promise<PrepMcpResult> {
   // Step 6: install blocks (Story 1.8)
   //
   // Story 18.5: a required non-secret must ship as a usable value, not a bare "".
-  // The default is DISCOVERED from the emitted source (never authored here — the
-  // pipeline may not carry a per-product API host). `mcpFolder` is the same directory
-  // the n8n adapter build receives as `packageDir` below, so both consumers scrape the
-  // identical tree in the same run.
-  const emittedDefaults = await readEmittedEnvDefaults(mcpFolder);
+  // The default is DECLARED by generation in `.distribution.yaml#api_base_url` (never
+  // authored here — the pipeline may not carry a per-product API host). The n8n
+  // adapter build below reads the same declaration, so both consumers agree.
+  const emittedDefaults = readEmittedEnvDefaults(distribution);
   const installBlocks = await generateAllInstallBlocks({
     config: {
       reverse_dns_name: distribution.reverse_dns_name,

@@ -945,6 +945,26 @@ function resolveRepoUrl(distribution: DistributionConfig, server: ServerJsonShap
   return `https://www.npmjs.com/package/${encodeURIComponent(scopedName)}`;
 }
 
+/**
+ * The n8n credential's "API Base URL" description for user-key products (GoCertius,
+ * EAD Enterprise Suite). A deliberate, bounded exception to FR62, decided by Hugo on
+ * 2026-11-27 at generation's own suggestion (#264 §6).
+ *
+ * The authored `MCP_API_BASE_URL` description is written for the MCP server operator
+ * ("Required only when MCP_AUTH_USER_KEY is also set … the server will not start
+ * without both … inbound Bearer only"). In n8n's credential form there is no such
+ * variable, no server to start and no Bearer mode, and the field it sits under is
+ * marked required — so the authored text contradicts the form it is shown in. Every
+ * OTHER surface (server.json, smithery.yaml, README, Docker Hub) keeps the authored
+ * text; only this field and its row in the connector README use this one. EAD
+ * Factory (oauth2-client-credentials) keeps its authored gateway-root description.
+ */
+export function userKeyBaseUrlDescription(displayName: string, defaultApiBaseUrl: string): string {
+  return defaultApiBaseUrl
+    ? `The ${displayName} API root. Pre-filled with the production host; change it only to reach another environment.`
+    : `The ${displayName} API root.`;
+}
+
 export async function buildN8nNodeSpec(
   input: BuildN8nNodeSpecInput,
 ): Promise<BuildN8nNodeSpecResult> {
@@ -1221,11 +1241,12 @@ export async function buildN8nNodeSpec(
 
   const authStyle = detectAuthStyle(server);
   const credentials = buildCredentials(server, authStyle);
-  // Story 18.5: the scrape now lives in src/utils/read-emitted-env-defaults.ts and is
-  // shared with the install-block generator. `?? ''` preserves N8nNodeSpec's documented
-  // contract (types.ts: '' when nothing is discoverable), which keeps EAD Factory's
-  // credential render byte-identical.
-  const defaultApiBaseUrl = (await readEmittedEnvDefaults(input.packageDir)).MCP_API_BASE_URL ?? '';
+  // Story 18.5: shared with the install-block generator. Read from the DECLARED
+  // `.distribution.yaml#api_base_url` (it replaced a regex over session_login.ts).
+  // `?? ''` preserves N8nNodeSpec's documented contract (types.ts: '' when nothing is
+  // declared). EAD Factory now declares its gateway root, so its credential `baseUrl`
+  // default changes from '' to that host on its next prep — expected by generation.
+  const defaultApiBaseUrl = readEmittedEnvDefaults(distribution).MCP_API_BASE_URL ?? '';
   // AC5 (FR61): the credential's base-URL property is emitted by the template, not by
   // the env-var allowlist, so its requiredness has to be carried across as a scalar.
   // Derived from the DECLARED MCP_API_BASE_URL — goc/suite declare it required (the
@@ -1240,8 +1261,9 @@ export async function buildN8nNodeSpec(
   // environment uses a different endpoint" — pipeline-invented copy that a
   // contract declaring the variable REQUIRED flatly contradicts. Absent when the
   // contract declares no description; we do not substitute our own.
-  const baseUrlDescription = declaredBaseUrlVar?.description?.trim();
-  // Story 18.7 (AC6): the connector README's "Upgrading from 1.x" section, read
+  // EXCEPT on the user-key style — see userKeyBaseUrlDescription below.
+  const authoredBaseUrlDescription = declaredBaseUrlVar?.description?.trim();
+  // Story 18.7 (AC6): the connector README's "Upgrading" section, read
   // from the source repo's `.github/RELEASE_NOTES.md` — the same
   // "discover it from the tree we were handed" move as readEmittedEnvDefaults
   // above. An absent file is `undefined` and renders nothing; an unparseable one
@@ -1252,6 +1274,11 @@ export async function buildN8nNodeSpec(
   const bareTargetName = distribution.n8n_adapter_target_name.replace(/^n8n-nodes-/, '');
   const className = toPascalCase(bareTargetName);
   const resourceLabel = toTitleCase(bareTargetName);
+  const connectorDisplayName = distribution.n8n_connector_display_name ?? resourceLabel;
+  const baseUrlDescription =
+    authStyle === 'user-key'
+      ? userKeyBaseUrlDescription(connectorDisplayName, defaultApiBaseUrl)
+      : authoredBaseUrlDescription;
   const paramName = className.charAt(0).toLowerCase() + className.slice(1);
   // Epic 16: n8n's linter requires OAuth2 credentials (extends oAuth2Api) to follow the
   // `<Name>OAuth2Api` naming convention — class ends with 'OAuth2Api', and the `name`/
@@ -1275,11 +1302,9 @@ export async function buildN8nNodeSpec(
     // generic TitleCase fallback ("Ead Factory" → "EAD Factory") and to
     // ensure the description uses connector framing ("EAD Factory connector
     // for n8n") rather than the default "n8n community node for ... MCP".
-    displayName: distribution.n8n_connector_display_name ?? resourceLabel,
+    displayName: connectorDisplayName,
     description:
-      distribution.n8n_connector_description ??
-      server.description ??
-      `${distribution.n8n_connector_display_name ?? resourceLabel} connector for n8n.`,
+      distribution.n8n_connector_description ?? server.description ?? `${connectorDisplayName} connector for n8n.`,
     nodeName: input.mcpName,
     paramName,
     resourceDisplayName: resourceLabel,

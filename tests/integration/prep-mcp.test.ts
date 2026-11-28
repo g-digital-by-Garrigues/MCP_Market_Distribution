@@ -38,7 +38,9 @@ async function makeFixture(): Promise<Fixture> {
   run(['config', 'commit.gpgsign', 'false']);
   run(['config', 'tag.gpgsign', 'false']);
 
-  await writeTestConfig({ repoRoot });
+  // The API host is DECLARED in .distribution.yaml (api_base_url) — synthetic host only,
+  // no product API host belongs in a pipeline fixture (AC6).
+  await writeTestConfig({ repoRoot, distributionOverrides: { api_base_url: 'https://api.example.test' } });
 
   const sourcePkg = {
     name: '@g-digital/mcp-ead-factory',
@@ -56,13 +58,14 @@ async function makeFixture(): Promise<Fixture> {
     '# EADTrust API key\nEADTRUST_API_KEY=\n# HTTP port\nAPP_PORT=3000\n# API base URL\nMCP_API_BASE_URL=\n',
     'utf8',
   );
-  // Story 18.5: the emitted source carries a discoverable default for MCP_API_BASE_URL
-  // and none for APP_PORT, so one prep-mcp run exercises both branches. Synthetic host
-  // only — no product API host belongs in a pipeline fixture (AC6).
+  // Story 18.5: the contract declares a default for MCP_API_BASE_URL and none for
+  // APP_PORT, so one prep-mcp run exercises both branches. A session_login.ts that
+  // carries a DIFFERENT host stays in the tree on purpose: the old regex read it, and
+  // the assertion below proves nothing reads it any more.
   await fs.mkdir(path.join(mcpFolder, 'src', 'tools'), { recursive: true });
   await fs.writeFile(
     path.join(mcpFolder, 'src', 'tools', 'session_login.ts'),
-    'const BASE_URL = process.env.MCP_API_BASE_URL ?? "https://api.example.test";\n',
+    'const BASE_URL = process.env.MCP_API_BASE_URL ?? "https://scraped.example.test";\n',
     'utf8',
   );
   await fs.writeFile(
@@ -146,13 +149,14 @@ describe('prepMcp orchestrator (integration)', () => {
     expect(serverJson.name).toBe('io.github.g-digital-by-Garrigues/ead-factory');
     expect(serverJson.version).toBe(VERSION);
 
-    // Story 18.5 (AC1) — the only test that proves prep-mcp actually scrapes the
-    // emitted source and passes the map through: the unit tests cannot see the wiring.
+    // Story 18.5 (AC1) — the only test that proves prep-mcp actually reads the declared
+    // api_base_url and passes the map through: the unit tests cannot see the wiring.
     const claudeDesktopBlock = await fs.readFile(
       path.join(fixture.mcpFolder, 'install-blocks', 'claude-desktop.md'),
       'utf8',
     );
     expect(claudeDesktopBlock).toContain('"MCP_API_BASE_URL": "https://api.example.test"');
+    expect(claudeDesktopBlock).not.toContain('scraped.example.test');
     expect(claudeDesktopBlock).toContain('<SET_APP_PORT_HERE>');
     expect(claudeDesktopBlock).not.toMatch(/":\s*""/);
   }, 30_000);

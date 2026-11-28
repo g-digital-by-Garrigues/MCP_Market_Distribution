@@ -228,6 +228,33 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
     }
   });
 
+  it('reads the credential baseUrl default from the DECLARED api_base_url and says so in the n8n text', async () => {
+    // generation @3a1ff12 (2026-11-27) declares the host in .distribution.yaml; it
+    // replaced our regex over session_login.ts (agreed on #255). Synthetic host only.
+    const { repoRoot, packageDir, cleanup } = await setupFixture({
+      mcpName: 'multi-tool',
+      distributionOverrides: { api_base_url: 'https://api.example.test', n8n_connector_display_name: 'Multi Tool Pro' },
+    });
+    try {
+      const { spec } = await buildN8nNodeSpec({
+        repoRoot,
+        packageDir,
+        mcpName: 'multi-tool',
+        version: '1.0.0',
+        inspectorCommand: process.execPath,
+        inspectorArgs: [MULTI_TOOL_STUB],
+        inspectorTimeoutMs: 10_000,
+      });
+      expect(spec.authStyle).toBe('user-key');
+      expect(spec.defaultApiBaseUrl).toBe('https://api.example.test');
+      expect(spec.baseUrlDescription).toBe(
+        'The Multi Tool Pro API root. Pre-filled with the production host; change it only to reach another environment.',
+      );
+    } finally {
+      await cleanup();
+    }
+  }, 30_000);
+
   it('builds a spec with one operation per tool from the multi-tool stub', async () => {
     const { repoRoot, packageDir, cleanup } = await setupFixture({ mcpName: 'multi-tool' });
     try {
@@ -307,6 +334,12 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       // AC5: MCP_API_BASE_URL is declared required → the template-emitted baseUrl
       // property renders required, without becoming a second credential field.
       expect(spec.baseUrlRequired).toBe(true);
+      // Decided 2026-11-27 (#264 §6): on user-key products the n8n form gets its own
+      // short text, not the server-operator copy ("Required only when
+      // MCP_AUTH_USER_KEY is also set … inbound Bearer only") that contradicts a
+      // required field. No api_base_url declared here → no "pre-filled" claim.
+      expect(spec.defaultApiBaseUrl).toBe('');
+      expect(spec.baseUrlDescription).toBe('The Multi Tool API root.');
       expect(spec.credentials.some((c) => c.envName === 'MCP_HTTP_HOST')).toBe(false);
       expect(spec.credentials.some((c) => c.envName === 'MCP_API_BASE_URL')).toBe(false);
       expect(spec.credentials.some((c) => c.envName.startsWith('MCP_SVC_'))).toBe(false);
@@ -331,7 +364,9 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
         { name: 'MCP_SVC_SCOPE', description: 'OAuth2 scope.', isSecret: false, isRequired: false },
         { name: 'MCP_SVC_INTROSPECT_URL', description: 'Inbound bearer introspection (server config).', isSecret: false, isRequired: false },
         { name: 'MCP_HTTP_HOST', description: 'MCP server HTTP bind host.', isSecret: false, isRequired: false },
+        { name: 'MCP_API_BASE_URL', description: 'Gateway ROOT URL (authored).', isSecret: false, isRequired: false },
       ],
+      distributionOverrides: { api_base_url: 'https://api.example.test' },
     });
     try {
       const { spec } = await buildN8nNodeSpec({
@@ -352,6 +387,11 @@ describe('buildN8nNodeSpec (integration with stub MCP)', () => {
       // (@n8n/community-nodes/cred-class-oauth2-naming) or the linter rejects them.
       expect(spec.credentialClassName).toMatch(/OAuth2Api$/);
       expect(spec.credentialParamName).toContain('OAuth2');
+      // The n8n-only short text is for user-key products: the OAuth2 style (EAD
+      // Factory) keeps its AUTHORED base-URL description, while its default now comes
+      // from the declared api_base_url (gateway root) like every other product.
+      expect(spec.baseUrlDescription).toBe('Gateway ROOT URL (authored).');
+      expect(spec.defaultApiBaseUrl).toBe('https://api.example.test');
     } finally {
       await cleanup();
     }

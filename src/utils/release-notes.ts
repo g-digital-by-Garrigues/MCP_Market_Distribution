@@ -22,7 +22,7 @@ import path from 'node:path';
 // ONE authored file feeds TWO surfaces:
 //   - the whole text, minus the two marker lines, is the GitHub Release body;
 //   - the span between the markers is the connector README's
-//     "Upgrading from 1.x" section.
+//     "Upgrading" section.
 // The marker idiom is our own (`README_MARKER_INSTALL` / `README_MARKER_ENV` in
 // `src/generators/generate-readme.ts`).
 //
@@ -63,7 +63,7 @@ export interface ParsedReleaseNotes {
   body: string;
   /**
    * The text between the markers, boundary-trimmed. Rendered as the connector
-   * README's "Upgrading from 1.x" section. `undefined` when the note carries no
+   * README's "Upgrading" section. `undefined` when the note carries no
    * markers at all — a server-only note is legal, the connector then renders
    * no section.
    */
@@ -73,7 +73,7 @@ export interface ParsedReleaseNotes {
 }
 
 // A level-1 or level-2 ATX heading inside the span would break the connector
-// README's outline: the section is emitted under `## Upgrading from 1.x`, so
+// README's outline: the section is emitted under `## Upgrading`, so
 // anything shallower than `###` escapes it. `###` and deeper are fine.
 const SHALLOW_HEADING_RE = /^ {0,3}#{1,2}(\s|$)/;
 
@@ -140,7 +140,7 @@ export function parseReleaseNotes(raw: string): ParsedReleaseNotes {
   if (offending !== undefined) {
     throw new ReleaseNotesError(
       `The n8n span carries a level-1/level-2 heading, which would break the connector ` +
-        `README's outline (the span is rendered under '## Upgrading from 1.x'). ` +
+        `README's outline (the span is rendered under '## Upgrading'). ` +
         `Use '###' or deeper. Offending line: ${offending.trim()}`,
     );
   }

@@ -528,7 +528,11 @@ describe('generateN8nNode — user-key credential imports (n8n review 2026-07)',
     // removal, which is what the reviewer pushed back on.
     expect(node.match(/2FA \/ biometric/g)).toHaveLength(2);
     expect(node.match(/unattended workflow/g)).toHaveLength(2);
-    expect(node.match(/Upgrading from 1\.x/g)).toHaveLength(2);
+    // The section is "Upgrading", not "Upgrading from 1.x": from 2.1.0 on the note
+    // covers more than one jump (1.x credential + 2.0 retired operations), and a
+    // pointer to a heading the README no longer carries sends the user nowhere.
+    expect(node.match(/"Upgrading" in the node README/g)).toHaveLength(2);
+    expect(node).not.toContain('Upgrading from 1.x');
     // And the fix must not overstate the work: editing in place is enough.
     expect(node).toContain('you do not need to re-select it on this');
   });
